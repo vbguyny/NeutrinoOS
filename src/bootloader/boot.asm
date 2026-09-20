@@ -185,7 +185,7 @@ MT_STACK            equ 8
 
 ; Memory map limits
 MAX_MEMMAP_ENTRIES  equ 256
-MEMMAP_BUFFER_SIZE  equ 8192
+MEMMAP_BUFFER_SIZE  equ 65536
 
 ; ACPI GUIDs
 ; EFI_ACPI_20_TABLE_GUID = {8868E871-E4F1-11D3-BC22-0080C73C8881}
@@ -1060,6 +1060,35 @@ EfiMain:
     lea rcx, [rel MsgExiting]
     call PrintString
 
+    ; Interrupts off for the rest of the bootloader: the firmware's IDT and
+    ; timer stay live through ExitBootServices, and a timer interrupt taken
+    ; mid-exit can run firmware teardown code in a half-torn-down state
+    ; (VirtualBox's CpuDxe #GPs there).
+    cli
+
+    ; Re-fetch the memory map as the VERY LAST boot-services call before
+    ; ExitBootServices.  Any boot-services call in between - even
+    ; ConOut->OutputString for the message above, whose firmware
+    ; implementation may allocate internally - changes the memory map and
+    ; invalidates the key, so ExitBootServices fails with
+    ; EFI_INVALID_PARAMETER (observed on VirtualBox; the failure leaves the
+    ; firmware in a state where the retry call #GPs).
+    call GetUefiMemoryMap
+    test rax, rax
+    jnz .exit_retry
+
+    ; Update BootInfo with the final map info
+    mov rdi, BOOTINFO_ADDR
+    lea rax, [rel UefiMemMapBuffer]
+    mov [rdi + BI_MEMMAP_ADDR], rax
+    mov rax, [rel UefiMemMapSize]
+    xor edx, edx
+    mov rcx, [rel UefiDescSize]
+    div rcx
+    mov [rdi + BI_MEMMAP_ENTRIES], eax
+    mov rax, [rel UefiDescSize]
+    mov [rdi + BI_MEMMAP_ENTRYSIZE], eax
+
     mov rcx, [rel ImageHandle]
     mov rdx, [rel UefiMemMapKey]
     mov rax, [rel BootServices]
@@ -1071,6 +1100,12 @@ EfiMain:
 
 .boot_services_exited:
     ; === Boot services are now gone - no more UEFI calls! ===
+    ; Disable interrupts immediately: UEFI runs with IF=1 and the firmware's
+    ; IDT is still loaded, so a timer interrupt now would vector into
+    ; firmware code whose boot-services environment is gone (VirtualBox's
+    ; CpuDxe #GPs on exactly that).  The kernel re-enables interrupts after
+    ; installing its own IDT.
+    cli
 
     ; Print status via serial only
     mov al, 'K'
@@ -1241,11 +1276,24 @@ PrintString:
 ;; ============================================================================
 GetUefiMemoryMap:
     push rbx
-    push rsi
-    push rdi
 
-    ; Reset buffer size
-    mov qword [rel UefiMemMapSize], MEMMAP_BUFFER_SIZE
+    ; Robustness: the first call may return EFI_BUFFER_TOO_SMALL and update
+    ; MapSize to the required value; retry then succeeds and writes a VALID
+    ; MapKey (a key from a failed call is stale and ExitBootServices would
+    ; reject it).  Never pass a size larger than the static buffer - an
+    ; oversized firmware map writing past UefiMemMapBuffer used to clobber
+    ; UefiMemMapSize/Key/DescSize, corrupting the ExitBootServices key
+    ; (VirtualBox's map is larger than the old 8 KB buffer).
+    mov ebx, 3                      ; retry budget
+.try:
+    mov rax, [rel UefiMemMapSize]
+    cmp rax, MEMMAP_BUFFER_SIZE
+    ja .too_big                     ; required > capacity: refuse (no overflow)
+    test rax, rax
+    jnz .have_size
+    mov rax, MEMMAP_BUFFER_SIZE
+.have_size:
+    mov [rel UefiMemMapSize], rax
 
     ; GetMemoryMap(&MapSize, Buffer, &MapKey, &DescSize, &DescVersion)
     lea rcx, [rel UefiMemMapSize]
@@ -1259,8 +1307,20 @@ GetUefiMemoryMap:
     call [rax + 56]                 ; BS_GET_MEMORY_MAP = 56
     add rsp, 40                     ; Clean up stack
 
-    pop rdi
-    pop rsi
+    test rax, rax
+    jz .ok                          ; success - MapKey is valid now
+    dec ebx
+    jnz .try                        ; MapSize was updated; try again
+    mov eax, 1
+    jmp .done
+
+.too_big:
+    mov eax, 2
+    jmp .done
+
+.ok:
+    xor eax, eax
+.done:
     pop rbx
     ret
 

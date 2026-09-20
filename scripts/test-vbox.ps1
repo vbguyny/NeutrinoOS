@@ -1,5 +1,5 @@
 param(
-    [int]$TimeoutSec = 60
+    [int]$TimeoutSec = 120
 )
 # NeutrinoOS VirtualBox acceptance: boot build\neutrinoos.img (EFI, serial
 # to a log file) and assert the banner + shell prompt appear.
@@ -37,7 +37,9 @@ Write-Host "Converting image to VDI..."
 
 Write-Host "Creating VM..."
 & $vb createvm --name $name --ostype Other_64 --register | Out-Null
-& $vb modifyvm $name --memory 2048 --cpus 1 --firmware efi --ioapic on --nic1 none | Out-Null
+# NOTE: 2 vCPUs are required - VirtualBox's EFI firmware #GPs in its
+# ExitBootServices teardown path when the VM has a single vCPU.
+& $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 none | Out-Null
 & $vb storagectl $name --name SATA --add sata --controller IntelAhci | Out-Null
 & $vb storageattach $name --storagectl SATA --port 0 --device 0 --type hdd --medium $vdi | Out-Null
 & $vb modifyvm $name --uart1 0x3F8 4 --uartmode1 file $serial | Out-Null

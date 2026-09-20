@@ -85,6 +85,14 @@ BI_MAGIC_VALUE  equ 0x50524F544F4E4F53  ; "PROTONOS"
 ; Windows x64 ABI: bootInfo in rcx
 global EfiEntry
 EfiEntry:
+    ; UEFI runs with interrupts enabled and the FIRMWARE's IDT loaded.
+    ; The kernel only installs its own IDT in Arch.InitStage1 and enables
+    ; interrupts in InitStage2 - any interrupt in between (e.g. VirtualBox's
+    ; firmware timer, which keeps firing after ExitBootServices) would run a
+    ; firmware handler whose boot-services environment is gone (#GP in
+    ; VirtualBox's CpuDxe).  Keep IF=0 until the kernel is ready.
+    cli
+
     ; Save BootInfo pointer
     mov [rel g_boot_info], rcx
 

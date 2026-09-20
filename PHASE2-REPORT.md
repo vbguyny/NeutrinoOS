@@ -138,3 +138,10 @@ argv/CWD for processes, shell command parsing/utilities,
 `ReadLine`'s full-line mid-cursor editing (Left/Right/Home/End within the
 line buffer), networking/SSH/curl, JIT execution of user assemblies
 beyond the test harness.
+
+Known observations from verification (tracked in `PHASE1-REPORT.md` §5):
+
+- The full marker-less in-boot suite boot still needs one end-to-end run
+  after the console work (~5 min; `build/fullboot.sh` prints progress).
+- `AOT lookup FAILED` notices for `System.Single.IsNaN/IsInfinity` are
+  benign JIT-IL fallback messages (AOT registry entries absent).

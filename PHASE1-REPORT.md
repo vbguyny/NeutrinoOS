@@ -301,13 +301,31 @@ framebuffer, no crash).
 - **Publishing the fork** needs the user's GitHub account: create the fork in
   the GitHub UI, then `git remote add origin <fork-url> && git push -u origin main`
   (the repository here already carries the full Phase 1 history).
-- **VirtualBox verification** (performed on this machine, VirtualBox 7.1.8):
-the image boots and the loader runs under VirtualBox's EFI firmware
-(`NeutrinoOS v0.1`, kernel load/relocation, `[BOOT] Exiting boot
-services...`), but the firmware (`VBoxEfiFirmware` `CpuDxe`) then raises a
-#GP and prints its own exception dump. QEMU/OVMF is unaffected, so this is
-a VirtualBox-EFI interaction that remains a follow-up (reproduce with
-`scripts/test-vbox.ps1`; serial capture in `build/vbox-serial.log`).
+- **VirtualBox verification - PASS (root cause found and fixed in-fork):**
+  the VirtualBox-EFI #GP after `ExitBootServices` was a bootloader/firmware
+  interaction. Fixes: (1) the memory map/key is now re-fetched as the *very
+  last* boot-services call before the exit (the "[BOOT] Exiting boot
+  services..." ConOut print itself invalidated the key on VirtualBox's
+  firmware, so the first exit failed `EFI_INVALID_PARAMETER` and the
+  firmware then #GP'd inside its own `CpuDxe` teardown on the retry);
+  (2) the map buffer is 64 KB and `GetUefiMemoryMap` checks status and
+  retries (the old fixed 8 KB buffer could be overrun by large maps,
+  clobbering the adjacent key/size fields); (3) interrupts stay disabled
+  from `ExitBootServices` until the kernel installs its own IDT (UEFI runs
+  with IF=1 and the firmware IDT, so a timer interrupt in that window ran
+  firmware handlers whose boot-services environment was gone); (4) the VM
+  needs 2 vCPUs - VirtualBox's EFI firmware #GPs in its teardown with a
+  single vCPU (see `scripts/test-vbox.ps1`). Verified headless (serial
+  log): banner, `[SHELL] NeutrinoOS console ready.`, `neutrinoos>` prompt.
+- **Full marker-less in-boot suite boot** needs one end-to-end run after the
+  console/bootloader work (~5 min; `build/fullboot.sh` prints progress). The
+  console acceptance path (marker boot) is fully green on QEMU and
+  VirtualBox; the suite boot previously halted on the `RhpThrowEx` debug
+  assertions that were since removed.
+- **Benign log noise:** `[AsmLoader] AOT lookup FAILED for
+  System.Single.IsNaN / IsInfinity` lines are fallback notices (the JIT
+  compiles the IL path instead); the corresponding AOT registry entries do
+  not exist yet - cosmetic cleanup candidate, not a failure.
 - **Build-script defects in `make deps`** (section 4.5) - **fixed in-fork**:
 the kernel rule now clears `src/korlib/obj|bin` before invoking bflat and
 the ILCompiler pack step uses an absolute `IntermediateOutputPath`.

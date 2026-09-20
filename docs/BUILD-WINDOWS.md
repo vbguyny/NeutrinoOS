@@ -240,13 +240,16 @@ powershell -ExecutionPolicy Bypass -File scripts\test-vbox.ps1
 powershell -ExecutionPolicy Bypass -File scripts\test-vbox.ps1 -TimeoutSec 240
 ```
 
-**Current result (VirtualBox 7.1.8):** the loader runs under VirtualBox's EFI
-firmware (`NeutrinoOS v0.1`, kernel relocation, `[BOOT] Exiting boot
-services...`), after which VirtualBox's own firmware
-(`VBoxEfiFirmware\...\CpuDxe`) raises a #GP and prints its exception dump to
-the serial log (`build/vbox-serial.log`). QEMU + OVMF is unaffected — this
-VirtualBox-EFI interaction is a tracked follow-up (see `PHASE1-REPORT.md`
-§5).
+**Result (VirtualBox 7.1.8): PASS** - banner, `[SHELL] NeutrinoOS console
+ready.` and the `neutrinoos>` prompt appear in the serial log (headless
+boot, `build/vbox-serial.log`). Notes:
+
+- Use **2 vCPUs** (`-cpus 2`; the script does this): VirtualBox's EFI
+  firmware #GPs in its `ExitBootServices` teardown with a single vCPU.
+- The bootloader was hardened for VBox/EFI (map re-fetch as the last
+  boot-services call, 64 KB map buffer with status-checked retry,
+  interrupts disabled until the kernel IDT is installed) - see
+  `PHASE1-REPORT.md` section 5.
 
 To configure the VM manually instead:
 
