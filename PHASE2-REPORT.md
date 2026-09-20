@@ -105,10 +105,14 @@ fixed:
 1. **JIT→AOT call stack alignment** — Tier-0 JIT call sites do not
 guarantee 16-byte RSP alignment, and AOT callees with SSE frame stores
 (`movaps [rsp+x]`) took a #GP (`get_CursorLeft` was the first victim).
-Fixed in `ILCompiler` by routing register-argument calls through a native
-alignment shim (`jit_align_call`: target in R11, re-aligned RSP, shadow
-space). Calls with stack-passed arguments intentionally stay unshimmed —
-a shim frame would move RSP out from under the callee's stack arguments.
+Fixed in `ILCompiler` by routing register-argument calls **to AOT
+targets** through a native alignment shim (`jit_align_call`: target in
+R11, re-aligned RSP, shadow space). Calls with stack-passed arguments
+intentionally stay unshimmed (a shim frame would move RSP out from under
+the callee's stack arguments), and JIT→JIT calls stay unshimmed too —
+the extra frame breaks managed exception unwinding (found via the
+JITTest `eh.Propagation` suite: the unwinder matches catch regions by
+the caller's call-site offset, which would point into the shim).
 2. **Key-queue starvation** — the 16-entry key queue dropped keys under
 the 10 KB bulk RX test (queue-full drop policy), blocking the test
 forever. Capacity is now 16384.
@@ -141,7 +145,11 @@ beyond the test harness.
 
 Known observations from verification (tracked in `PHASE1-REPORT.md` §5):
 
-- The full marker-less in-boot suite boot still needs one end-to-end run
-  after the console work (~5 min; `build/fullboot.sh` prints progress).
-- `AOT lookup FAILED` notices for `System.Single.IsNaN/IsInfinity` are
-  benign JIT-IL fallback messages (AOT registry entries absent).
+- Full marker-less in-boot suite boot: **verified** — all suites complete
+  and the shell is reached (0 `[EH] FATAL`, 0 halts).
+- `System.Single.IsNaN/IsInfinity` (and the Double twins) are now
+  registered AOT entries — the former fallback notices are gone.
+- Minor: 4 ring-3 syscall tests (`mkdir`, `access`, `getdents64`, `rmdir`)
+  report "unexpected return" because they accept only `-ENOSYS` or `0`
+  while the VFS now returns real errno values — test-expectation artifact,
+  not a functional failure.

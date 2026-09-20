@@ -1412,6 +1412,55 @@ public static unsafe class AotMethodRegistry
             "System.UInt32", "GetHashCode",
             (nint)(delegate*<nint, int>)&PrimitiveHelpers.UInt32_GetHashCode,
             0, ReturnKind.Int32, true, true);
+
+        // =========================================================================
+        // Static NaN/Infinity predicates (Single/Double).  These are implemented
+        // in korlib IL; without registry entries every cross-assembly lookup fell
+        // back to JIT-compiling that IL and logged a benign "AOT lookup FAILED"
+        // notice.  Registering them binds the calls to these AOT helpers.
+        // =========================================================================
+
+        RegisterWithSignature(
+            "System.Single", "IsNaN",
+            (nint)(delegate*<float, int>)&PrimitiveHelpers.Single_IsNaN,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R4));
+        RegisterWithSignature(
+            "System.Single", "IsInfinity",
+            (nint)(delegate*<float, int>)&PrimitiveHelpers.Single_IsInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R4));
+        RegisterWithSignature(
+            "System.Single", "IsNegativeInfinity",
+            (nint)(delegate*<float, int>)&PrimitiveHelpers.Single_IsNegativeInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R4));
+        RegisterWithSignature(
+            "System.Single", "IsPositiveInfinity",
+            (nint)(delegate*<float, int>)&PrimitiveHelpers.Single_IsPositiveInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R4));
+
+        RegisterWithSignature(
+            "System.Double", "IsNaN",
+            (nint)(delegate*<double, int>)&PrimitiveHelpers.Double_IsNaN,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R8));
+        RegisterWithSignature(
+            "System.Double", "IsInfinity",
+            (nint)(delegate*<double, int>)&PrimitiveHelpers.Double_IsInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R8));
+        RegisterWithSignature(
+            "System.Double", "IsNegativeInfinity",
+            (nint)(delegate*<double, int>)&PrimitiveHelpers.Double_IsNegativeInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R8));
+        RegisterWithSignature(
+            "System.Double", "IsPositiveInfinity",
+            (nint)(delegate*<double, int>)&PrimitiveHelpers.Double_IsPositiveInfinity,
+            1, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_R8));
     }
 
     /// <summary>
@@ -3717,6 +3766,66 @@ public static unsafe class PrimitiveHelpers
         if (thisValue < other) return -1;
         if (thisValue > other) return 1;
         return 0;
+    }
+
+    // =========================================================================
+    // Static NaN/Infinity predicates for Single/Double (plain values, not boxed)
+    // =========================================================================
+
+    /// <summary>Single.IsNaN(float) - static predicate.</summary>
+    public static int Single_IsNaN(float value)
+    {
+        uint bits = *(uint*)&value;
+        return ((bits & 0x7FFFFFFFu) > 0x7F800000u) ? 1 : 0;
+    }
+
+    /// <summary>Single.IsInfinity(float) - static predicate.</summary>
+    public static int Single_IsInfinity(float value)
+    {
+        uint bits = *(uint*)&value;
+        return ((bits & 0x7FFFFFFFu) == 0x7F800000u) ? 1 : 0;
+    }
+
+    /// <summary>Single.IsNegativeInfinity(float) - static predicate.</summary>
+    public static int Single_IsNegativeInfinity(float value)
+    {
+        uint bits = *(uint*)&value;
+        return (bits == 0xFF800000u) ? 1 : 0;
+    }
+
+    /// <summary>Single.IsPositiveInfinity(float) - static predicate.</summary>
+    public static int Single_IsPositiveInfinity(float value)
+    {
+        uint bits = *(uint*)&value;
+        return (bits == 0x7F800000u) ? 1 : 0;
+    }
+
+    /// <summary>Double.IsNaN(double) - static predicate.</summary>
+    public static int Double_IsNaN(double value)
+    {
+        ulong bits = *(ulong*)&value;
+        return ((bits & 0x7FFFFFFFFFFFFFFFul) > 0x7FF0000000000000ul) ? 1 : 0;
+    }
+
+    /// <summary>Double.IsInfinity(double) - static predicate.</summary>
+    public static int Double_IsInfinity(double value)
+    {
+        ulong bits = *(ulong*)&value;
+        return ((bits & 0x7FFFFFFFFFFFFFFFul) == 0x7FF0000000000000ul) ? 1 : 0;
+    }
+
+    /// <summary>Double.IsNegativeInfinity(double) - static predicate.</summary>
+    public static int Double_IsNegativeInfinity(double value)
+    {
+        ulong bits = *(ulong*)&value;
+        return (bits == 0xFFF0000000000000ul) ? 1 : 0;
+    }
+
+    /// <summary>Double.IsPositiveInfinity(double) - static predicate.</summary>
+    public static int Double_IsPositiveInfinity(double value)
+    {
+        ulong bits = *(ulong*)&value;
+        return (bits == 0x7FF0000000000000ul) ? 1 : 0;
     }
 
     // =========================================================================

@@ -321,15 +321,24 @@ framebuffer, no crash).
   needs 2 vCPUs - VirtualBox's EFI firmware #GPs in its teardown with a
   single vCPU (see `scripts/test-vbox.ps1`). Verified headless (serial
   log): banner, `[SHELL] NeutrinoOS console ready.`, `neutrinoos>` prompt.
-- **Full marker-less in-boot suite boot** needs one end-to-end run after the
-  console/bootloader work (~5 min; `build/fullboot.sh` prints progress). The
-  console acceptance path (marker boot) is fully green on QEMU and
-  VirtualBox; the suite boot previously halted on the `RhpThrowEx` debug
-  assertions that were since removed.
-- **Benign log noise:** `[AsmLoader] AOT lookup FAILED for
-  System.Single.IsNaN / IsInfinity` lines are fallback notices (the JIT
-  compiles the IL path instead); the corresponding AOT registry entries do
-  not exist yet - cosmetic cleanup candidate, not a failure.
+- ~~Full marker-less in-boot suite boot~~ **DONE - PASS**: all suites
+  complete and the boot reaches the shell (0 `[EH] FATAL`, 0 halts). The
+  prior halt was root-caused on the way: the alignment shim applied to
+  JIT->JIT calls broke managed exception unwinding (`eh.Propagation` threw
+  across a shim); the shim is now applied only to calls whose target is
+  AOT code. Verified with `build/startboot.sh` + `build/wait-stall.sh`
+  (~6 min) and `build/verify-boot.sh` for the summary.
+- ~~Benign log noise (`System.Single.IsNaN / IsInfinity` lookup
+  fallbacks)~~ **FIXED**: the four Single + four Double NaN/Infinity
+  predicates are registered AOT entries (`RegisterPrimitiveMethods`,
+  signature-hashed); the log now shows `Found AOT method:
+  System.Single.IsNaN -> 0x...` and the fallback notices are gone.
+- **Minor test-expectation artifact (pre-existing):** 4 ring-3 syscall
+  tests (`mkdir`, `access`, `getdents64`, `rmdir`) report "unexpected
+  return" because they accept only `-ENOSYS` or `0` while the VFS now
+  returns real errno values (`-ENOENT`/`-EROFS`). The suite result is
+  otherwise `20 passed, 4 failed` - not a functional failure; tightening
+  the test expectations is a candidate cleanup.
 - **Build-script defects in `make deps`** (section 4.5) - **fixed in-fork**:
 the kernel rule now clears `src/korlib/obj|bin` before invoking bflat and
 the ILCompiler pack step uses an absolute `IntermediateOutputPath`.

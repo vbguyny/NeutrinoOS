@@ -2674,6 +2674,7 @@ public static unsafe class MetadataIntegration
             DebugConsole.WriteLine();
 
             result.NativeCode = (void*)entry.NativeCode;
+            result.IsAotTarget = true;
             result.ArgCount = (byte)entry.ArgCount;
             result.ReturnKind = entry.ReturnKind;
             result.ReturnStructSize = entry.ReturnStructSize;
@@ -3029,6 +3030,7 @@ public static unsafe class MetadataIntegration
             DebugConsole.WriteLine();
 
             result.NativeCode = (void*)entry.NativeCode;
+            result.IsAotTarget = true;
             result.ArgCount = (byte)entry.ArgCount;
             result.ReturnKind = entry.ReturnKind;
             result.ReturnStructSize = entry.ReturnStructSize;
@@ -3297,6 +3299,7 @@ public static unsafe class MetadataIntegration
                     if (AotMethodRegistry.TryLookup(fullTypeName, memberName, argCount, out AotMethodEntry entry))
                     {
                         result.NativeCode = (void*)entry.NativeCode;
+                        result.IsAotTarget = true;
                         result.ArgCount = (byte)entry.ArgCount;
                         result.ReturnKind = entry.ReturnKind;
                         result.ReturnStructSize = entry.ReturnStructSize;

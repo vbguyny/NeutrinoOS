@@ -309,6 +309,16 @@ public unsafe struct ResolvedMethod
     /// <summary>Pointer to native code (null if not yet compiled).</summary>
     public void* NativeCode;
 
+    /// <summary>
+    /// True when NativeCode comes from the AOT method registry (kernel/korlib
+    /// AOT code) rather than from JIT-compiled code.  JIT-&gt;AOT calls are routed
+    /// through the alignment shim (JIT frames do not guarantee 16-byte RSP
+    /// alignment and AOT prologues use aligned SSE stores); JIT-&gt;JIT calls must
+    /// NOT be shimmed - the extra frame breaks managed exception unwinding
+    /// (a catch in the caller no longer matches the throw site's call offset).
+    /// </summary>
+    public bool IsAotTarget;
+
     /// <summary>Number of arguments expected.</summary>
     public byte ArgCount;
 
@@ -5395,6 +5405,7 @@ public unsafe struct ILCompiler
                         if (byrefVariant != 0)
                         {
                             method.NativeCode = (void*)byrefVariant;
+                            method.IsAotTarget = true;
                         }
                     }
                 }
@@ -6165,18 +6176,21 @@ public unsafe struct ILCompiler
         else if (arg3IsFloat64)
             X64Emitter.MovqXmmR64(ref _code, RegXMM.XMM3, VReg.R4);  // movq xmm3, r9
 
-        // Route register-argument calls through the generic alignment shim:
-        // JIT frames do not guarantee 16-byte RSP alignment at call sites
-        // (odd temporary pushes plus shadow space), and AOT callees may use
-        // aligned SSE frame stores (movaps [rsp+x]) which #GP on a misaligned
-        // stack. The shim receives the real target in R11 and its own address
-        // in RAX, re-aligns RSP and performs the actual call.
+        // Route AOT-target calls through the generic alignment shim: JIT frames
+        // do not guarantee 16-byte RSP alignment at call sites (odd temporary
+        // pushes plus shadow space), and AOT callees may use aligned SSE frame
+        // stores (movaps [rsp+x]) which #GP on a misaligned stack. The shim
+        // receives the real target in R11 and its own address in RAX, re-aligns
+        // RSP and performs the actual call.
+        // JIT-&gt;JIT calls are deliberately NOT shimmed: the extra frame breaks
+        // managed exception unwinding (the unwinder matches catch regions by the
+        // caller's call-site offset, which would point into the shim).
         // Calls with stack-passed arguments (or stack-passed large structs)
-        // MUST NOT be shimmed: the shim's own frame would move RSP so the
+        // MUST NOT be shimmed either: the shim's own frame would move RSP so the
         // callee could no longer find argN at [rsp+40+...].
         // NOTE: VReg.R6 maps to physical R11 (scratch); VReg.R11 is physical
         // R15 (JIT callee-saved) and must not be used here.
-        if (stackArgs == 0 && largeStructArgBytes == 0)
+        if (method.IsAotTarget && stackArgs == 0 && largeStructArgBytes == 0)
         {
             X64Emitter.MovRR(ref _code, VReg.R6, VReg.R0);
             X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)JitStubs.AlignCallAddress);
