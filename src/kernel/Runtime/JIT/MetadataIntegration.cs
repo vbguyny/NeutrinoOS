@@ -2543,13 +2543,16 @@ public static unsafe class MetadataIntegration
             paramCount = (byte)(((b & 0x3F) << 8) | sig[sigPos++]);
 
         // Try to look up in the AOT registry (pass paramCount, not including 'this')
-        DebugConsole.Write("[AotMemberRef] Looking up: ");
-        WriteByteString(typeName);
-        DebugConsole.Write(".");
-        WriteByteString(memberName);
-        DebugConsole.Write(" args=");
-        DebugConsole.WriteDecimal(paramCount);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[AotMemberRef] Looking up: ");
+            WriteByteString(typeName);
+            DebugConsole.Write(".");
+            WriteByteString(memberName);
+            DebugConsole.Write(" args=");
+            DebugConsole.WriteDecimal(paramCount);
+            DebugConsole.WriteLine();
+        }
 
         // Special handling for ReadOnlyCollection<T>.get_Item - only use AOT for reference types
         // The AOT helper uses 8-byte pointer indexing which only works for reference type arrays

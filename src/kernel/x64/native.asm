@@ -1751,6 +1751,28 @@ ap_trampoline_64:
     mov al, 'H'
     out dx, al
 
+    ; Enable SSE for this AP before any C# code runs. APs start from INIT
+    ; with CR4.OSFXSR=0, and the JIT/AOT code uses SSE instructions
+    ; (xorps/movaps) freely; executing those with OSFXSR=0 raises #UD on
+    ; real hardware and on VirtualBox. (QEMU tolerates the architectural
+    ; violation, which is why this was never caught there.)
+    mov rax, cr0
+    and rax, ~((1 << 2) | (1 << 3)) ; clear EM (2) and TS (3)
+    or rax, (1 << 1) | (1 << 5)     ; set MP (1) and NE (5)
+    mov cr0, rax
+    mov rax, cr4
+    or rax, (1 << 9) | (1 << 10)    ; set OSFXSR (9) + OSXMMEXCPT (10)
+    mov cr4, rax
+
+    ; If the BSP enabled XSAVE/AVX (CR4.OSXSAVE), mirror XCR0 here too.
+    test rax, (1 << 18)             ; OSXSAVE
+    jz .no_xsave
+    xor ecx, ecx                    ; XCR0
+    mov eax, 0x7                    ; x87 | SSE | AVX
+    xor edx, edx
+    xsetbv
+.no_xsave:
+
     ; Call the C# AP entry point
     ; First argument (rcx) = per-CPU state pointer
     mov rcx, [rbx + 24]     ; percpu (offset 24)

@@ -5504,24 +5504,27 @@ public static unsafe class AssemblyLoader
             byte* typeName = MetadataReader.GetString(ref sourceAsm->Metadata, nameIdx);
             byte* typeNs = MetadataReader.GetString(ref sourceAsm->Metadata, nsIdx);
 
-            // Debug: Print what we're looking up
-            DebugConsole.Write("[AsmLoader] ResolveTypeRef row=");
-            DebugConsole.WriteDecimal(typeRefRow);
-            DebugConsole.Write(" asmRef=");
-            DebugConsole.WriteDecimal(resScope.RowId);
-            DebugConsole.Write(" type=");
-            if (typeNs != null && typeNs[0] != 0)
+            // Debug: Print what we're looking up (verbose-jit marker only)
+            if (JitDiag.VerboseJit)
             {
-                for (int i = 0; typeNs[i] != 0 && i < 32; i++)
-                    DebugConsole.WriteChar((char)typeNs[i]);
-                DebugConsole.WriteChar('.');
+                DebugConsole.Write("[AsmLoader] ResolveTypeRef row=");
+                DebugConsole.WriteDecimal(typeRefRow);
+                DebugConsole.Write(" asmRef=");
+                DebugConsole.WriteDecimal(resScope.RowId);
+                DebugConsole.Write(" type=");
+                if (typeNs != null && typeNs[0] != 0)
+                {
+                    for (int i = 0; typeNs[i] != 0 && i < 32; i++)
+                        DebugConsole.WriteChar((char)typeNs[i]);
+                    DebugConsole.WriteChar('.');
+                }
+                if (typeName != null)
+                {
+                    for (int i = 0; typeName[i] != 0 && i < 32; i++)
+                        DebugConsole.WriteChar((char)typeName[i]);
+                }
+                DebugConsole.WriteLine();
             }
-            if (typeName != null)
-            {
-                for (int i = 0; typeName[i] != 0 && i < 32; i++)
-                    DebugConsole.WriteChar((char)typeName[i]);
-            }
-            DebugConsole.WriteLine();
 
             // Find the target assembly
             uint targetAsmId = ResolveAssemblyRef(sourceAsm, resScope.RowId);
@@ -6777,16 +6780,19 @@ public static unsafe class AssemblyLoader
             fieldEnd = asm->Tables.RowCounts[(int)MetadataTableId.Field] + 1;
         }
 
-        DebugConsole.Write("[FindFieldDef] typeRow=");
-        DebugConsole.WriteDecimal(typeRow);
-        DebugConsole.Write(" fieldRange=");
-        DebugConsole.WriteDecimal(fieldStart);
-        DebugConsole.Write("..");
-        DebugConsole.WriteDecimal(fieldEnd);
-        DebugConsole.Write(" name='");
-        for (int i = 0; fieldName[i] != 0 && i < 30; i++)
-            DebugConsole.WriteChar((char)fieldName[i]);
-        DebugConsole.WriteLine("'");
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[FindFieldDef] typeRow=");
+            DebugConsole.WriteDecimal(typeRow);
+            DebugConsole.Write(" fieldRange=");
+            DebugConsole.WriteDecimal(fieldStart);
+            DebugConsole.Write("..");
+            DebugConsole.WriteDecimal(fieldEnd);
+            DebugConsole.Write(" name='");
+            for (int i = 0; fieldName[i] != 0 && i < 30; i++)
+                DebugConsole.WriteChar((char)fieldName[i]);
+            DebugConsole.WriteLine("'");
+        }
 
         // Search fields in range
         for (uint fieldRow = fieldStart; fieldRow < fieldEnd; fieldRow++)
@@ -6926,12 +6932,15 @@ public static unsafe class AssemblyLoader
             // MemberRef on a TypeSpec (e.g., value type struct like DefaultInterpolatedStringHandler)
             // Parse the TypeSpec signature to get the underlying TypeDef/TypeRef
             uint typeSpecRow = classRef.RowId;
-            DebugConsole.Write("[AsmLoader] TypeSpec row ");
-            DebugConsole.WriteDecimal(typeSpecRow);
-            DebugConsole.Write(" for method ");
-            for (int i = 0; memberName != null && memberName[i] != 0 && i < 32; i++)
-                DebugConsole.WriteChar((char)memberName[i]);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] TypeSpec row ");
+                DebugConsole.WriteDecimal(typeSpecRow);
+                DebugConsole.Write(" for method ");
+                for (int i = 0; memberName != null && memberName[i] != 0 && i < 32; i++)
+                    DebugConsole.WriteChar((char)memberName[i]);
+                DebugConsole.WriteLine();
+            }
             if (typeSpecRow == 0 || typeSpecRow > sourceAsm->Tables.RowCounts[(int)MetadataTableId.TypeSpec])
                 return false;
 
@@ -7338,19 +7347,22 @@ public static unsafe class AssemblyLoader
             uint sigIdx = MetadataReader.GetTypeSpecSignature(ref sourceAsm->Tables, ref sourceAsm->Sizes, typeSpecRow);
             byte* sig = MetadataReader.GetBlob(ref sourceAsm->Metadata, sigIdx, out uint sigLen);
 
-            // Debug: log TypeSpec processing
-            DebugConsole.Write("[IsIfaceMethod] TypeSpec classRef row=");
-            DebugConsole.WriteDecimal(typeSpecRow);
-            DebugConsole.Write(" sig=");
-            if (sig != null && sigLen > 0)
+            // Debug: log TypeSpec processing (verbose-jit marker only)
+            if (JitDiag.VerboseJit)
             {
-                DebugConsole.WriteHex(sig[0]);
-                if (sigLen > 1) { DebugConsole.Write(" "); DebugConsole.WriteHex(sig[1]); }
+                DebugConsole.Write("[IsIfaceMethod] TypeSpec classRef row=");
+                DebugConsole.WriteDecimal(typeSpecRow);
+                DebugConsole.Write(" sig=");
+                if (sig != null && sigLen > 0)
+                {
+                    DebugConsole.WriteHex(sig[0]);
+                    if (sigLen > 1) { DebugConsole.Write(" "); DebugConsole.WriteHex(sig[1]); }
+                }
+                DebugConsole.Write(" name=");
+                for (byte* p = memberName; *p != 0 && p < memberName + 20; p++)
+                    DebugConsole.WriteChar((char)*p);
+                DebugConsole.WriteLine();
             }
-            DebugConsole.Write(" name=");
-            for (byte* p = memberName; *p != 0 && p < memberName + 20; p++)
-                DebugConsole.WriteChar((char)*p);
-            DebugConsole.WriteLine();
 
             if (sig == null || sigLen == 0)
                 return false;

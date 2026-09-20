@@ -152,6 +152,15 @@ public static unsafe class Kernel
         DebugConsole.WriteDecimal(bootInfo->LoadedFilesCount);
         DebugConsole.WriteLine();
 
+        // Verbose JIT tracing emits megabytes of serial output, which is
+        // very slow on hypervisors that trap every serial byte (e.g.
+        // VirtualBox under NEM). Enable it only via the verbose-jit marker.
+        JitDiag.VerboseJit = BootInfoAccess.FindFile("verbose-jit", out ulong _verboseJitSize) != null;
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.WriteLine("[Kernel] Verbose JIT tracing enabled (verbose-jit marker)");
+        }
+
         // Dump memory map to analyze fragmentation
         DumpMemoryMap(bootInfo);
 
@@ -215,6 +224,9 @@ public static unsafe class Kernel
 
         // Second-stage arch init (timers, enable interrupts)
         CurrentArch.InitStage2();
+
+        // Boot progress timing starts here (the HPET is available now)
+        BootLog.Status("Arch initialized (timers + interrupts)");
 
         // Initialize String MethodTable for JIT ldstr support
         Runtime.MetadataReader.InitStringMethodTable();
@@ -360,6 +372,8 @@ public static unsafe class Kernel
             _jitTestId = AssemblyLoader.Load(_jitTestBytes, _jitTestSize);
         }
 
+        BootLog.Status("Assemblies loaded");
+
         // Initialize metadata integration layer (requires HeapAllocator)
         MetadataIntegration.Initialize();
 
@@ -375,16 +389,20 @@ public static unsafe class Kernel
 
         // Initialize kernel exports for PInvoke resolution (must be before DDK)
         Runtime.KernelExportInit.Initialize();
+        BootLog.Status("Kernel exports ready");
 
         // Initialize DDK (Driver Development Kit)
         RunDDKInit();
+        BootLog.Status("DDK initialized");
 
         // Initialize PCI subsystem and enumerate devices
         Platform.PCI.Initialize();
         Platform.PCI.EnumerateAndPrint();
+        BootLog.Status("PCI enumerated");
 
         // Bind drivers to detected PCI devices
         BindDrivers();
+        BootLog.Status("Drivers bound");
 
         // Run the FullTest assembly to exercise JIT functionality
         // (skipped when the skip-boot-tests marker file is present on the
@@ -402,10 +420,13 @@ public static unsafe class Kernel
 
             // Run syscall tests in Ring 3 (comprehensive syscall validation)
             Process.UserModeTests.RunSyscallTests();
+
+            BootLog.Status("Boot tests complete");
         }
         else
         {
             DebugConsole.WriteLine("[Kernel] Boot tests skipped (skip-boot-tests marker present)");
+            BootLog.Status("Boot tests skipped");
         }
 
         // Note: execve tests are available via:
@@ -421,10 +442,12 @@ public static unsafe class Kernel
         if (BootInfoAccess.FindFile("skip-preempt", out ulong _skipPreemptSize) != null)
         {
             DebugConsole.WriteLine("[Kernel] Preemptive scheduling disabled (skip-preempt marker)");
+            BootLog.Status("Scheduling disabled (marker)");
         }
         else
         {
             Scheduler.EnableScheduling();
+            BootLog.Status("Scheduling enabled");
         }
 
         // Phase 2: bring up the console abstraction layer. The serial
@@ -433,9 +456,11 @@ public static unsafe class Kernel
         // System.Console and the shell - flows through the CAL and the
         // UART RX interrupt feeds the line discipline.
         ConsoleAbstractionLayer.Initialize();
+        BootLog.Status("Console layer ready");
 
         DebugConsole.WriteLine();
         DebugConsole.WriteLine("[OK] Kernel initialization complete");
+        BootLog.Status("Boot complete");
 
         // Interactive console I/O acceptance test (console_io_test.dll).
         // Only runs when a "run-console-test" marker file is present on
@@ -450,6 +475,7 @@ public static unsafe class Kernel
 
         // Host the interactive serial shell (System.Console.ReadLine
         // through the line discipline: echo, editing, history, Ctrl+C/D).
+        BootLog.Status("Starting interactive shell");
         ConsoleSession.Run();
     }
 

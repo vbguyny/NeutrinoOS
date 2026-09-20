@@ -6070,14 +6070,17 @@ public unsafe struct ILCompiler
         if (method.NativeCode != null)
         {
             // Direct call - we already know the target address
-            // Debug for all assemblies to trace call targets
-            DebugConsole.Write("[JIT call] direct asm=");
-            DebugConsole.WriteDecimal((uint)_debugAssemblyId);
-            DebugConsole.Write(" tok=0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" native=0x");
-            DebugConsole.WriteHex((ulong)method.NativeCode);
-            DebugConsole.WriteLine();
+            // (trace per call site only with the verbose-jit marker)
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[JIT call] direct asm=");
+                DebugConsole.WriteDecimal((uint)_debugAssemblyId);
+                DebugConsole.Write(" tok=0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" native=0x");
+                DebugConsole.WriteHex((ulong)method.NativeCode);
+                DebugConsole.WriteLine();
+            }
 
             // Debug: emit INT3 before Object..ctor calls to catch the crash point
             // INT3 = 0xCC

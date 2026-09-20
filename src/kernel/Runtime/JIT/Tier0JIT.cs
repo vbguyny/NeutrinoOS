@@ -68,8 +68,12 @@ public static unsafe class Tier0JIT
         // Track nesting to only clear context at top-level
         _compileNestingLevel++;
 
-        // DEBUG: Show every method being compiled
-        DebugConsole.Write("[JIT] Compile asm=");
+        // Progress: show every method being compiled with a running count
+        // so boot progress is visible on slow boots.
+        JitDiag.CompiledMethods++;
+        DebugConsole.Write("[JIT] Compile #");
+        DebugConsole.WriteDecimal(JitDiag.CompiledMethods);
+        DebugConsole.Write(" asm=");
         DebugConsole.WriteDecimal(assemblyId);
         DebugConsole.Write(" tok=0x");
         DebugConsole.WriteHex(methodToken);
@@ -1042,18 +1046,22 @@ public static unsafe class Tier0JIT
             // Read the element type
             byte elemType = *ptr++;
 
-            // Debug: trace parsing
-            DebugConsole.Write("[ParseLocal] i=");
-            DebugConsole.WriteHex((ulong)i);
-            DebugConsole.Write(" elem=0x");
-            DebugConsole.WriteHex(elemType);
+            // Debug: trace parsing (verbose-jit marker only)
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[ParseLocal] i=");
+                DebugConsole.WriteHex((ulong)i);
+                DebugConsole.Write(" elem=0x");
+                DebugConsole.WriteHex(elemType);
+            }
 
             // ValueType (0x11) or struct-like types are value types
             // Note: byref to a value type is a pointer, not a value type itself
             if (!isByRef && (elemType == 0x11 || elemType == 0x12)) // ValueType or Class that's actually a struct
             {
                 isValueType[i] = (elemType == 0x11); // Only ValueType is truly a value type
-                DebugConsole.Write(isValueType[i] ? " VT" : " CLASS");
+                if (JitDiag.VerboseJit)
+                    DebugConsole.Write(isValueType[i] ? " VT" : " CLASS");
                 // Read the TypeDefOrRef token and compute size
                 uint typeDefOrRef = MetadataReader.ReadCompressedUInt(ref ptr);
                 // Convert TypeDefOrRef encoded token to full token
@@ -1349,7 +1357,8 @@ public static unsafe class Tier0JIT
                 if (elemType == 0x12) // Class
                     MetadataReader.ReadCompressedUInt(ref ptr);
             }
-            DebugConsole.WriteLine(); // End of this local's debug line
+            if (JitDiag.VerboseJit)
+                DebugConsole.WriteLine(); // End of this local's debug line
         }
 
         return numLocals;
