@@ -13,7 +13,7 @@ Like a neutrino, the system is meant to be elusive and unobtrusive: it exists to
 - **Fork origin:** [`ProtonOS/ProtonOS`](https://github.com/ProtonOS/ProtonOS) (AGPL-3.0), based on commit `c4f6db2`. Original license and copyright notices are preserved - see [NOTICE](NOTICE).
 - **Phase 1 ("Fork & Strip") scope:**
   - No UEFI Graphics Output Protocol (GOP) usage anywhere in the boot path.
-  - No framebuffer or graphics initialization. The only console is serial (COM1, 0x3F8, 115200 8N1); a VGA text-mode console is deferred to a later phase.
+  - No framebuffer or graphics initialization. The only console is serial (COM1, 0x3F8, 115200 8N1); the VGA **text-mode** console (character cells at 0xB8000, no graphics modes) was added in Phase 3.
   - All bootloader and kernel log output appears on the serial console.
   - The system reaches an interactive `neutrinoos>` prompt that echoes typed characters.
   - Build targets: `make kernel`, `make bootloader`, `make image` (produces `build/x64/neutrinoos.img`), `make run-qemu`, `make run-vbox`.
@@ -73,6 +73,7 @@ See `specs/` for the design documents, `docs/BUILD-WINDOWS.md` to build from Win
 | Component | Status |
 |-----------|--------|
 | UEFI boot, serial console | Complete |
+| VGA text console (80x25/80x50) + PS/2 keyboard | Complete |
 | GDT/IDT, interrupts, exceptions | Complete |
 | Physical/virtual memory management | Complete |
 | Kernel heap allocator | Complete |
@@ -200,6 +201,23 @@ root: `skip-boot-tests` (fast console cycles) and `run-console-test`
 the JIT→System.Console AOT bridge; see
 [PHASE2-REPORT.md](PHASE2-REPORT.md) §5).
 
+### VGA console (Phase 3)
+
+`make run-qemu-vga` boots with the kernel-hosted VGA text console
+(`/dev/vga0`, 80×25 or 80×50 character cells — still no graphics modes)
+in a QEMU GTK window on the Windows desktop (WSLg), while the serial
+console stays attached to the terminal. The Console Abstraction Layer
+multiplexes output to both consoles and follows whichever console
+received input last (serial UART or PS/2 keyboard).
+
+- `make run-qemu-vga` — VGA window + serial terminal
+- `make vgatest` / `make keyboardtest` — build `vga_test.dll` /
+  `keyboard_test.dll` (included in the image; run them with the
+  `run-vga-test` / `run-keyboard-test` markers)
+- Windows verification: `powershell -File scripts\test-vga.ps1`
+- Boot markers: `console-vga-off`, `console-vga-80x50`,
+  `console-active-vga` — see [docs/PHASE3-DESIGN.md](docs/PHASE3-DESIGN.md)
+
 ### Verifying a boot
 
 `make run-qemu` attaches the serial console to your terminal. The boot log ends at the
@@ -314,6 +332,9 @@ Everything else is C#.
 
 - [Build Guide for Windows 11 + WSL2](docs/BUILD-WINDOWS.md) - Step-by-step build from Windows
 - [Phase 1 Acceptance](docs/PHASE1-ACCEPTANCE.md) - Console-only acceptance criteria and how to verify them
+- [Phase 3 Design](docs/PHASE3-DESIGN.md) - VGA text console + PS/2 keyboard design
+- [Phase 3 Acceptance](docs/PHASE3-ACCEPTANCE.md) - Step-by-step Phase 3 verification
+- [Phase 3 Report](PHASE3-REPORT.md) - Changes, blockers and deviations
 - [Architecture Reference](docs/ARCHITECTURE.md) - System design and memory layout
 - [Boot Protocol](docs/BOOT_PROTOCOL.md) - UEFI bootloader and kernel handoff
 - [korlib Plan](docs/KORLIB_PLAN.md) - Runtime library roadmap

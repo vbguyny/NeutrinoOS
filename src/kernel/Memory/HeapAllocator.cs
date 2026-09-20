@@ -196,6 +196,16 @@ public static unsafe class HeapAllocator
         void* ptr = Alloc(size);
         if (ptr != null)
         {
+            if (PageAllocator.KernelSpanEnd != 0 &&
+                (ulong)ptr < PageAllocator.KernelSpanEnd &&
+                (ulong)ptr + size > PageAllocator.KernelSpanStart)
+            {
+                DebugConsole.Write("[Heap] WARN AllocZeroed overlaps kernel span ptr=0x");
+                DebugConsole.WriteHex((ulong)ptr);
+                DebugConsole.Write(" size=0x");
+                DebugConsole.WriteHex(size);
+                DebugConsole.WriteLine();
+            }
             // Zero the memory
             byte* p = (byte*)ptr;
             for (ulong i = 0; i < size; i++)
@@ -422,6 +432,15 @@ public static unsafe class HeapAllocator
         ulong newPages = PageAllocator.AllocatePages(pagesNeeded);
         if (newPages == 0)
             return false;
+
+        if (newPages >= PageAllocator.KernelSpanStart && newPages < PageAllocator.KernelSpanEnd)
+        {
+            DebugConsole.Write("[Heap] WARN grow inside kernel span at 0x");
+            DebugConsole.WriteHex(newPages);
+            DebugConsole.Write(" pages=");
+            DebugConsole.WriteDecimal((uint)pagesNeeded);
+            DebugConsole.WriteLine();
+        }
 
         ulong growSize = pagesNeeded * PageAllocator.PageSize;
 

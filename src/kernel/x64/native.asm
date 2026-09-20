@@ -1956,9 +1956,13 @@ RhpInitialDynamicInterfaceDispatch:
     mov rdx, r11
 
     ; Call resolver: void* RhpResolveInterfaceMethod(void* obj, InterfaceDispatchCell* pCell)
-    sub rsp, 32             ; shadow space
+    ; Stack alignment: at stub entry RSP % 16 == 8 (call pushed the return
+    ; address), and the 6 pushes above add 0 mod 16, so RSP % 16 == 8 here.
+    ; The x64 ABI requires RSP % 16 == 0 at the call site, so reserve
+    ; 32 bytes of shadow space plus 8 bytes of padding.
+    sub rsp, 40             ; shadow space (32) + padding (8) for alignment
     call RhpResolveInterfaceMethod
-    add rsp, 32
+    add rsp, 40
 
     ; RAX now contains the function pointer to call
     ; Save it temporarily

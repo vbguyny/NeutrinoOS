@@ -162,6 +162,16 @@ public static unsafe class LineDiscipline
         FeedCore(b);
     }
 
+    /// <summary>
+    /// Managed entry point for feeding one byte (used by the PS/2
+    /// keyboard IRQ path and other in-kernel input producers; the UART
+    /// path uses the <see cref="Feed"/> function pointer instead).
+    /// </summary>
+    public static void FeedByte(byte b)
+    {
+        FeedCore(b);
+    }
+
     private static void FeedCore(byte b)
     {
         if (_rawMode)
@@ -770,15 +780,34 @@ public static unsafe class LineDiscipline
     // a full TX ring while the THRE interrupt that would drain it is
     // blocked by the active ISR.  Echo is best-effort - dropped bytes are
     // acceptable under load; the decoded input path is unaffected.
+    //
+    // Phase 3: the CAL installs an echo sink that mirrors echo bytes to
+    // BOTH the serial UART and the VGA text console, so line editing is
+    // visible on whichever console the user is typing on. Without a sink
+    // echo falls back to the UART only.
+
+    private static delegate* unmanaged<byte, void> _echoSink;
+
+    /// <summary>
+    /// Installs the echo byte sink (set by the CAL during console
+    /// initialization). The sink must be ISR-safe and non-blocking.
+    /// </summary>
+    public static void SetEchoSink(delegate* unmanaged<byte, void> sink)
+    {
+        _echoSink = sink;
+    }
 
     private static void EchoAscii(byte b)
     {
-        Uart16550.TryWriteByte(b);
+        if (_echoSink != null)
+            _echoSink(b);
+        else
+            Uart16550.TryWriteByte(b);
     }
 
     private static void EchoAsciiChar(char c)
     {
-        Uart16550.TryWriteByte(c < 256 ? (byte)c : (byte)'?');
+        EchoAscii(c < 256 ? (byte)c : (byte)'?');
     }
 
     private static void EchoString(string s)

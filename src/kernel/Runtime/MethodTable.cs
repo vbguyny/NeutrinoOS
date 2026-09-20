@@ -1122,15 +1122,12 @@ public unsafe struct MethodTable
         // Find the interface index in the interface map
         int interfaceIndex = FindVariantCompatibleInterfaceIndex(interfaceMT);
 
-        DebugConsole.Write("[GetIfaceSlot] ifaceMT=0x");
-        DebugConsole.WriteHex((ulong)interfaceMT);
-        DebugConsole.Write(" methodSlot=");
-        DebugConsole.WriteDecimal((uint)methodSlot);
-        DebugConsole.Write(" ifaceIdx=");
-        DebugConsole.WriteDecimal((uint)interfaceIndex);
-        DebugConsole.Write(" hasDispMap=");
-        DebugConsole.Write(HasDispatchMap ? "Y" : "N");
-        DebugConsole.WriteLine();
+        // NOTE: This function runs on the interface-dispatch path
+        // (RhpInitialDynamicInterfaceDispatch -> RhpResolveInterfaceMethod).
+        // It must NOT write to DebugConsole: DebugConsole output goes back
+        // through the console multiplexer, which performs interface calls,
+        // which re-enter this resolver => infinite recursion / stack
+        // overflow. Keep this path print-free.
 
         if (interfaceIndex < 0)
         {
@@ -1215,15 +1212,7 @@ public unsafe struct MethodTable
         InterfaceMapEntry* map = GetInterfaceMapPtr();
         int interfaceSlot = map[interfaceIndex].StartSlot + methodSlot;
 
-        DebugConsole.Write("  kernel dispatch: startSlot=");
-        DebugConsole.WriteDecimal((uint)map[interfaceIndex].StartSlot);
-        DebugConsole.Write(" + methodSlot=");
-        DebugConsole.WriteDecimal((uint)methodSlot);
-        DebugConsole.Write(" = ");
-        DebugConsole.WriteDecimal((uint)interfaceSlot);
-        DebugConsole.Write(" mapIfaceMT=0x");
-        DebugConsole.WriteHex((ulong)map[interfaceIndex].InterfaceMT);
-        DebugConsole.WriteLine();
+        // NOTE: print-free (see comment above).
 
         // NOTE: We return the calculated interface slot directly. If a method implements
         // multiple interfaces (e.g., ICollection.Count and IReadOnlyCollection.Count),
@@ -1425,13 +1414,8 @@ public static unsafe class TypeHelpers
     /// </summary>
     public static void* GetInterfaceMethod(void* obj, MethodTable* interfaceMT, int methodIndex)
     {
-        DebugConsole.Write("[GetIfaceMethod] obj=0x");
-        DebugConsole.WriteHex((ulong)obj);
-        DebugConsole.Write(" iface=0x");
-        DebugConsole.WriteHex((ulong)interfaceMT);
-        DebugConsole.Write(" idx=");
-        DebugConsole.WriteDecimal((uint)methodIndex);
-        DebugConsole.WriteLine();
+        // NOTE: print-free - runs on the interface-dispatch path; DebugConsole
+        // would re-enter the console multiplexer (interface call) and recurse.
 
         if (obj == null)
             return null;
@@ -1439,53 +1423,8 @@ public static unsafe class TypeHelpers
         MethodTable* objectMT = *(MethodTable**)obj;
         int slot = objectMT->GetInterfaceMethodSlot(interfaceMT, methodIndex);
 
-        DebugConsole.Write("  objMT=0x");
-        DebugConsole.WriteHex((ulong)objectMT);
-        DebugConsole.Write(" slot=");
-        DebugConsole.WriteDecimal((uint)slot);
-        DebugConsole.Write(" numVtableSlots=");
-        DebugConsole.WriteDecimal((uint)objectMT->_usNumVtableSlots);
-        DebugConsole.WriteLine();
-
-        // Dump vtable entries around the slot
-        nint* vtable = (nint*)((byte*)objectMT + MethodTable.HeaderSize);
-        DebugConsole.Write("  vtable[");
-        DebugConsole.WriteDecimal((uint)slot);
-        DebugConsole.Write("]=0x");
-        DebugConsole.WriteHex((ulong)vtable[slot]);
-        DebugConsole.WriteLine();
-
         if (slot < 0)
         {
-            DebugConsole.Write("[GetIfaceMethod] obj MT=0x");
-            DebugConsole.WriteHex((ulong)objectMT);
-            DebugConsole.Write(" iface MT=0x");
-            DebugConsole.WriteHex((ulong)interfaceMT);
-            DebugConsole.Write(" idx=");
-            DebugConsole.WriteDecimal((uint)methodIndex);
-            DebugConsole.Write(" slot=-1 FAIL!");
-            DebugConsole.WriteLine();
-            DebugConsole.Write("  obj numIfaces=");
-            DebugConsole.WriteDecimal((uint)objectMT->_usNumInterfaces);
-            DebugConsole.Write(" HasDispatchMap=");
-            DebugConsole.Write(objectMT->HasDispatchMap ? "Y" : "N");
-            DebugConsole.WriteLine();
-
-            // Dump object's interface map
-            if (!objectMT->HasDispatchMap)
-            {
-                InterfaceMapEntry* map = objectMT->GetInterfaceMapPtr();
-                for (int i = 0; i < objectMT->_usNumInterfaces && i < 5; i++)
-                {
-                    DebugConsole.Write("  iface[");
-                    DebugConsole.WriteDecimal((uint)i);
-                    DebugConsole.Write("] MT=0x");
-                    DebugConsole.WriteHex((ulong)map[i].InterfaceMT);
-                    DebugConsole.Write(" startSlot=");
-                    DebugConsole.WriteDecimal((uint)map[i].StartSlot);
-                    DebugConsole.WriteLine();
-                }
-            }
             return null;
         }
 
@@ -1506,19 +1445,17 @@ public static unsafe class TypeHelpers
     [UnmanagedCallersOnly(EntryPoint = "RhpResolveInterfaceMethod")]
     public static void* RhpResolveInterfaceMethod(void* obj, InterfaceDispatchCell* pDispatchCell)
     {
+        // NOTE: This function is entered from RhpInitialDynamicInterfaceDispatch
+        // for EVERY interface call whose call site was not devirtualized at
+        // compile time. It must not use DebugConsole (or anything that ends in
+        // the console multiplexer): the multiplexer itself performs interface
+        // calls, so printing here causes infinite recursion.
+
         if (obj == null || pDispatchCell == null)
             return null;
 
         // Parse the dispatch cell to get interface type and slot
         DispatchCellInfo cellInfo = pDispatchCell->GetDispatchCellInfo();
-
-        DebugConsole.Write("[RhpResolve] obj=0x");
-        DebugConsole.WriteHex((ulong)obj);
-        DebugConsole.Write(" cell=0x");
-        DebugConsole.WriteHex((ulong)pDispatchCell);
-        DebugConsole.Write(" type=");
-        DebugConsole.WriteDecimal((uint)cellInfo.CellType);
-        DebugConsole.WriteLine();
 
         if (cellInfo.CellType == DispatchCellType.VTableOffset)
         {
@@ -1526,13 +1463,6 @@ public static unsafe class TypeHelpers
             MethodTable* objectMT = *(MethodTable**)obj;
             nint* vtable = (nint*)((byte*)objectMT + MethodTable.HeaderSize);
             int slotIndex = (int)(cellInfo.VTableOffset / (uint)sizeof(nint));
-            DebugConsole.Write("  VTableOffset=");
-            DebugConsole.WriteDecimal(cellInfo.VTableOffset);
-            DebugConsole.Write(" slotIdx=");
-            DebugConsole.WriteDecimal((uint)slotIndex);
-            DebugConsole.Write(" result=0x");
-            DebugConsole.WriteHex((ulong)vtable[slotIndex]);
-            DebugConsole.WriteLine();
             return (void*)vtable[slotIndex];
         }
         else if (cellInfo.CellType == DispatchCellType.InterfaceAndSlot)
@@ -1541,20 +1471,10 @@ public static unsafe class TypeHelpers
             MethodTable* interfaceMT = cellInfo.InterfaceType;
             int methodSlot = cellInfo.InterfaceSlot;
 
-            DebugConsole.Write("  IfaceAndSlot: iface=0x");
-            DebugConsole.WriteHex((ulong)interfaceMT);
-            DebugConsole.Write(" methodSlot=");
-            DebugConsole.WriteDecimal((uint)methodSlot);
-            DebugConsole.WriteLine();
-
             if (interfaceMT == null)
                 return null;
 
-            void* result = GetInterfaceMethod(obj, interfaceMT, methodSlot);
-            DebugConsole.Write("  GetInterfaceMethod result=0x");
-            DebugConsole.WriteHex((ulong)result);
-            DebugConsole.WriteLine();
-            return result;
+            return GetInterfaceMethod(obj, interfaceMT, methodSlot);
         }
 
         return null;

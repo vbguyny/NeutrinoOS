@@ -14,8 +14,18 @@
 //        c. routes UART RX bytes into LineDiscipline.Feed
 //        d. enables UART RX interrupts (IRQ4 -> vector 36)
 //   3. shell runs via System.Console (ReadLine / Write)
+//
+// Phase 3 extensions:
+//   - VgaConsoleDevice (/dev/vga0) registered on the standard VGA text
+//     buffer (80x25 or 80x50); boot parameters are marker files
+//     (console-vga-off, console-vga-80x50, console-active-vga)
+//   - Ps2Keyboard initialized (IRQ1 -> vector 33) with its bytes fed
+//     into the same LineDiscipline as the UART
+//   - echo mirrored to both consoles; the active input device follows
+//     whichever console received the most recent byte
 
 using System;
+using System.Runtime.InteropServices;
 using ProtonOS.X64;
 
 namespace ProtonOS.Platform;
@@ -47,6 +57,16 @@ public static unsafe class ConsoleAbstractionLayer
     /// <summary>Whether the CAL has been initialized.</summary>
     public static bool IsInitialized { get; private set; }
 
+    private static SerialConsoleDevice? _serialDevice;
+    private static VgaConsoleDevice? _vgaDevice;
+    private static bool _keyboardIsActiveInput;
+
+    /// <summary>The VGA console device, when enabled (null otherwise).</summary>
+    public static VgaConsoleDevice? VgaDevice => _vgaDevice;
+
+    /// <summary>The serial console device.</summary>
+    public static SerialConsoleDevice? SerialDevice => _serialDevice;
+
     /// <summary>
     /// Initializes the CAL: creates the serial console device, registers
     /// it as /dev/ttyS0, and starts interrupt-driven console input.
@@ -61,12 +81,125 @@ public static unsafe class ConsoleAbstractionLayer
         Devices.Register(serial);
         Devices.SetActiveInput(serial);
         ConsoleDeviceRegistry.Register(SerialConsoleDevice.DevicePath, serial);
+        _serialDevice = serial;
 
-        // Route UART RX bytes into the line discipline and enable RX IRQs
-        Uart16550.SetRxConsumer(&LineDiscipline.Feed);
+        // Route UART RX bytes into the line discipline and enable RX IRQs.
+        // The consumer also makes the serial console the active input
+        // again whenever serial bytes arrive (Phase 3 auto-switch).
+        Uart16550.SetRxConsumer(&OnSerialRxByte);
         Uart16550.EnableInterrupts();
 
+        // Phase 3: VGA text console and PS/2 keyboard.
+        Uart16550.Write("[CAL-T1]");
+        InitializeVgaConsole();
+        Uart16550.Write("[CAL-T8]");
+        if (_vgaDevice != null)
+        {
+            if (BootInfoAccess.FindFile("skip-echo", out _) == null)
+            {
+                LineDiscipline.SetEchoSink(&EchoSink);
+                Uart16550.Write("[CAL-T9]");
+            }
+            if (BootInfoAccess.FindFile("skip-ps2", out _) == null)
+            {
+                Ps2Keyboard.Initialize(&OnKeyboardByte);
+                Uart16550.Write("[CAL-TA]");
+            }
+        }
+
         IsInitialized = true;
+    }
+
+    // ==================== Phase 3: VGA console + PS/2 keyboard ====================
+
+    /// <summary>
+    /// Brings up the VGA text console unless the <c>console-vga-off</c>
+    /// marker file is present. The <c>console-vga-80x50</c> marker selects
+    /// the 50-row 8x8-font mode; <c>console-active-vga</c> makes the VGA
+    /// console the initial active input device instead of /dev/ttyS0.
+    /// (Marker files are NeutrinoOS's boot-parameter mechanism - the
+    /// kernel has no command line; see docs/PHASE3-DESIGN.md.)
+    /// </summary>
+    private static void InitializeVgaConsole()
+    {
+        Uart16550.Write("[CAL-T2]");
+        if (BootInfoAccess.FindFile("console-vga-off", out _) != null)
+            return;
+        Uart16550.Write("[CAL-T3]");
+
+        bool mode80x50 = BootInfoAccess.FindFile("console-vga-80x50", out _) != null;
+
+        var vga = new VgaConsoleDevice();
+        Uart16550.Write("[CAL-T4]");
+        vga.Initialize(mode80x50);
+        Uart16550.Write("[CAL-T5]");
+
+        if (BootInfoAccess.FindFile("skip-vga-register", out _) != null)
+        {
+            Uart16550.Write("[CAL-NOREG]");
+            return;
+        }
+
+        Devices.Register(vga);
+        Uart16550.Write("[CAL-T6]");
+        ConsoleDeviceRegistry.Register(VgaConsoleDevice.DevicePath, vga);
+        _vgaDevice = vga;
+        Uart16550.Write("[CAL-T7]");
+
+        if (BootInfoAccess.FindFile("console-active-vga", out _) != null)
+            Devices.SetActiveInput(vga);
+    }
+
+    /// <summary>
+    /// Echo sink for the line discipline: mirrors every echo byte to the
+    /// serial UART (non-blocking) and to the VGA text console. Runs in
+    /// interrupt context, so both paths are ISR-safe.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void EchoSink(byte b)
+    {
+        Uart16550.TryWriteByte(b);
+        var vga = _vgaDevice;
+        if (vga != null)
+            vga.EchoRawByte(b);
+    }
+
+    /// <summary>
+    /// UART RX consumer: feeds the byte into the line discipline, then
+    /// makes the serial console the active input (auto-switch between
+    /// serial and VGA happens on whichever console received a byte last).
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void OnSerialRxByte(byte b)
+    {
+        LineDiscipline.FeedByte(b);
+
+        if (_keyboardIsActiveInput)
+        {
+            _keyboardIsActiveInput = false;
+            var serial = _serialDevice;
+            if (serial != null)
+                Devices.SetActiveInput(serial);
+        }
+    }
+
+    /// <summary>
+    /// PS/2 keyboard byte consumer: feeds the synthesized ANSI byte into
+    /// the same line discipline as the UART, then makes the VGA console
+    /// the active input device.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void OnKeyboardByte(byte b)
+    {
+        LineDiscipline.FeedByte(b);
+
+        if (!_keyboardIsActiveInput)
+        {
+            _keyboardIsActiveInput = true;
+            var vga = _vgaDevice;
+            if (vga != null)
+                Devices.SetActiveInput(vga);
+        }
     }
 
     // ==================== Output helpers ====================

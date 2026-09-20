@@ -107,6 +107,14 @@ ARGSAPP_DLL := $(BUILD_DIR)/ArgsApp.dll
 CONSOLETEST_DIR := tests/ConsoleIoTest
 CONSOLETEST_DLL := $(BUILD_DIR)/console_io_test.dll
 
+# VGA console acceptance test (Phase 3)
+VGATEST_DIR := tests/VgaTest
+VGATEST_DLL := $(BUILD_DIR)/vga_test.dll
+
+# PS/2 keyboard verification test (Phase 3)
+KEYBOARDTEST_DIR := tests/KeyboardTest
+KEYBOARDTEST_DLL := $(BUILD_DIR)/keyboard_test.dll
+
 # OVMF firmware paths (used by run-qemu-serial targets)
 OVMF_CODE := /usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_VARS_SRC := /usr/share/OVMF/OVMF_VARS_4M.fd
@@ -132,7 +140,7 @@ EXT2_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ext2.dll
 TEST_DRIVER_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Test.dll
 
 # Targets
-.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest image run run-qemu run-qemu-serial run-qemu-serial-log run-vbox deps install-deps check-deps
+.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
 
 all: $(BUILD_DIR)/$(EFI_NAME)
 
@@ -238,6 +246,22 @@ $(CONSOLETEST_DLL): $(CONSOLETEST_SRC) $(CONSOLETEST_DIR)/ConsoleIoTest.csproj |
 
 consoletest: $(CONSOLETEST_DLL)
 
+# Build vga_test.dll (Phase 3 VGA console acceptance test)
+VGATEST_SRC := $(call rwildcard,$(VGATEST_DIR),*.cs)
+$(VGATEST_DLL): $(VGATEST_SRC) $(VGATEST_DIR)/VgaTest.csproj | $(BUILD_DIR)
+	@echo "DOTNET build vga_test"
+	dotnet build $(VGATEST_DIR)/VgaTest.csproj -c Release -o $(BUILD_DIR) --nologo -v q
+
+vgatest: $(VGATEST_DLL)
+
+# Build keyboard_test.dll (Phase 3 PS/2 keyboard verification test)
+KEYBOARDTEST_SRC := $(call rwildcard,$(KEYBOARDTEST_DIR),*.cs)
+$(KEYBOARDTEST_DLL): $(KEYBOARDTEST_SRC) $(KEYBOARDTEST_DIR)/KeyboardTest.csproj | $(BUILD_DIR)
+	@echo "DOTNET build keyboard_test"
+	dotnet build $(KEYBOARDTEST_DIR)/KeyboardTest.csproj -c Release -o $(BUILD_DIR) --nologo -v q
+
+keyboardtest: $(KEYBOARDTEST_DLL)
+
 # Build Virtio common library
 VIRTIO_SRC := $(call rwildcard,$(VIRTIO_DIR),*.cs)
 $(VIRTIO_DLL): $(VIRTIO_SRC) $(VIRTIO_DIR)/Virtio.csproj $(DDK_DLL) | $(BUILD_DIR)
@@ -291,7 +315,7 @@ $(BUILD_DIR)/$(EFI_NAME): $(NATIVE_OBJ) $(KERNEL_OBJ)
 	@python3 tools/gen_elf_syms.py $(BUILD_DIR)/BOOTX64.pdb $(BUILD_DIR)/kernel_syms.elf
 
 # Create boot image
-image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS ::
@@ -309,6 +333,8 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/HelloApp.dll
 	mcopy -i $(IMG) $(ARGSAPP_DLL) ::/ArgsApp.dll
 	mcopy -i $(IMG) $(CONSOLETEST_DLL) ::/console_io_test.dll
+	mcopy -i $(IMG) $(VGATEST_DLL) ::/vga_test.dll
+	mcopy -i $(IMG) $(KEYBOARDTEST_DLL) ::/keyboard_test.dll
 	mcopy -i $(IMG) $(VIRTIO_DLL) ::/drivers/
 	mcopy -i $(IMG) $(VIRTIO_BLK_DLL) ::/drivers/
 	mcopy -i $(IMG) $(VIRTIO_NET_DLL) ::/drivers/
@@ -380,6 +406,23 @@ run-qemu-serial: image
 		-drive if=pflash,format=raw,file=$(OVMF_VARS) \
 		-drive file=$(IMG),format=raw,if=virtio \
 		-display none -serial stdio -no-reboot -no-shutdown
+
+# Phase 3: boot with the VGA text console in a desktop window.
+# The QEMU GTK window opens on the Windows desktop via WSLg (WSL2).
+# The PS/2 keyboard (QEMU window keystrokes) and the serial console are
+# both active; the active input follows whichever received input last.
+# The "console.vga=off" equivalent is the console-vga-off marker file.
+# Quit QEMU with Ctrl+A X (serial window) or close the VGA window.
+run-qemu-vga: image
+	@test -f $(OVMF_VARS) || cp $(OVMF_VARS_SRC) $(OVMF_VARS)
+	@echo "NeutrinoOS VGA console (window + serial stdio; Ctrl+A X quits)"
+	qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp 1 \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=$(OVMF_VARS) \
+		-drive file=$(IMG),format=raw,if=virtio \
+		-vga std -display gtk -serial stdio \
+		-monitor tcp:127.0.0.1:5599,server,nowait \
+		-no-reboot -no-shutdown
 
 # Phase 2: same as run-qemu-serial, but also tee the serial stream to
 # $(BUILD_DIR)/serial.log for inspection from Windows.

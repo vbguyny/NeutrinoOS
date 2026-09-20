@@ -53,6 +53,15 @@ public static unsafe class Kernel
     // console_io_test.dll (Phase 2 interactive console I/O acceptance test)
     private static byte* _consoleIoTestBytes;
     private static ulong _consoleIoTestSize;
+
+    // vga_test.dll (Phase 3 VGA text console acceptance test)
+    private static byte* _vgaTestBytes;
+    private static ulong _vgaTestSize;
+
+    // keyboard_test.dll (Phase 3 PS/2 keyboard verification test)
+    private static byte* _keyboardTestBytes;
+    private static ulong _keyboardTestSize;
+
     // JITTest assembly (comprehensive IL opcode testing)
     private static byte* _jitTestBytes;
     private static ulong _jitTestSize;
@@ -72,6 +81,8 @@ public static unsafe class Kernel
     private static uint _appTestId;
     private static uint _jitTestId;
     private static uint _consoleIoTestId;
+    private static uint _vgaTestId;
+    private static uint _keyboardTestId;
 
     // Cached MetadataRoot for the test assembly (for string resolution)
     // TODO: Migrate to use LoadedAssembly.Metadata instead
@@ -332,6 +343,18 @@ public static unsafe class Kernel
             _consoleIoTestId = AssemblyLoader.Load(_consoleIoTestBytes, _consoleIoTestSize);
         }
 
+        // Register vga_test assembly (Phase 3 VGA console tests)
+        if (_vgaTestBytes != null)
+        {
+            _vgaTestId = AssemblyLoader.Load(_vgaTestBytes, _vgaTestSize);
+        }
+
+        // Register keyboard_test assembly (Phase 3 PS/2 keyboard test)
+        if (_keyboardTestBytes != null)
+        {
+            _keyboardTestId = AssemblyLoader.Load(_keyboardTestBytes, _keyboardTestSize);
+        }
+
         if (_jitTestBytes != null)
         {
             _jitTestId = AssemblyLoader.Load(_jitTestBytes, _jitTestSize);
@@ -393,8 +416,16 @@ public static unsafe class Kernel
         // The syscall tests can be run instead by uncommenting:
         // Process.UserModeTests.RunSyscallTests();
 
-        // Enable preemptive scheduling
-        Scheduler.EnableScheduling();
+        // Enable preemptive scheduling (diagnostic: skip-preempt marker
+        // disables it to isolate context-switch issues)
+        if (BootInfoAccess.FindFile("skip-preempt", out ulong _skipPreemptSize) != null)
+        {
+            DebugConsole.WriteLine("[Kernel] Preemptive scheduling disabled (skip-preempt marker)");
+        }
+        else
+        {
+            Scheduler.EnableScheduling();
+        }
 
         // Phase 2: bring up the console abstraction layer. The serial
         // console (/dev/ttyS0) was initialized for polled output during
@@ -410,6 +441,12 @@ public static unsafe class Kernel
         // Only runs when a "run-console-test" marker file is present on
         // the boot volume, so normal boots stay non-interactive.
         MaybeRunConsoleIoTestAssembly();
+
+        // Phase 3 VGA console acceptance test (vga_test.dll) under the
+        // "run-vga-test" marker; PS/2 keyboard inspector
+        // (keyboard_test.dll) under the "run-keyboard-test" marker.
+        MaybeRunVgaTestAssembly();
+        MaybeRunKeyboardTestAssembly();
 
         // Host the interactive serial shell (System.Console.ReadLine
         // through the line discipline: echo, editing, history, Ctrl+C/D).
@@ -450,6 +487,12 @@ public static unsafe class Kernel
 
         // Load console_io_test.dll (Phase 2 console I/O acceptance test)
         _consoleIoTestBytes = BootInfoAccess.FindFile("console_io_test.dll", out _consoleIoTestSize);
+
+        // Load vga_test.dll (Phase 3 VGA console acceptance test)
+        _vgaTestBytes = BootInfoAccess.FindFile("vga_test.dll", out _vgaTestSize);
+
+        // Load keyboard_test.dll (Phase 3 PS/2 keyboard verification test)
+        _keyboardTestBytes = BootInfoAccess.FindFile("keyboard_test.dll", out _keyboardTestSize);
 
         // Load JITTest.dll (comprehensive IL opcode testing)
         _jitTestBytes = BootInfoAccess.FindFile("JITTest.dll", out _jitTestSize);
@@ -772,6 +815,110 @@ public static unsafe class Kernel
         DebugConsole.WriteDecimal(failCount);
         DebugConsole.WriteLine();
         DebugConsole.WriteLine(failCount == 0 ? "[ConIO] ALL TESTS PASSED!" : "[ConIO] SOME TESTS FAILED");
+        DebugConsole.WriteLine("==============================");
+    }
+
+    /// <summary>
+    /// Phase 3: run vga_test.dll when the "run-vga-test" marker file is
+    /// present on the boot volume. Exercises the VGA text console through
+    /// System.Console: colored output, Clear, cursor positioning/read-back
+    /// and CP437 extended characters.
+    /// </summary>
+    private static void MaybeRunVgaTestAssembly()
+    {
+        if (_vgaTestId == AssemblyLoader.InvalidAssemblyId)
+            return;
+
+        byte* marker = BootInfoAccess.FindFile("run-vga-test", out ulong markerSize);
+        if (marker == null)
+            return;
+
+        DebugConsole.WriteLine();
+        DebugConsole.WriteLine("==============================");
+        DebugConsole.WriteLine("  Running VGA Console Test");
+        DebugConsole.WriteLine("==============================");
+
+        uint runnerToken = AssemblyLoader.FindTypeDefByFullName(_vgaTestId, "VgaTest", "TestRunner");
+        if (runnerToken == 0)
+        {
+            DebugConsole.WriteLine("[VgaTest] ERROR: VgaTest.TestRunner type not found");
+            return;
+        }
+
+        uint runToken = AssemblyLoader.FindMethodDefByName(_vgaTestId, runnerToken, "RunAllTests");
+        if (runToken == 0)
+        {
+            DebugConsole.WriteLine("[VgaTest] ERROR: RunAllTests method not found");
+            return;
+        }
+
+        var jitResult = Runtime.JIT.Tier0JIT.CompileMethod(_vgaTestId, runToken);
+        if (!jitResult.Success)
+        {
+            DebugConsole.WriteLine("[VgaTest] ERROR: JIT compilation failed");
+            return;
+        }
+
+        var testMethod = (delegate*<int>)jitResult.CodeAddress;
+        int result = testMethod();
+
+        int passCount = (result >> 16) & 0xFFFF;
+        int failCount = result & 0xFFFF;
+
+        DebugConsole.Write("[VgaTest] Passed: ");
+        DebugConsole.WriteDecimal(passCount);
+        DebugConsole.Write("  Failed: ");
+        DebugConsole.WriteDecimal(failCount);
+        DebugConsole.WriteLine();
+        DebugConsole.WriteLine(failCount == 0 ? "[VgaTest] ALL TESTS PASSED!" : "[VgaTest] SOME TESTS FAILED");
+        DebugConsole.WriteLine("==============================");
+    }
+
+    /// <summary>
+    /// Phase 3: run keyboard_test.dll when the "run-keyboard-test" marker
+    /// file is present. The test is interactive: it prints the
+    /// ConsoleKeyInfo of every key pressed until Escape, verifying the
+    /// PS/2 decoder against a manual keypress matrix.
+    /// </summary>
+    private static void MaybeRunKeyboardTestAssembly()
+    {
+        if (_keyboardTestId == AssemblyLoader.InvalidAssemblyId)
+            return;
+
+        byte* marker = BootInfoAccess.FindFile("run-keyboard-test", out ulong markerSize);
+        if (marker == null)
+            return;
+
+        DebugConsole.WriteLine();
+        DebugConsole.WriteLine("==============================");
+        DebugConsole.WriteLine("  Running PS/2 Keyboard Test");
+        DebugConsole.WriteLine("==============================");
+
+        uint runnerToken = AssemblyLoader.FindTypeDefByFullName(_keyboardTestId, "KeyboardTest", "TestRunner");
+        if (runnerToken == 0)
+        {
+            DebugConsole.WriteLine("[KbdTest] ERROR: KeyboardTest.TestRunner type not found");
+            return;
+        }
+
+        uint runToken = AssemblyLoader.FindMethodDefByName(_keyboardTestId, runnerToken, "Run");
+        if (runToken == 0)
+        {
+            DebugConsole.WriteLine("[KbdTest] ERROR: Run method not found");
+            return;
+        }
+
+        var jitResult = Runtime.JIT.Tier0JIT.CompileMethod(_keyboardTestId, runToken);
+        if (!jitResult.Success)
+        {
+            DebugConsole.WriteLine("[KbdTest] ERROR: JIT compilation failed");
+            return;
+        }
+
+        var runMethod = (delegate*<void>)jitResult.CodeAddress;
+        runMethod();
+
+        DebugConsole.WriteLine("[KbdTest] Keyboard test finished");
         DebugConsole.WriteLine("==============================");
     }
 

@@ -422,6 +422,12 @@ public static unsafe class PageAllocator
     private static ulong _kernelStart;
     private static ulong _kernelEnd;
 
+    /// <summary>Start of the reserved kernel image span (0 = unknown).</summary>
+    public static ulong KernelSpanStart => _kernelStart;
+
+    /// <summary>End of the reserved kernel image span (0 = unknown).</summary>
+    public static ulong KernelSpanEnd => _kernelEnd;
+
     /// <summary>
     /// Allocate a single physical page.
     /// </summary>
@@ -486,7 +492,16 @@ public static unsafe class PageAllocator
                         UpdateNodeStatsOnAlloc(startPage + p);
                     }
                     _freePages -= count;
-                    return startPage * PageSize;
+                    ulong result = startPage * PageSize;
+                    if (result >= _kernelStart && result < _kernelEnd)
+                    {
+                        DebugConsole.Write("[PageAlloc] WARN AllocatePages(");
+                        DebugConsole.WriteDecimal((uint)count);
+                        DebugConsole.Write(") inside kernel at 0x");
+                        DebugConsole.WriteHex(result);
+                        DebugConsole.WriteLine();
+                    }
+                    return result;
                 }
             }
             else
@@ -559,6 +574,13 @@ public static unsafe class PageAllocator
         ulong pageNum = physicalAddress / PageSize;
         if (pageNum == 0 || pageNum >= _totalPages)  // Don't free null page
             return;
+
+        if (physicalAddress >= _kernelStart && physicalAddress < _kernelEnd)
+        {
+            DebugConsole.Write("[PageAlloc] WARN FreePage inside kernel at 0x");
+            DebugConsole.WriteHex(physicalAddress);
+            DebugConsole.WriteLine();
+        }
 
         if (!IsPageFree(pageNum))  // Only free if currently used
         {
