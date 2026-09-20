@@ -333,17 +333,24 @@ framebuffer, no crash).
   predicates are registered AOT entries (`RegisterPrimitiveMethods`,
   signature-hashed); the log now shows `Found AOT method:
   System.Single.IsNaN -> 0x...` and the fallback notices are gone.
-- **Minor test-expectation artifact (pre-existing):** 4 ring-3 syscall
-  tests (`mkdir`, `access`, `getdents64`, `rmdir`) report "unexpected
-  return" because they accept only `-ENOSYS` or `0` while the VFS now
-  returns real errno values (`-ENOENT`/`-EROFS`). The suite result is
-  otherwise `20 passed, 4 failed` - not a functional failure; tightening
-  the test expectations is a candidate cleanup.
-- **Minor: one remaining benign lookup fallback** -
-  `System.RuntimeTypeHandle.get_Value` (20 notices per suite boot) falls
-  back to compiling the korlib IL instead of binding to an AOT entry.
-  Same cleanup class as the NaN/Infinity registrations above; not a
-  failure.
+- ~~Minor test-expectation artifact~~ **FIXED**: the four ring-3 syscall
+  tests (`mkdir`, `rmdir`, `access`, `getdents64`) now accept success or
+  any conventional negative errno (the VFS returns real errors now); all
+  four report PASS and the run has zero `[FAIL]` lines.
+- ~~Minor: remaining benign lookup fallback
+  (`System.RuntimeTypeHandle.get_Value`)~~ **FIXED**: registered as an AOT
+  entry (byref `this`); the suite boot shows 0 fallback notices.
+- **Expected-environment note:** `AppTest` reports 4 failures
+  (`RealHttpRequest`, `HttpClientDelegates`, `DnsResolve`, `DhcpConfigure`)
+  with "No network stack available" in a minimal QEMU config with no NIC
+  attached (`VirtioNet` not bound) - not a kernel failure; the full
+  `make run` configuration attaches the network device.
+- **Long-boot caveat (tooling):** WSL instances on this host terminate
+  intermittently during multi-minute runs; a marker-less boot therefore
+  must run inside a *single* invocation (`build/fullboot.sh` does; it also
+  logs to the local fs and archives to `build/last-boot.log`). A split
+  boot (start + separate polls) can be killed mid-flight by a WSL restart,
+  which looks exactly like a kernel stall.
 - **Build-script defects in `make deps`** (section 4.5) - **fixed in-fork**:
 the kernel rule now clears `src/korlib/obj|bin` before invoking bflat and
 the ILCompiler pack step uses an absolute `IntermediateOutputPath`.

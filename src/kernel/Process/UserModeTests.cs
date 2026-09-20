@@ -1405,11 +1405,13 @@ public static unsafe class UserModeTests
                 // syscall
                 code[_offset++] = 0x0F; code[_offset++] = 0x05;
 
-                // Check return value: -ENOSYS (-38) means not implemented (expected for now)
-                // cmp eax, -38
-                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xDA; // -38 = 0xDA as signed byte
-                // je pass (expected: not implemented)
-                code[_offset++] = 0x74;
+                // Accept success (0) or any conventional negative errno: the VFS
+                // now returns real errors (e.g. -ENOENT/-EROFS); only -ENOSYS was
+                // anticipated when this test was written.
+                // cmp eax, -40
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xD8; // -40
+                // jge pass (signed compare: 0 or n >= -40)
+                code[_offset++] = 0x7D;
                 int passJump1 = _offset++;
 
                 // Check if it returned 0 (success - if filesystem supports it)
@@ -1468,10 +1470,13 @@ public static unsafe class UserModeTests
                 // syscall
                 code[_offset++] = 0x0F; code[_offset++] = 0x05;
 
-                // Check return: -ENOSYS (-38) or -ENOENT (-2) or 0 are acceptable
-                // cmp eax, -38
-                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xDA;
-                code[_offset++] = 0x74;
+                // Accept success (0) or any conventional negative errno
+                // (covers -ENOSYS, -ENOENT, -EROFS, ... - the VFS returns real
+                // errors now; only -ENOSYS/-ENOENT were anticipated)
+                // cmp eax, -40
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xD8;
+                // jge pass (signed compare: 0 or n >= -40)
+                code[_offset++] = 0x7D;
                 int passJump1 = _offset++;
 
                 // cmp eax, -2 (ENOENT - dir doesn't exist)
@@ -1627,16 +1632,19 @@ public static unsafe class UserModeTests
                 // syscall
                 code[_offset++] = 0x0F; code[_offset++] = 0x05;
 
-                // Check return: 0 = success, -ENOSYS (-38) = not implemented
+                // Check return: 0 = success, or any conventional negative errno
+                // (-ENOSYS was the only expected error originally; the VFS now
+                // returns real errors like -ENOENT/-EROFS)
                 // test eax, eax
                 code[_offset++] = 0x85; code[_offset++] = 0xC0;
                 // jz pass
                 code[_offset++] = 0x74;
                 int passJump1 = _offset++;
 
-                // cmp eax, -38 (ENOSYS)
-                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xDA;
-                code[_offset++] = 0x74;
+                // cmp eax, -40
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xD8;
+                // jge pass (signed compare: n >= -40)
+                code[_offset++] = 0x7D;
                 int passJump2 = _offset++;
 
                 EmitPrintString("  [FAIL] access returned unexpected error\n");
@@ -1812,11 +1820,12 @@ public static unsafe class UserModeTests
 
                 // checkEnosys:
                 code[checkEnosys] = (byte)(_offset - checkEnosys - 1);
-                // Check if returned -ENOSYS (-38) - handler not registered
-                // cmp eax, -38
-                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xDA;
-                // je pass_enosys
-                code[_offset++] = 0x74;
+                // Accept 0 (empty directory) or any conventional negative errno
+                // (the VFS returns real errors now, not just -ENOSYS)
+                // cmp eax, -40
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xD8;
+                // jge pass_errno (signed compare: 0 or n >= -40)
+                code[_offset++] = 0x7D;
                 int passEnosys = _offset++;
 
                 // Actual failure

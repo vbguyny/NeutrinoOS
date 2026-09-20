@@ -1461,6 +1461,13 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<double, int>)&PrimitiveHelpers.Double_IsPositiveInfinity,
             1, ReturnKind.Int32, false, false,
             ComputeSignatureHash(ELEMENT_TYPE_R8));
+
+        // RuntimeTypeHandle.get_Value() - the last remaining fallback notice;
+        // bound natively like the predicates above.
+        Register(
+            "System.RuntimeTypeHandle", "get_Value",
+            (nint)(delegate*<nint, nint>)&PrimitiveHelpers.RuntimeTypeHandle_GetValue,
+            0, ReturnKind.IntPtr, true, false);
     }
 
     /// <summary>
@@ -3827,6 +3834,14 @@ public static unsafe class PrimitiveHelpers
         ulong bits = *(ulong*)&value;
         return (bits == 0x7FF0000000000000ul) ? 1 : 0;
     }
+
+    /// <summary>
+    /// RuntimeTypeHandle.get_Value() - returns the raw type handle.
+    /// BYREF calling convention: thisPtr points at the struct value (a single
+    /// nint field at offset 0).
+    /// </summary>
+    public static nint RuntimeTypeHandle_GetValue(nint thisPtr)
+        => *(nint*)thisPtr;
 
     // =========================================================================
     // ToString helpers for primitive types - called via vtable dispatch on boxed values

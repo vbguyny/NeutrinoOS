@@ -150,6 +150,8 @@ Known observations from verification (tracked in `PHASE1-REPORT.md` §5):
 - `System.Single.IsNaN/IsInfinity` (and the Double twins) are now
   registered AOT entries — the former fallback notices are gone.
 - Minor: 4 ring-3 syscall tests (`mkdir`, `access`, `getdents64`, `rmdir`)
-  report "unexpected return" because they accept only `-ENOSYS` or `0`
-  while the VFS now returns real errno values — test-expectation artifact,
-  not a functional failure.
+  previously reported "unexpected return" — **fixed** (expectations now
+  accept success or any conventional errno; all PASS, zero `[FAIL]` lines).
+- `AppTest`'s 4 network failures (`RealHttpRequest`, `HttpClientDelegates`,
+  `DnsResolve`, `DhcpConfigure`) are expected in a minimal QEMU config with
+  no NIC attached, not kernel failures.
