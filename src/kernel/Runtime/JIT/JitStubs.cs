@@ -18,6 +18,7 @@ public static unsafe class JitStubs
     private static nint _ensureCompiledAddress;
     private static nint _ensureVirtualCompiledAddress;
     private static nint _ensureVtableSlotCompiledAddress;
+    private static nint _alignCallAddress;
     private static bool _initialized;
 
     // Kept alive for the native linker: these [UnmanagedCallersOnly] exports are
@@ -46,6 +47,7 @@ public static unsafe class JitStubs
         _ensureCompiledAddress = jit_ensure_compiled_shim_addr();
         _ensureVirtualCompiledAddress = jit_ensure_virtual_compiled_shim_addr();
         _ensureVtableSlotCompiledAddress = jit_ensure_vtable_slot_compiled_shim_addr();
+        _alignCallAddress = jit_align_call_addr();
 
         // Keep the native export entry points alive for the linker (they are
         // only referenced from the assembly shims).
@@ -74,6 +76,13 @@ public static unsafe class JitStubs
     /// </summary>
     public static nint EnsureVtableSlotCompiledAddress => _ensureVtableSlotCompiledAddress;
 
+    /// <summary>
+    /// Get the native address of the generic call alignment shim. JIT call
+    /// sites load the callee into R11 and this address into RAX, then call it;
+    /// the shim re-aligns RSP before invoking the callee.
+    /// </summary>
+    public static nint AlignCallAddress => _alignCallAddress;
+
     // === Alignment shims (native.asm) ===
     // JIT-emitted calls can enter with a stack that is 8 bytes off the 16-byte
     // ABI alignment; the shims fix that before entering the managed exports.
@@ -89,6 +98,9 @@ public static unsafe class JitStubs
 
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern nint jit_get_interface_method_shim_addr();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_align_call_addr();
 
     /// <summary>Native entry point called by the jit_ensure_compiled_shim alignment shim.</summary>
     [UnmanagedCallersOnly(EntryPoint = "Jit_EnsureCompiled")]

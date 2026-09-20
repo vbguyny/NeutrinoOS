@@ -432,6 +432,32 @@ public static unsafe class Uart16550
     }
 
     /// <summary>
+    /// Non-blocking single-byte write for use from interrupt context (e.g.
+    /// line-discipline echo, which runs inside the RX interrupt handler).
+    /// Enqueues when the TX ring has space and lets the THRE interrupt drain
+    /// it; drops the byte when the ring is full.  The blocking WriteByte
+    /// must never be used from an ISR: the THRE interrupt cannot run while
+    /// the ISR is executing, so a full ring would never drain and the ISR
+    /// would spin forever.
+    /// </summary>
+    public static bool TryWriteByte(byte b)
+    {
+        if (!_initialized)
+            return true;
+
+        if (!_interruptsEnabled)
+        {
+            PolledWriteByte(b);
+            return true;
+        }
+
+        if (!TryEnqueueTx(b))
+            return false;
+        EnableThreInterrupt();
+        return true;
+    }
+
+    /// <summary>
     /// Write a string. Newlines are translated to CRLF for terminals.
     /// </summary>
     public static void Write(string s)

@@ -601,6 +601,29 @@ JIT_ALIGN_SHIM jit_ensure_virtual_compiled_shim, Jit_EnsureVirtualCompiled
 JIT_ALIGN_SHIM jit_ensure_vtable_slot_compiled_shim, Jit_EnsureVtableSlotCompiled
 JIT_ALIGN_SHIM jit_get_interface_method_shim, Jit_GetInterfaceMethod
 
+;; ==================== Generic JIT call alignment shim ====================
+;; JIT-emitted method calls load the callee address into R11 and this shim's
+;; address into RAX, then call the shim.  It re-aligns RSP to the 16-byte ABI
+;; before invoking the real target, so AOT callees whose frame setup uses
+;; aligned SSE stores (e.g. movaps [rsp+x]) never take a #GP from a
+;; misaligned JIT stack.  All argument registers pass through untouched and
+;; the return value (RAX/XMM0/etc.) is preserved.
+global jit_align_call
+jit_align_call:
+    push rbp
+    mov rbp, rsp
+    and rsp, -16
+    sub rsp, 32
+    call r11
+    mov rsp, rbp
+    pop rbp
+    ret
+
+global jit_align_call_addr
+jit_align_call_addr:
+    lea rax, [rel jit_align_call]
+    ret
+
 global jit_ensure_compiled_shim_addr
 jit_ensure_compiled_shim_addr:
     lea rax, [rel jit_ensure_compiled_shim]

@@ -36,7 +36,7 @@ public static unsafe class LineDiscipline
     public const int HistoryCapacity = 32;
 
     /// <summary>Maximum number of queued key events.</summary>
-    private const int KeyQueueCapacity = 16;
+    private const int KeyQueueCapacity = 16384;
 
     // Completed line queue (bytes + lengths + types).
     // NOTE: fixed primitive buffers instead of managed arrays - compiled
@@ -764,23 +764,21 @@ public static unsafe class LineDiscipline
     }
 
     // ==================== Echo helpers ====================
+    //
+    // Echo runs in the UART RX interrupt handler (Feed -> FeedCore/FeedRaw),
+    // so it must never block: the blocking console write path could spin on
+    // a full TX ring while the THRE interrupt that would drain it is
+    // blocked by the active ISR.  Echo is best-effort - dropped bytes are
+    // acceptable under load; the decoded input path is unaffected.
 
     private static void EchoAscii(byte b)
     {
-        var device = ConsoleAbstractionLayer.Devices.ActiveInput;
-        if (device != null)
-            device.Write((char)b);
-        else
-            Uart16550.WriteByte(b);
+        Uart16550.TryWriteByte(b);
     }
 
     private static void EchoAsciiChar(char c)
     {
-        var device = ConsoleAbstractionLayer.Devices.ActiveInput;
-        if (device != null)
-            device.Write(c);
-        else
-            Uart16550.WriteByte(c < 256 ? (byte)c : (byte)'?');
+        Uart16550.TryWriteByte(c < 256 ? (byte)c : (byte)'?');
     }
 
     private static void EchoString(string s)

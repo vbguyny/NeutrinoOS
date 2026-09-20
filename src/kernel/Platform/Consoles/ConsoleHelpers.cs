@@ -93,25 +93,7 @@ public static unsafe class ConsoleHelpers
     public static void SetCursorPosition(int left, int top)
         => System.Console.SetCursorPosition(left, top);
 
-    public static int GetCursorLeft()
-    {
-        Mark('1');
-        int v = System.Console.CursorLeft;
-        Mark('2');
-        return v;
-    }
-
-    /// <summary>
-    /// Temporary diagnostic marker: polled write to COM1 (data 0x3F8,
-    /// LSR 0x3FD), bypassing the console TX ring and CAL so it neither
-    /// moves the shadow cursor nor depends on the interrupt path.
-    /// </summary>
-    private static void Mark(char c)
-    {
-        int spins = 0;
-        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
-        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
-    }
+    public static int GetCursorLeft() => System.Console.CursorLeft;
 
     public static int GetCursorTop() => System.Console.CursorTop;
 

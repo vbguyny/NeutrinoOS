@@ -210,18 +210,8 @@ public sealed class SerialConsoleDevice : IConsoleDevice
     /// <summary>Gets the shadow cursor position.</summary>
     public void GetCursorPosition(out int left, out int top)
     {
-        Mark('d');
         left = _cursorLeft;
         top = _cursorTop;
-        Mark('e');
-    }
-
-    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
-    private static void Mark(char c)
-    {
-        int spins = 0;
-        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
-        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
     }
 
     private void WriteDecimal(int value)

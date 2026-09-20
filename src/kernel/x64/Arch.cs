@@ -366,6 +366,41 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
     // notice has already been printed (one line per vector, not per event).
     private static ulong _unhandledIrqNoticed;
 
+    // ==================== temporary raw COM1 debug output ====================
+    // Polled writes to COM1 that bypass the console abstraction layer; used
+    // while diagnosing boot-time faults in the JIT->AOT bridge.
+
+    private static void RawDiagCrlf()
+    {
+        RawDiagByte(13);
+        RawDiagByte(10);
+    }
+
+    private static void RawDiag(string label, ulong value)
+    {
+        for (int i = 0; i < label.Length; i++)
+            RawDiagByte((byte)label[i]);
+
+        // Hex with no padding (labels carry the "0x").
+        bool started = false;
+        for (int shift = 60; shift >= 0; shift -= 4)
+        {
+            int nib = (int)((value >> shift) & 0xF);
+            if (nib != 0 || started || shift == 0)
+            {
+                started = true;
+                RawDiagByte((byte)(nib < 10 ? '0' + nib : 'A' + nib - 10));
+            }
+        }
+    }
+
+    private static void RawDiagByte(byte b)
+    {
+        int spins = 0;
+        while ((CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
+        CPU.OutByte(0x3F8, b);
+    }
+
     private static void DefaultHandler(InterruptFrame* frame)
     {
         int vector = (int)frame->InterruptNumber;
@@ -373,6 +408,15 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
         // CPU exceptions (0-31) - try SEH dispatch first
         if (vector < 32)
         {
+            // Temporary boot-debug diagnostic: raw polled COM1 dump of the
+            // faulting vector/RIP (bypasses the console CAL and interrupts,
+            // which may itself be the broken path).
+            RawDiag("!!! RAWV v=0x", (ulong)vector);
+            RawDiag(" rip=0x", frame->Rip);
+            RawDiag(" err=0x", (ulong)frame->ErrorCode);
+            RawDiag(" rsp=0x", frame->Rsp);
+            RawDiagCrlf();
+
             // Try to dispatch through exception handling infrastructure
             if (ExceptionHandling.DispatchException(frame, vector))
             {

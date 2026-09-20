@@ -2814,18 +2814,7 @@ public static unsafe class StringHelpers
     /// </summary>
     public static string Concat2(string? str0, string? str1)
     {
-        Mark('6');
-        string r = string.Concat(str0, str1);
-        Mark('7');
-        return r;
-    }
-
-    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
-    private static void Mark(char c)
-    {
-        int spins = 0;
-        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
-        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
+        return string.Concat(str0, str1);
     }
 
     /// <summary>
@@ -4021,21 +4010,9 @@ public static unsafe class PrimitiveHelpers
     /// </summary>
     public static string Int32_ToString_Byref(nint thisPtr)
     {
-        Mark('3');
         if (thisPtr == 0) return "0";
         int value = *(int*)thisPtr;
-        Mark('4');
-        string r = System.Int32.FormatInt32(value);
-        Mark('5');
-        return r;
-    }
-
-    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
-    private static void Mark(char c)
-    {
-        int spins = 0;
-        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
-        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
+        return System.Int32.FormatInt32(value);
     }
 
     /// <summary>

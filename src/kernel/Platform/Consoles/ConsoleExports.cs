@@ -105,20 +105,9 @@ public static unsafe class ConsoleExports
     [UnmanagedCallersOnly(EntryPoint = "ConsoleGetCursor")]
     public static void ConsoleGetCursor(int* left, int* top)
     {
-        Mark('a');
         ConsoleAbstractionLayer.Devices.GetCursorPosition(out int l, out int t);
-        Mark('b');
         if (left != null) *left = l;
         if (top != null) *top = t;
-        Mark('c');
-    }
-
-    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
-    private static void Mark(char c)
-    {
-        int spins = 0;
-        while ((CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
-        CPU.OutByte(0x3F8, (byte)c);
     }
 
     /// <summary>Gets the configured console size (80x50 default).</summary>

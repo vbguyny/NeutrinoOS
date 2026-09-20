@@ -38,12 +38,6 @@ public static class TestRunner
     /// <summary>Runs all console I/O tests; returns (pass &lt;&lt; 16) | fail.</summary>
     public static int RunAllTests()
     {
-        // Minimal probe: the same call shape that hung in TestClearAndCursor
-        // (string + int property concat) - determine if it is shape-dependent.
-        Console.WriteLine("[CONIO] PROBE begin");
-        Console.WriteLine("probe=" + Console.CursorLeft);
-        Console.WriteLine("[CONIO] PROBE end");
-
         Console.WriteLine("[CONIO] == Executing (interactive) ==");
 
         TestOutputBasics();
@@ -130,9 +124,6 @@ public static class TestRunner
         bool posOk = Console.CursorLeft == 10 && Console.CursorTop == 5;
         Console.WriteLine("cursor-pos-ok=" + posOk);
         Check("cursor-position", posOk);
-        Console.WriteLine("[CONIO] TRACE cursor-left-begin");
-        Console.WriteLine("cursor-left=" + Console.CursorLeft);
-        Console.WriteLine("[CONIO] TRACE cursor-left-end");
     }
 
     // ==================== ReadKey ====================
@@ -172,9 +163,7 @@ public static class TestRunner
     private static void ExpectKey(string name, char expectedChar, ConsoleKey expectedKey)
     {
         Console.Write("[CONIO] KEY " + name + " ");
-        Console.WriteLine("[CONIO] TRACE pre-readkey " + name);
         ConsoleKeyInfo k = Console.ReadKey(true);
-        Console.WriteLine("[CONIO] TRACE post-readkey " + name);
         bool ok = k.Key == expectedKey;
         if (expectedChar != '\0' && k.KeyChar != expectedChar)
             ok = false;
