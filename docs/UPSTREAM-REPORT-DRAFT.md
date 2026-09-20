@@ -21,10 +21,13 @@ of 8-byte temporaries plus 32 bytes of shadow space, leaving
 SSE stores (`movaps [rsp+x]`) then take `#GP`. First hit during driver load
 (`[Drivers] …`); the CPU ends in `Arch.DefaultHandler`.
 *Fix (fork):* alignment shims (`JIT_ALIGN_SHIM` in `native.asm`) for every
-JIT-called helper; the JIT also routes all register-argument method calls
-through a generic `jit_align_call` shim (target in R11). Calls with
-stack-passed arguments must not be shimmed (the shim frame would move the
-callee's stack arguments).
+JIT-called helper; the JIT also routes register-argument calls **to AOT
+targets** through a generic `jit_align_call` shim (target in R11).
+There are two caveats: calls with stack-passed arguments must not be
+shimmed (the shim frame would move the callee's stack arguments), and
+JIT→JIT calls must not be shimmed either — the extra frame breaks managed
+exception unwinding (the unwinder matches catch regions by the caller's
+call-site offset, which would point into the shim).
 
 **2. Ring-3 test process exit destroys the boot thread.**
 The syscall test suites run in ring 3 on the *boot* thread; `exit(0)` calls
