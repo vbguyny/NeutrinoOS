@@ -2,6 +2,13 @@
 // Provides lookup for AOT-compiled korlib methods that can be called from JIT code.
 // These methods have no JIT metadata - they're compiled directly into the kernel.
 
+// --- Temporary bisection switches for the JIT console bridge ---
+#define BRIDGE_PART_A1
+#define BRIDGE_PART_A2
+#define BRIDGE_PART_BC
+#define BRIDGE_PART_D
+#define BRIDGE_PART_ENV
+
 using System;
 using ProtonOS.Memory;
 using ProtonOS.Platform;
@@ -261,6 +268,14 @@ public static unsafe class AotMethodRegistry
         // Register well-known String methods
         RegisterStringMethods();
 
+        // Register System.Console / System.Environment bridge methods so
+        // JIT-compiled applications bind console calls straight to the
+        // kernel's AOT implementation (JIT console bridge)
+        RegisterConsoleMethods();
+
+        // Register System.Text.Encoding bridge methods (JIT console bridge)
+        RegisterEncodingMethods();
+
         // Register well-known Object methods
         RegisterObjectMethods();
 
@@ -441,6 +456,13 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string?, string?, string?, string>)&StringHelpers.Concat3,
             3, ReturnKind.IntPtr, false, false);
 
+        // String.Concat(string, string, string, string) (static method)
+        // (Roslyn emits the 4-argument overload directly for 4-part "+" chains.)
+        Register(
+            "System.String", "Concat",
+            (nint)(delegate*<string?, string?, string?, string?, string>)&StringHelpers.Concat4,
+            4, ReturnKind.IntPtr, false, false);
+
         // String.Concat(params string?[] values) (static method) - 1 array parameter
         Register(
             "System.String", "Concat",
@@ -597,6 +619,305 @@ public static unsafe class AotMethodRegistry
             "System.String", "Substring",
             (nint)(delegate*<string, int, string>)&StringHelpers.SubstringFrom,
             1, ReturnKind.IntPtr, true, false);
+    }
+
+    /// <summary>
+    /// Register System.Console and System.Environment methods for the JIT
+    /// console bridge. JIT-compiled applications resolve these calls directly
+    /// to the AOT kernel implementation (ConsoleHelpers -> korlib Console),
+    /// so the korlib IL bodies (buffered TextWriter subclass, static ctor,
+    /// virtual dispatch) are never JIT-compiled for applications.
+    ///
+    /// Overloads are distinguished by the signature hash (leading element
+    /// type byte of each parameter), matching the member-ref lookup order in
+    /// MetadataIntegration (exact signature match before arg-count fallback).
+    /// ReadKey returns the 12-byte ConsoleKeyInfo through the hidden return
+    /// buffer (ReturnStructSize=17 forces that convention).
+    /// </summary>
+    private static void RegisterConsoleMethods()
+    {
+        // ==================== System.Console: output ====================
+#if BRIDGE_PART_A1
+
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<char, void>)&ConsoleHelpers.WriteChar,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_CHAR));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<string?, void>)&ConsoleHelpers.WriteString,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<bool, void>)&ConsoleHelpers.WriteBool,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_BOOLEAN));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.WriteInt,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_I4));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<long, void>)&ConsoleHelpers.WriteLong,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_I8));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<object?, void>)&ConsoleHelpers.WriteObject,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<string, object?, void>)&ConsoleHelpers.WriteFormat1,
+            2, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<string, object?, object?, void>)&ConsoleHelpers.WriteFormat2,
+            3, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "Write",
+            (nint)(delegate*<string, object?, object?, object?, void>)&ConsoleHelpers.WriteFormat3,
+            4, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT));
+
+#endif
+
+#if BRIDGE_PART_A2
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<void>)&ConsoleHelpers.WriteLineEmpty,
+            0, ReturnKind.Void, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<char, void>)&ConsoleHelpers.WriteLineChar,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_CHAR));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<string?, void>)&ConsoleHelpers.WriteLineString,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<bool, void>)&ConsoleHelpers.WriteLineBool,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_BOOLEAN));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.WriteLineInt,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_I4));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<long, void>)&ConsoleHelpers.WriteLineLong,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_I8));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<object?, void>)&ConsoleHelpers.WriteLineObject,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<string, object?, void>)&ConsoleHelpers.WriteLineFormat1,
+            2, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<string, object?, object?, void>)&ConsoleHelpers.WriteLineFormat2,
+            3, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT));
+        RegisterWithSignature(
+            "System.Console", "WriteLine",
+            (nint)(delegate*<string, object?, object?, object?, void>)&ConsoleHelpers.WriteLineFormat3,
+            4, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT, ELEMENT_TYPE_OBJECT));
+
+        RegisterWithSignature(
+            "System.Console", "Flush",
+            (nint)(delegate*<void>)&ConsoleHelpers.Flush,
+            0, ReturnKind.Void, false, false,
+            ComputeSignatureHash());
+#endif
+
+        // ==================== System.Console: input ====================
+#if BRIDGE_PART_BC
+
+        RegisterWithSignature(
+            "System.Console", "Read",
+            (nint)(delegate*<int>)&ConsoleHelpers.ReadChar,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "ReadLine",
+            (nint)(delegate*<string?>)&ConsoleHelpers.ReadLine,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+        // ReadKey(bool): hidden return buffer (RCX) + intercept (RDX).
+        // Registered with ReturnStructSize=17 to force the hidden-buffer path;
+        // the helper writes the 12-byte ConsoleKeyInfo into the buffer.
+        RegisterWithSignature(
+            "System.Console", "ReadKey",
+            (nint)(delegate*<nint, int, void>)&ConsoleHelpers.ReadKey,
+            1, ReturnKind.Struct, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_BOOLEAN), 17);
+        RegisterWithSignature(
+            "System.Console", "get_KeyAvailable",
+            (nint)(delegate*<int>)&ConsoleHelpers.KeyAvailable,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_TreatControlCAsInput",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetTreatControlCAsInput,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "set_TreatControlCAsInput",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.SetTreatControlCAsInput,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_BOOLEAN));
+
+        // ==================== System.Console: screen / cursor ====================
+
+        RegisterWithSignature(
+            "System.Console", "Clear",
+            (nint)(delegate*<void>)&ConsoleHelpers.Clear,
+            0, ReturnKind.Void, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "SetCursorPosition",
+            (nint)(delegate*<int, int, void>)&ConsoleHelpers.SetCursorPosition,
+            2, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_I4, ELEMENT_TYPE_I4));
+        RegisterWithSignature(
+            "System.Console", "get_CursorLeft",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetCursorLeft,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_CursorTop",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetCursorTop,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_WindowWidth",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetWindowWidth,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_WindowHeight",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetWindowHeight,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+
+        // ==================== System.Console: colors ====================
+
+        RegisterWithSignature(
+            "System.Console", "get_ForegroundColor",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetForegroundColor,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "set_ForegroundColor",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.SetForegroundColor,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_VALUETYPE));
+        RegisterWithSignature(
+            "System.Console", "get_BackgroundColor",
+            (nint)(delegate*<int>)&ConsoleHelpers.GetBackgroundColor,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "set_BackgroundColor",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.SetBackgroundColor,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_VALUETYPE));
+        RegisterWithSignature(
+            "System.Console", "ResetColor",
+            (nint)(delegate*<void>)&ConsoleHelpers.ResetColor,
+            0, ReturnKind.Void, false, false,
+            ComputeSignatureHash());
+
+#endif
+
+        // ==================== System.Console: redirection / modes ====================
+#if BRIDGE_PART_D
+
+        RegisterWithSignature(
+            "System.Console", "get_IsInputRedirected",
+            (nint)(delegate*<int>)&ConsoleHelpers.IsInputRedirected,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_IsOutputRedirected",
+            (nint)(delegate*<int>)&ConsoleHelpers.IsOutputRedirected,
+            0, ReturnKind.Int32, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_OutputEncoding",
+            (nint)(delegate*<System.Text.Encoding>)&ConsoleHelpers.GetOutputEncoding,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "get_InputEncoding",
+            (nint)(delegate*<System.Text.Encoding>)&ConsoleHelpers.GetInputEncoding,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Console", "SetRawMode",
+            (nint)(delegate*<int, void>)&ConsoleHelpers.SetRawMode,
+            1, ReturnKind.Void, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_BOOLEAN));
+
+#endif
+
+        // ==================== System.Environment ====================
+#if BRIDGE_PART_ENV
+
+        RegisterWithSignature(
+            "System.Environment", "get_NewLine",
+            (nint)(delegate*<string>)&ConsoleHelpers.GetNewLine,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+        RegisterWithSignature(
+            "System.Environment", "get_CurrentDirectory",
+            (nint)(delegate*<string>)&ConsoleHelpers.GetCurrentDirectory,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+#endif
+    }
+
+    /// <summary>
+    /// Register System.Text.Encoding bridge methods for the JIT console
+    /// bridge: applications bind Encoding.UTF8 / GetBytes(string) /
+    /// GetString(byte[]) directly to the kernel's AOT UTF-8 implementation
+    /// instead of JIT-compiling the encoder.
+    /// </summary>
+    private static void RegisterEncodingMethods()
+    {
+        RegisterWithSignature(
+            "System.Text.Encoding", "get_UTF8",
+            (nint)(delegate*<System.Text.Encoding>)&ConsoleHelpers.GetUTF8,
+            0, ReturnKind.IntPtr, false, false,
+            ComputeSignatureHash());
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetBytes",
+            (nint)(delegate*<System.Text.Encoding, string, byte[]>)&ConsoleHelpers.GetBytes,
+            1, ReturnKind.IntPtr, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING));
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetString",
+            (nint)(delegate*<System.Text.Encoding, byte[], string>)&ConsoleHelpers.GetString,
+            1, ReturnKind.IntPtr, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_SZARRAY));
     }
 
     /// <summary>
@@ -2122,6 +2443,15 @@ public static unsafe class AotMethodRegistry
         if (StringMatches(typeName, "System.Array"))
             return true;
 
+        // Console / Environment (JIT console bridge: console_io_test and
+        // applications bind to the AOT kernel console implementation)
+        if (StringMatches(typeName, "System.Console"))
+            return true;
+        if (StringMatches(typeName, "System.Environment"))
+            return true;
+        if (StringMatches(typeName, "System.Text.Encoding"))
+            return true;
+
         // Reflection types
         if (StringMatches(typeName, "System.Type"))
             return true;
@@ -2257,6 +2587,38 @@ public static unsafe class AotMethodRegistry
         }
         return hash;
     }
+
+    /// <summary>
+    /// Signature hash for a method with no parameters (matches
+    /// ComputeSignatureHashFromBlob for a zero-parameter signature).
+    /// </summary>
+    public static ulong ComputeSignatureHash() => 5381;
+
+    /// <summary>
+    /// Fixed-arity signature hash overloads. These take precedence over the
+    /// params-based version so no array is materialized: Roslyn lowers
+    /// constant array initializers with 3+ elements to
+    /// RuntimeHelpers.InitializeArray with an ldtoken of an RVA data field,
+    /// and the kernel build has no LdTokenHelpers type
+    /// ("Expected type 'Internal.Runtime.CompilerHelpers.LdTokenHelpers'
+    /// not found in module 'kernel'").
+    /// </summary>
+    public static ulong ComputeSignatureHash(byte t0)
+        => HashStep(5381, t0);
+
+    public static ulong ComputeSignatureHash(byte t0, byte t1)
+        => HashStep(HashStep(5381, t0), t1);
+
+    public static ulong ComputeSignatureHash(byte t0, byte t1, byte t2)
+        => HashStep(HashStep(HashStep(5381, t0), t1), t2);
+
+    public static ulong ComputeSignatureHash(byte t0, byte t1, byte t2, byte t3)
+        => HashStep(HashStep(HashStep(HashStep(5381, t0), t1), t2), t3);
+
+    public static ulong ComputeSignatureHash(byte t0, byte t1, byte t2, byte t3, byte t4)
+        => HashStep(HashStep(HashStep(HashStep(HashStep(5381, t0), t1), t2), t3), t4);
+
+    private static ulong HashStep(ulong hash, byte t) => ((hash << 5) + hash) ^ t;
 
     /// <summary>
     /// Compute a signature hash from a raw IL signature blob.
@@ -2452,7 +2814,18 @@ public static unsafe class StringHelpers
     /// </summary>
     public static string Concat2(string? str0, string? str1)
     {
-        return string.Concat(str0, str1);
+        Mark('6');
+        string r = string.Concat(str0, str1);
+        Mark('7');
+        return r;
+    }
+
+    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
+    private static void Mark(char c)
+    {
+        int spins = 0;
+        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
+        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
     }
 
     /// <summary>
@@ -2461,6 +2834,14 @@ public static unsafe class StringHelpers
     public static string Concat3(string? str0, string? str1, string? str2)
     {
         return string.Concat(str0, str1, str2);
+    }
+
+    /// <summary>
+    /// Wrapper for String.Concat(string, string, string, string).
+    /// </summary>
+    public static string Concat4(string? str0, string? str1, string? str2, string? str3)
+    {
+        return string.Concat(string.Concat(str0, str1, str2), str3);
     }
 
     /// <summary>
@@ -3640,9 +4021,21 @@ public static unsafe class PrimitiveHelpers
     /// </summary>
     public static string Int32_ToString_Byref(nint thisPtr)
     {
+        Mark('3');
         if (thisPtr == 0) return "0";
         int value = *(int*)thisPtr;
-        return System.Int32.FormatInt32(value);
+        Mark('4');
+        string r = System.Int32.FormatInt32(value);
+        Mark('5');
+        return r;
+    }
+
+    /// <summary>Temporary diagnostic marker (raw polled COM1 write).</summary>
+    private static void Mark(char c)
+    {
+        int spins = 0;
+        while ((ProtonOS.X64.CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
+        ProtonOS.X64.CPU.OutByte(0x3F8, (byte)c);
     }
 
     /// <summary>

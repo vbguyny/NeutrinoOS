@@ -1,5 +1,5 @@
 #!/bin/bash
-# ProtonOS build script - cleans and builds (native, no Docker)
+# NeutrinoOS build script - cleans and builds (native, no Docker)
 
 set -e
 

@@ -362,6 +362,10 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
         DefaultHandler(frame);
     }
 
+    // Bitmask of IRQ vectors (32-79) for which the "unhandled interrupt"
+    // notice has already been printed (one line per vector, not per event).
+    private static ulong _unhandledIrqNoticed;
+
     private static void DefaultHandler(InterruptFrame* frame)
     {
         int vector = (int)frame->InterruptNumber;
@@ -413,7 +417,30 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
             CPU.HaltForever();
         }
 
-        // IRQs (32-47) - acknowledge and ignore if no handler
+        // IRQs (32-47) and the DDK IRQ pool (48-79): acknowledge and ignore
+        // if no handler is registered. The EOI is CRITICAL: without it the
+        // vector stays in service in the LAPIC and blocks the timer (and
+        // everything else at <= its priority) forever, so the next HLT
+        // never wakes.
+        if (vector >= 32)
+        {
+            if (vector <= 79)
+            {
+                ulong bit = 1UL << (vector - 32);
+                if ((_unhandledIrqNoticed & bit) == 0)
+                {
+                    _unhandledIrqNoticed |= bit;
+                    DebugConsole.Write("[IRQ] Unhandled interrupt vector ");
+                    DebugConsole.WriteDecimal(vector);
+                    DebugConsole.WriteLine(" (acknowledged and ignored)");
+                }
+            }
+
+            if (APIC.IsInitialized)
+            {
+                APIC.SendEoi();
+            }
+        }
     }
 
     private static string GetExceptionName(int vector)

@@ -1,4 +1,4 @@
-// ProtonOS kernel - Managed kernel entry point
+// NeutrinoOS kernel - Managed kernel entry point
 // EfiEntry (native.asm) saves UEFI params, then calls korlib's EfiMain, which calls Main()
 
 using System.Runtime.InteropServices;
@@ -50,6 +50,9 @@ public static unsafe class Kernel
     private static byte* _appTestBytes;
     private static ulong _appTestSize;
 
+    // console_io_test.dll (Phase 2 interactive console I/O acceptance test)
+    private static byte* _consoleIoTestBytes;
+    private static ulong _consoleIoTestSize;
     // JITTest assembly (comprehensive IL opcode testing)
     private static byte* _jitTestBytes;
     private static ulong _jitTestSize;
@@ -68,6 +71,7 @@ public static unsafe class Kernel
     private static uint _protonOsNetId;
     private static uint _appTestId;
     private static uint _jitTestId;
+    private static uint _consoleIoTestId;
 
     // Cached MetadataRoot for the test assembly (for string resolution)
     // TODO: Migrate to use LoadedAssembly.Metadata instead
@@ -119,8 +123,9 @@ public static unsafe class Kernel
         DebugConsole.Init();
         DebugConsole.WriteLine();
         DebugConsole.WriteLine("==============================");
-        DebugConsole.WriteLine("  ProtonOS kernel booted!");
+        DebugConsole.WriteLine("  NeutrinoOS v0.1 (x86-64 UEFI)");
         DebugConsole.WriteLine("==============================");
+        DebugConsole.WriteLine("[CONSOLE] Serial console initialized (ttyS0 @ 115200 8N1)");
         DebugConsole.WriteLine();
 
         // Verify BootInfo from bootloader is available and valid
@@ -248,6 +253,10 @@ public static unsafe class Kernel
                 // Build DDK token registry (maps korlib DDK methods to kernel exports)
                 BuildDDKTokenRegistry();
 
+                // Build JIT console bridge (maps korlib System.Console /
+                // System.Environment IL stubs to the kernel console exports)
+                BuildConsoleTokenRegistry();
+
                 // Initialize critical interface types (IDisposable) from korlib
                 AssemblyLoader.InitializeKorlibInterfaces(_korlibId);
 
@@ -317,7 +326,12 @@ public static unsafe class Kernel
             _appTestId = AssemblyLoader.Load(_appTestBytes, _appTestSize);
         }
 
-        // Register JITTest assembly (depends on DDK)
+        // Register console_io_test assembly (Phase 2 console I/O tests)
+        if (_consoleIoTestBytes != null)
+        {
+            _consoleIoTestId = AssemblyLoader.Load(_consoleIoTestBytes, _consoleIoTestSize);
+        }
+
         if (_jitTestBytes != null)
         {
             _jitTestId = AssemblyLoader.Load(_jitTestBytes, _jitTestSize);
@@ -350,16 +364,26 @@ public static unsafe class Kernel
         BindDrivers();
 
         // Run the FullTest assembly to exercise JIT functionality
-        RunFullTestAssembly();
+        // (skipped when the skip-boot-tests marker file is present on the
+        //  boot volume - useful for fast console-only development cycles)
+        bool skipBootTests = BootInfoAccess.FindFile("skip-boot-tests", out ulong _skipMarkerSize) != null;
+        if (!skipBootTests)
+        {
+            RunFullTestAssembly();
 
-        // Run the JITTest assembly (comprehensive IL opcode testing)
-        RunJITTestAssembly();
+            // Run the JITTest assembly (comprehensive IL opcode testing)
+            RunJITTestAssembly();
 
-        // Run the AppTest assembly (application-level tests after drivers loaded)
-        RunAppTestAssembly();
+            // Run the AppTest assembly (application-level tests after drivers loaded)
+            RunAppTestAssembly();
 
-        // Run syscall tests in Ring 3 (comprehensive syscall validation)
-        Process.UserModeTests.RunSyscallTests();
+            // Run syscall tests in Ring 3 (comprehensive syscall validation)
+            Process.UserModeTests.RunSyscallTests();
+        }
+        else
+        {
+            DebugConsole.WriteLine("[Kernel] Boot tests skipped (skip-boot-tests marker present)");
+        }
 
         // Note: execve tests are available via:
         // - Process.NetExecutable.TestExecHelloApp() - Main() returns 42
@@ -372,15 +396,24 @@ public static unsafe class Kernel
         // Enable preemptive scheduling
         Scheduler.EnableScheduling();
 
+        // Phase 2: bring up the console abstraction layer. The serial
+        // console (/dev/ttyS0) was initialized for polled output during
+        // early boot; from here on all console I/O - kernel logging,
+        // System.Console and the shell - flows through the CAL and the
+        // UART RX interrupt feeds the line discipline.
+        ConsoleAbstractionLayer.Initialize();
+
         DebugConsole.WriteLine();
         DebugConsole.WriteLine("[OK] Kernel initialization complete");
-        DebugConsole.WriteLine("[OK] Boot thread entering idle loop...");
 
-        // Boot thread becomes idle thread - wait for interrupts
-        while (true)
-        {
-            CPU.Halt();
-        }
+        // Interactive console I/O acceptance test (console_io_test.dll).
+        // Only runs when a "run-console-test" marker file is present on
+        // the boot volume, so normal boots stay non-interactive.
+        MaybeRunConsoleIoTestAssembly();
+
+        // Host the interactive serial shell (System.Console.ReadLine
+        // through the line discipline: echo, editing, history, Ctrl+C/D).
+        ConsoleSession.Run();
     }
 
     /// <summary>
@@ -414,6 +447,9 @@ public static unsafe class Kernel
 
         // Load AppTest.dll (application-level tests)
         _appTestBytes = BootInfoAccess.FindFile("AppTest.dll", out _appTestSize);
+
+        // Load console_io_test.dll (Phase 2 console I/O acceptance test)
+        _consoleIoTestBytes = BootInfoAccess.FindFile("console_io_test.dll", out _consoleIoTestSize);
 
         // Load JITTest.dll (comprehensive IL opcode testing)
         _jitTestBytes = BootInfoAccess.FindFile("JITTest.dll", out _jitTestSize);
@@ -681,6 +717,62 @@ public static unsafe class Kernel
         {
             DebugConsole.WriteLine("[FullTest] ERROR: JIT compilation failed");
         }
+    }
+
+    /// <summary>
+    /// Phase 2: run console_io_test.dll when the "run-console-test" marker
+    /// file is present on the boot volume (so normal boots never block on
+    /// interactive input). The test exercises System.Console end-to-end
+    /// through the CAL, line discipline and JIT pipeline.
+    /// </summary>
+    private static void MaybeRunConsoleIoTestAssembly()
+    {
+        if (_consoleIoTestId == AssemblyLoader.InvalidAssemblyId)
+            return;
+
+        byte* marker = BootInfoAccess.FindFile("run-console-test", out ulong markerSize);
+        if (marker == null)
+            return;
+
+        DebugConsole.WriteLine();
+        DebugConsole.WriteLine("==============================");
+        DebugConsole.WriteLine("  Running Console I/O Test");
+        DebugConsole.WriteLine("==============================");
+
+        uint runnerToken = AssemblyLoader.FindTypeDefByFullName(_consoleIoTestId, "ConsoleIoTest", "TestRunner");
+        if (runnerToken == 0)
+        {
+            DebugConsole.WriteLine("[ConIO] ERROR: ConsoleIoTest.TestRunner type not found");
+            return;
+        }
+
+        uint runToken = AssemblyLoader.FindMethodDefByName(_consoleIoTestId, runnerToken, "RunAllTests");
+        if (runToken == 0)
+        {
+            DebugConsole.WriteLine("[ConIO] ERROR: RunAllTests method not found");
+            return;
+        }
+
+        var jitResult = Runtime.JIT.Tier0JIT.CompileMethod(_consoleIoTestId, runToken);
+        if (!jitResult.Success)
+        {
+            DebugConsole.WriteLine("[ConIO] ERROR: JIT compilation failed");
+            return;
+        }
+
+        var testMethod = (delegate*<int>)jitResult.CodeAddress;
+        int result = testMethod();
+
+        int passCount = (result >> 16) & 0xFFFF;
+        int failCount = result & 0xFFFF;
+
+        DebugConsole.Write("[ConIO] Passed: ");
+        DebugConsole.WriteDecimal(passCount);
+        DebugConsole.Write("  Failed: ");
+        DebugConsole.WriteDecimal(failCount);
+        DebugConsole.WriteLine();
+        DebugConsole.WriteLine(failCount == 0 ? "[ConIO] ALL TESTS PASSED!" : "[ConIO] SOME TESTS FAILED");
+        DebugConsole.WriteLine("==============================");
     }
 
     /// <summary>
@@ -1080,7 +1172,74 @@ public static unsafe class Kernel
     }
 
     /// <summary>
-    /// Helper to register a single DDK method in the token registry.
+    /// Build token registry entries for the System.Console and
+    /// System.Environment kernel exports (the JIT console bridge).
+    ///
+    /// In the korlib IL assembly (the copy the JIT loads from disk) these
+    /// methods are stubs that throw PlatformNotSupportedException; the real
+    /// implementations live in the kernel's [UnmanagedCallersOnly] exports
+    /// (ConsoleExports / EnvironmentExports). Mapping the korlib stub method
+    /// tokens to the export addresses lets JIT-compiled applications bind
+    /// Console I/O to the real implementations - the same mechanism used for
+    /// the DDK exports above.
+    /// </summary>
+    private static void BuildConsoleTokenRegistry()
+    {
+        if (_korlibId == AssemblyLoader.InvalidAssemblyId)
+            return;
+
+        LoadedAssembly* korlib = AssemblyLoader.GetAssembly(_korlibId);
+        if (korlib == null)
+            return;
+
+        int registered = 0;
+
+        // System.Console -> ConsoleExports
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleWriteChars",
+            (void*)(delegate* unmanaged<char*, int, void>)&ConsoleExports.ConsoleWriteChars);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleReadLine",
+            (void*)(delegate* unmanaged<char*, int, int>)&ConsoleExports.ConsoleReadLine);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleReadKey",
+            (void*)(delegate* unmanaged<int, int, char*, int*, int*, int>)&ConsoleExports.ConsoleReadKey);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleKeyAvailable",
+            (void*)(delegate* unmanaged<int>)&ConsoleExports.ConsoleKeyAvailable);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleReadChar",
+            (void*)(delegate* unmanaged<int>)&ConsoleExports.ConsoleReadChar);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleClear",
+            (void*)(delegate* unmanaged<void>)&ConsoleExports.ConsoleClear);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleSetCursor",
+            (void*)(delegate* unmanaged<int, int, void>)&ConsoleExports.ConsoleSetCursor);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleGetCursor",
+            (void*)(delegate* unmanaged<int*, int*, void>)&ConsoleExports.ConsoleGetCursor);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleGetSize",
+            (void*)(delegate* unmanaged<int*, int*, void>)&ConsoleExports.ConsoleGetSize);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleFlush",
+            (void*)(delegate* unmanaged<void>)&ConsoleExports.ConsoleFlush);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleSetColors",
+            (void*)(delegate* unmanaged<int, int, void>)&ConsoleExports.ConsoleSetColors);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleSetLineMode",
+            (void*)(delegate* unmanaged<int, void>)&ConsoleExports.ConsoleSetLineMode);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleSetCtrlCAsInput",
+            (void*)(delegate* unmanaged<int, void>)&ConsoleExports.ConsoleSetCtrlCAsInput);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleIsRedirected",
+            (void*)(delegate* unmanaged<int*, int*, void>)&ConsoleExports.ConsoleIsRedirected);
+        registered += RegisterDDKMethod(korlib, "System", "Console", "ConsoleGetTickMs",
+            (void*)(delegate* unmanaged<uint>)&ConsoleExports.ConsoleGetTickMs);
+
+        // System.Environment -> EnvironmentExports
+        registered += RegisterDDKMethod(korlib, "System", "Environment", "EnvExit",
+            (void*)(delegate* unmanaged<int, void>)&EnvironmentExports.EnvExit);
+        registered += RegisterDDKMethod(korlib, "System", "Environment", "EnvGetCurrentDirectory",
+            (void*)(delegate* unmanaged<char*, int, int>)&EnvironmentExports.EnvGetCurrentDirectory);
+
+        DebugConsole.Write("[Kernel] Registered ");
+        DebugConsole.WriteDecimal(registered);
+        DebugConsole.WriteLine(" console methods in token registry");
+    }
+
+    /// <summary>
+    /// Helper to register a single korlib method (DDK or console) in the
+    /// token registry, resolving it by (namespace, type, method name).
     /// </summary>
     private static int RegisterDDKMethod(LoadedAssembly* korlib, string ns, string typeName, string methodName, void* nativeAddr)
     {

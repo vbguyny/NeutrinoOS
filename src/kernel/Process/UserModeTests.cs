@@ -1080,11 +1080,11 @@ public static unsafe class UserModeTests
                 code[_offset++] = 0x75;
                 int failJump1 = _offset++;
 
-                // Check sysname starts with 'P' (for "ProtonOS")
+                // Check sysname starts with 'N' (for "NeutrinoOS")
                 // sysname is at offset 0
-                // cmp byte [rsp], 'P'
+                // cmp byte [rsp], 'N'
                 code[_offset++] = 0x80; code[_offset++] = 0x3C; code[_offset++] = 0x24;
-                code[_offset++] = (byte)'P';
+                code[_offset++] = (byte)'N';
                 // jne fail
                 code[_offset++] = 0x75;
                 int failJump2 = _offset++;
@@ -1100,7 +1100,7 @@ public static unsafe class UserModeTests
                 int failJump3 = _offset++;
 
                 // PASS
-                EmitPrintString("  [PASS] uname returns ProtonOS/x86_64\n");
+                EmitPrintString("  [PASS] uname returns NeutrinoOS/x86_64\n");
                 // jmp end
                 code[_offset++] = 0xEB;
                 int endJump = _offset++;

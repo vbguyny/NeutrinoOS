@@ -1,6 +1,6 @@
 #!/bin/bash
-# ProtonOS dependency installer
-# Installs all required packages for building ProtonOS and its toolchain
+# NeutrinoOS dependency installer
+# Installs all required packages for building NeutrinoOS and its toolchain
 
 set -e
 
@@ -69,7 +69,7 @@ install_apt_packages() {
     apt_has_pkg ninja-build || packages+=(ninja-build)
     apt_has_pkg cpio || packages+=(cpio)
 
-    # ProtonOS build dependencies
+    # NeutrinoOS build dependencies
     apt_has_pkg nasm || packages+=(nasm)
     apt_has_pkg mtools || packages+=(mtools)
     apt_has_pkg qemu-system-x86 || packages+=(qemu-system-x86)
@@ -99,7 +99,7 @@ install_dnf_packages() {
     has_cmd ninja || packages+=(ninja-build)
     packages+=(libicu-devel openssl-devel krb5-devel lttng-ust-devel cpio)
 
-    # ProtonOS build dependencies
+    # NeutrinoOS build dependencies
     has_cmd nasm || packages+=(nasm)
     has_cmd mformat || packages+=(mtools)
     has_cmd qemu-system-x86_64 || packages+=(qemu-system-x86)
@@ -124,7 +124,7 @@ install_pacman_packages() {
     has_cmd ninja || packages+=(ninja)
     packages+=(icu openssl krb5 cpio base-devel)
 
-    # ProtonOS build dependencies
+    # NeutrinoOS build dependencies
     has_cmd nasm || packages+=(nasm)
     has_cmd mformat || packages+=(mtools)
     has_cmd qemu-system-x86_64 || packages+=(qemu)
@@ -216,7 +216,7 @@ install_ildasm() {
 
 # Main
 main() {
-    info "ProtonOS Dependency Installer"
+    info "NeutrinoOS Dependency Installer"
     echo ""
 
     check_sudo

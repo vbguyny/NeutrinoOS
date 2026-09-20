@@ -1,0 +1,15 @@
+NOTICE
+======
+
+NeutrinoOS is a fork of ProtonOS.
+
+    Upstream:         https://github.com/ProtonOS/ProtonOS
+    Upstream license: GNU Affero General Public License v3.0 (AGPL-3.0)
+    Fork baseline:    commit c4f6db2 ("Fix thread context switch corruption
+                      and add thread join test")
+
+NeutrinoOS preserves the upstream AGPL-3.0 license in the LICENSE file at the
+root of this repository. All original copyright notices remain in effect.
+
+Modifications made in this fork are distributed under the same license
+(AGPL-3.0). See PHASE1-REPORT.md for the list of modifications.

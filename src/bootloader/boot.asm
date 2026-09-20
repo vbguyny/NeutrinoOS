@@ -1,13 +1,15 @@
-; ProtonOS UEFI Bootloader
-; Loads KERNEL.BIN at a predictable address (32MB, 64MB, or 128MB)
+; NeutrinoOS UEFI Bootloader (console-only fork of ProtonOS)
+; Serial first: all boot progress goes to COM1 (0x3F8, 115200 8N1).
+; No GOP / framebuffer / graphics initialization of any kind.
+; Loads KERNEL.BIN at a predictable address (128 MB)
 ; This allows GDB to reliably find and debug the kernel.
 ;
 ; The kernel is a PE/COFF binary but NOT an EFI application - this loader
 ; handles relocations and jumps to the kernel entry point directly.
 ;
-; Current state: Passes UEFI ImageHandle/SystemTable to kernel, which then
-; handles file loading and ExitBootServices. Future work will move all
-; UEFI interaction to this bootloader and pass a BootInfo structure instead.
+; Current state: Copies the kernel and all ESP files to fixed low-memory
+; regions, builds a BootInfo structure, calls ExitBootServices itself and
+; jumps to the kernel entry point with the BootInfo pointer in RCX.
 ;
 ; Build: nasm -f win64 boot.asm -o boot.obj
 ; Link:  lld-link -subsystem:efi_application -entry:EfiMain -out:BOOTX64.EFI boot.obj
@@ -153,16 +155,13 @@ BI_KERNEL_ENTRY     equ 56
 BI_FILES_ADDR       equ 64
 BI_FILES_COUNT      equ 72
 BI_ACPI_RSDP        equ 80
-BI_FB_ADDR          equ 88
-BI_FB_WIDTH         equ 96
-BI_FB_HEIGHT        equ 100
-BI_FB_PITCH         equ 104
-BI_FB_BPP           equ 108
+; Offsets 88-111: Reserved.
+; (Formerly framebuffer information in ProtonOS; NeutrinoOS is console-only
+; and never populates these fields. Layout kept for boot protocol version 2.)
 BI_SERIAL_PORT      equ 112
 ; Offsets 120-135: Reserved[8]
 
 ; BootInfo flags
-BIF_HAS_FRAMEBUFFER equ 0x01
 BIF_HAS_ACPI        equ 0x02
 BIF_HAS_SERIAL      equ 0x04
 
@@ -224,11 +223,11 @@ KernelEntry:        dq 0            ; Kernel entry point address
 KernelImageSize:    dq 0            ; SizeOfImage from PE header
 
 ; Strings (UCS-2 for UEFI)
-MsgLoading:         dw 'P','r','o','t','o','n','O','S',' ','B','o','o','t','l','o','a','d','e','r',13,10,0
-MsgLoadingKernel:   dw 'L','o','a','d','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
-MsgRelocating:      dw 'R','e','l','o','c','a','t','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
-MsgStarting:        dw 'S','t','a','r','t','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
-MsgError:           dw 'E','R','R','O','R',':',' ',0
+MsgLoading:         dw 'N','e','u','t','r','i','n','o','O','S',' ','v','0','.','1',' ','(','x','8','6','-','6','4',' ','U','E','F','I',13,10,0
+MsgLoadingKernel:   dw '[','B','O','O','T',']',' ','L','o','a','d','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
+MsgRelocating:      dw '[','B','O','O','T',']',' ','R','e','l','o','c','a','t','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
+MsgStarting:        dw '[','B','O','O','T',']',' ','S','t','a','r','t','i','n','g',' ','k','e','r','n','e','l','.','.','.',13,10,0
+MsgError:           dw '[','B','O','O','T',']',' ','E','R','R','O','R',':',' ',0
 MsgAllocFailed:     dw 'M','e','m','o','r','y',' ','a','l','l','o','c','a','t','i','o','n',' ','f','a','i','l','e','d',13,10,0
 MsgFileFailed:      dw 'F','i','l','e',' ','l','o','a','d',' ','f','a','i','l','e','d',13,10,0
 MsgBadPE:           dw 'I','n','v','a','l','i','d',' ','P','E',' ','f','o','r','m','a','t',13,10,0
@@ -299,9 +298,9 @@ Acpi10Guid:
     db 0x9A, 0x16, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D
 
 ; Exit boot services message
-MsgExiting:         dw 'E','x','i','t','i','n','g',' ','b','o','o','t',' ','s','e','r','v','i','c','e','s','.','.','.',13,10,0
+MsgExiting:         dw '[','B','O','O','T',']',' ','E','x','i','t','i','n','g',' ','b','o','o','t',' ','s','e','r','v','i','c','e','s','.','.','.',13,10,0
 MsgExitFailed:      dw 'E','x','i','t','B','o','o','t','S','e','r','v','i','c','e','s',' ','f','a','i','l','e','d',13,10,0
-MsgCopyingFiles:    dw 'C','o','p','y','i','n','g',' ','f','i','l','e','s','.','.','.',13,10,0
+MsgCopyingFiles:    dw '[','B','O','O','T',']',' ','C','o','p','y','i','n','g',' ','f','i','l','e','s','.','.','.',13,10,0
 
 ; EFI_FILE_PROTOCOL offsets
 EFI_FILE_OPEN       equ 8
@@ -344,6 +343,38 @@ DirDepth:           dq 0
 section .text
 
 ;; ============================================================================
+;; Debug: Initialize COM1 UART (115200 8N1, FIFO enabled)
+;; Called first so that every boot step is visible on the serial console.
+;; ============================================================================
+SerialInit:
+    push rax
+    push rdx
+    mov dx, 0x3F8 + 1           ; IER: disable interrupts
+    xor al, al
+    out dx, al
+    mov dx, 0x3F8 + 3           ; LCR: enable DLAB to program baud divisor
+    mov al, 0x80
+    out dx, al
+    mov dx, 0x3F8 + 0           ; DLL = 1 (115200 baud)
+    mov al, 1
+    out dx, al
+    mov dx, 0x3F8 + 1           ; DLH = 0
+    xor al, al
+    out dx, al
+    mov dx, 0x3F8 + 3           ; LCR: 8N1, DLAB off
+    mov al, 0x03
+    out dx, al
+    mov dx, 0x3F8 + 2           ; FCR: enable + clear FIFOs, 14-byte threshold
+    mov al, 0xC7
+    out dx, al
+    mov dx, 0x3F8 + 4           ; MCR: DTR | RTS | OUT2
+    mov al, 0x0B
+    out dx, al
+    pop rdx
+    pop rax
+    ret
+
+;; ============================================================================
 ;; Debug: Print character to serial port
 ;; ============================================================================
 SerialPutChar:
@@ -383,6 +414,9 @@ SerialPutHex64:
 ; EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE* SystemTable)
 global EfiMain
 EfiMain:
+    ; Initialize COM1 first so every boot step is visible on serial
+    call SerialInit
+
     ; Debug: Print startup marker
     mov al, 'B'
     call SerialPutChar
@@ -1367,9 +1401,6 @@ BuildBootInfo:
     ; ACPI RSDP
     mov rax, [rel AcpiRsdp]
     mov [rdi + BI_ACPI_RSDP], rax
-
-    ; No framebuffer for now
-    mov qword [rdi + BI_FB_ADDR], 0
 
     ; Serial port
     mov qword [rdi + BI_SERIAL_PORT], 0x3F8

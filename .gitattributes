@@ -1,0 +1,10 @@
+# Normalize all text files to LF in the repository
+* text=auto
+
+# Build inputs must stay LF even in Windows checkouts (consumed by the WSL2/Linux toolchain)
+Makefile    text eol=lf
+Dockerfile  text eol=lf
+*.sh        text eol=lf
+*.asm       text eol=lf
+*.py        text eol=lf
+

@@ -21,6 +21,7 @@
 //
 // Header size formula: 16 + 8*N bytes (2D=32, 3D=40, 4D=48)
 
+using System.Runtime.InteropServices;
 using ProtonOS.Memory;
 using ProtonOS.Platform;
 using ProtonOS.Runtime.JIT;
@@ -40,6 +41,10 @@ public static unsafe class RuntimeHelpers
     private static void* _rhpNewArrayPtr;
     private static void* _isAssignableToPtr;
     private static void* _getInterfaceMethodPtr;
+
+    /// <summary>Address of the interface-dispatch alignment shim in native.asm.</summary>
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_get_interface_method_shim_addr();
 
     // MD array allocation helper pointers
     private static void* _newMDArray2DPtr;
@@ -94,7 +99,10 @@ public static unsafe class RuntimeHelpers
 
         // Cache type helper function pointers for castclass/isinst
         _isAssignableToPtr = (void*)(delegate*<MethodTable*, MethodTable*, bool>)&TypeHelpers.IsAssignableTo;
-        _getInterfaceMethodPtr = (void*)(delegate*<void*, MethodTable*, int, void*>)&TypeHelpers.GetInterfaceMethod;
+        // Interface dispatch goes through the native alignment shim: JIT-emitted
+        // calls can arrive with a stack that is 8 bytes off the 16-byte ABI
+        // alignment, which would fault inside the SSE prologue of the helper.
+        _getInterfaceMethodPtr = (void*)jit_get_interface_method_shim_addr();
 
         // Cache debug helper pointers
         _debugStfldPtr = (void*)(delegate*<void*, int, void>)&DebugStfld;

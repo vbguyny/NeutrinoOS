@@ -5870,6 +5870,27 @@ public static unsafe class AssemblyLoader
                 name[11] == 'e' && name[12] == 'c' && name[13] == 't' && name[14] == 'i' &&
                 name[15] == 'o' && name[16] == 'n' && name[17] == 's' && name[18] == 0)
                 return true;
+
+            // "System.Console" (Phase 2: System.Console facade -> korlib
+            // implementations, which are AOT-compiled into the kernel)
+            if (name[7] == 'C' && name[8] == 'o' && name[9] == 'n' && name[10] == 's' &&
+                name[11] == 'o' && name[12] == 'l' && name[13] == 'e' && name[14] == 0)
+                return true;
+
+            // "System.Runtime.Extensions" (Environment etc.)
+            if (name[7] == 'R' && name[8] == 'u' && name[9] == 'n' && name[10] == 't' &&
+                name[11] == 'i' && name[12] == 'm' && name[13] == 'e' && name[14] == '.' &&
+                name[15] == 'E' && name[16] == 'x' && name[17] == 't' && name[18] == 'e' &&
+                name[19] == 'n' && name[20] == 's' && name[21] == 'i' && name[22] == 'o' &&
+                name[23] == 'n' && name[24] == 's' && name[25] == 0)
+                return true;
+
+            // "System.Text.Encoding" (facade: System.Text.Encoding.* names)
+            if (name[7] == 'T' && name[8] == 'e' && name[9] == 'x' && name[10] == 't' &&
+                name[11] == '.' && name[12] == 'E' && name[13] == 'n' && name[14] == 'c' &&
+                name[15] == 'o' && name[16] == 'd' && name[17] == 'i' && name[18] == 'n' &&
+                name[19] == 'g')
+                return true;
         }
 
         // Check for "netstandard"

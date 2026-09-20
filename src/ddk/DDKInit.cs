@@ -8,7 +8,6 @@ using ProtonOS.DDK.Storage;
 using ProtonOS.DDK.Network;
 using ProtonOS.DDK.USB;
 using ProtonOS.DDK.Input;
-using ProtonOS.DDK.Graphics;
 using ProtonOS.DDK.Serial;
 
 namespace ProtonOS.DDK;
@@ -230,7 +229,6 @@ public static class DDKInit
         sb.AppendLine($"Input Devices: {InputManager.Devices.Count}");
         sb.AppendLine($"VFS Mounts: {VFS.MountPoints.Count}");
         sb.AppendLine($"Serial Ports: {SerialManager.Ports.Count}");
-        sb.AppendLine($"Display Devices: {DisplayManager.Devices.Count}");
         return sb.ToString();
     }
 }

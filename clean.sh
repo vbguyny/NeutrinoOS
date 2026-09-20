@@ -1,5 +1,5 @@
 #!/bin/bash
-# ProtonOS build cleanup script
+# NeutrinoOS build cleanup script
 # Removes build artifacts to ensure a clean build state
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

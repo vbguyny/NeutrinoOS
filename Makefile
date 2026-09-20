@@ -1,4 +1,4 @@
-# ProtonOS Makefile
+# NeutrinoOS Makefile (console-only fork of ProtonOS)
 
 # Default target architecture
 ARCH ?= x64
@@ -8,6 +8,9 @@ BUILD_DIR := build/$(ARCH)
 KERNEL_DIR := src/kernel
 KORLIB_DIR := src/korlib
 JITTEST_DIR := src/JITTest
+
+# Bootable disk image produced by 'make image'
+IMG := $(BUILD_DIR)/neutrinoos.img
 
 # Output files
 ifeq ($(ARCH),x64)
@@ -100,6 +103,15 @@ HELLOAPP_DLL := $(BUILD_DIR)/HelloApp.dll
 ARGSAPP_DIR := src/ArgsApp
 ARGSAPP_DLL := $(BUILD_DIR)/ArgsApp.dll
 
+# Console I/O acceptance test (Phase 2)
+CONSOLETEST_DIR := tests/ConsoleIoTest
+CONSOLETEST_DLL := $(BUILD_DIR)/console_io_test.dll
+
+# OVMF firmware paths (used by run-qemu-serial targets)
+OVMF_CODE := /usr/share/OVMF/OVMF_CODE_4M.fd
+OVMF_VARS_SRC := /usr/share/OVMF/OVMF_VARS_4M.fd
+OVMF_VARS := $(BUILD_DIR)/OVMF_VARS.fd
+
 # Driver directories
 DRIVERS_DIR := src/drivers
 VIRTIO_DIR := $(DRIVERS_DIR)/shared/virtio
@@ -120,7 +132,7 @@ EXT2_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ext2.dll
 TEST_DRIVER_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Test.dll
 
 # Targets
-.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers image run deps install-deps check-deps
+.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest image run run-qemu run-qemu-serial run-qemu-serial-log run-vbox deps install-deps check-deps
 
 all: $(BUILD_DIR)/$(EFI_NAME)
 
@@ -217,6 +229,14 @@ $(ARGSAPP_DLL): $(ARGSAPP_SRC) $(ARGSAPP_DIR)/ArgsApp.csproj $(DDK_DLL) | $(BUIL
 
 argsapp: $(ARGSAPP_DLL)
 
+# Build console_io_test.dll (Phase 2 console I/O acceptance test)
+CONSOLETEST_SRC := $(call rwildcard,$(CONSOLETEST_DIR),*.cs)
+$(CONSOLETEST_DLL): $(CONSOLETEST_SRC) $(CONSOLETEST_DIR)/ConsoleIoTest.csproj | $(BUILD_DIR)
+	@echo "DOTNET build console_io_test"
+	dotnet build $(CONSOLETEST_DIR)/ConsoleIoTest.csproj -c Release -o $(BUILD_DIR) --nologo -v q
+
+consoletest: $(CONSOLETEST_DLL)
+
 # Build Virtio common library
 VIRTIO_SRC := $(call rwildcard,$(VIRTIO_DIR),*.cs)
 $(VIRTIO_DLL): $(VIRTIO_SRC) $(VIRTIO_DIR)/Virtio.csproj $(DDK_DLL) | $(BUILD_DIR)
@@ -270,33 +290,34 @@ $(BUILD_DIR)/$(EFI_NAME): $(NATIVE_OBJ) $(KERNEL_OBJ)
 	@python3 tools/gen_elf_syms.py $(BUILD_DIR)/BOOTX64.pdb $(BUILD_DIR)/kernel_syms.elf
 
 # Create boot image
-image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
-	dd if=/dev/zero of=$(BUILD_DIR)/boot.img bs=1M count=64 status=none
-	mformat -i $(BUILD_DIR)/boot.img -F -v PROTONOS ::
-	mmd -i $(BUILD_DIR)/boot.img ::/EFI
-	mmd -i $(BUILD_DIR)/boot.img ::/EFI/BOOT
-	mmd -i $(BUILD_DIR)/boot.img ::/drivers
-	mmd -i $(BUILD_DIR)/boot.img ::/lib
-	mcopy -i $(BUILD_DIR)/boot.img $(BOOTLOADER_EFI) ::/EFI/BOOT/$(EFI_NAME)
-	mcopy -i $(BUILD_DIR)/boot.img $(BUILD_DIR)/BOOTX64.EFI ::/EFI/BOOT/$(KERNEL_NAME)
-	mcopy -i $(BUILD_DIR)/boot.img $(JITTEST_DLL) ::/JITTest.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(KORLIB_DLL) ::/korlib.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(TESTSUPPORT_DLL) ::/TestSupport.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(DDK_DLL) ::/ProtonOS.DDK.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(APPTEST_DLL) ::/AppTest.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(HELLOAPP_DLL) ::/HelloApp.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(ARGSAPP_DLL) ::/ArgsApp.dll
-	mcopy -i $(BUILD_DIR)/boot.img $(VIRTIO_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(VIRTIO_BLK_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(VIRTIO_NET_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(FAT_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(AHCI_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(EXT2_DLL) ::/drivers/
-	mcopy -i $(BUILD_DIR)/boot.img $(PROTONOS_NET_DLL) ::/lib/
-	@echo "Boot image: $(BUILD_DIR)/boot.img"
+	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
+	mformat -i $(IMG) -F -v NEUTRINOOS ::
+	mmd -i $(IMG) ::/EFI
+	mmd -i $(IMG) ::/EFI/BOOT
+	mmd -i $(IMG) ::/drivers
+	mmd -i $(IMG) ::/lib
+	mcopy -i $(IMG) $(BOOTLOADER_EFI) ::/EFI/BOOT/$(EFI_NAME)
+	mcopy -i $(IMG) $(BUILD_DIR)/BOOTX64.EFI ::/EFI/BOOT/$(KERNEL_NAME)
+	mcopy -i $(IMG) $(JITTEST_DLL) ::/JITTest.dll
+	mcopy -i $(IMG) $(KORLIB_DLL) ::/korlib.dll
+	mcopy -i $(IMG) $(TESTSUPPORT_DLL) ::/TestSupport.dll
+	mcopy -i $(IMG) $(DDK_DLL) ::/ProtonOS.DDK.dll
+	mcopy -i $(IMG) $(APPTEST_DLL) ::/AppTest.dll
+	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/HelloApp.dll
+	mcopy -i $(IMG) $(ARGSAPP_DLL) ::/ArgsApp.dll
+	mcopy -i $(IMG) $(CONSOLETEST_DLL) ::/console_io_test.dll
+	mcopy -i $(IMG) $(VIRTIO_DLL) ::/drivers/
+	mcopy -i $(IMG) $(VIRTIO_BLK_DLL) ::/drivers/
+	mcopy -i $(IMG) $(VIRTIO_NET_DLL) ::/drivers/
+	mcopy -i $(IMG) $(FAT_DLL) ::/drivers/
+	mcopy -i $(IMG) $(AHCI_DLL) ::/drivers/
+	mcopy -i $(IMG) $(EXT2_DLL) ::/drivers/
+	mcopy -i $(IMG) $(PROTONOS_NET_DLL) ::/lib/
+	@echo "Boot image: $(IMG)"
 	@echo "Contents:"
-	@mdir -i $(BUILD_DIR)/boot.img ::/
+	@mdir -i $(IMG) ::/
 
 clean:
 	rm -rf build/
@@ -338,9 +359,43 @@ check-deps:
 	@command -v nasm >/dev/null || (echo "ERROR: nasm not found. Run 'make install-deps'" && exit 1)
 	@echo "All dependencies found."
 
-# Run in QEMU
+# Run in QEMU (full test environment: boot + test + sata disks)
 run: image
 	./run.sh
+
+# Run in QEMU with the minimal serial-only Phase 1 configuration:
+# OVMF (pflash) + neutrinoos.img on virtio, no graphics, serial on stdio
+run-qemu: image
+	./tools/run-qemu.sh
+
+# Phase 2: boot with the serial console attached to the terminal.
+# Interactive shell (neutrinoos>) with echo, editing, history, colors.
+# Quit QEMU with Ctrl+A X.
+run-qemu-serial: image
+	@test -f $(OVMF_VARS) || cp $(OVMF_VARS_SRC) $(OVMF_VARS)
+	@echo "NeutrinoOS serial console (Ctrl+A X quits QEMU)"
+	qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp 1 \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=$(OVMF_VARS) \
+		-drive file=$(IMG),format=raw,if=virtio \
+		-display none -serial stdio -no-reboot -no-shutdown
+
+# Phase 2: same as run-qemu-serial, but also tee the serial stream to
+# $(BUILD_DIR)/serial.log for inspection from Windows.
+run-qemu-serial-log: image
+	@test -f $(OVMF_VARS) || cp $(OVMF_VARS_SRC) $(OVMF_VARS)
+	@echo "NeutrinoOS serial console -> $(BUILD_DIR)/serial.log (Ctrl+A X quits QEMU)"
+	qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp 1 \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=$(OVMF_VARS) \
+		-drive file=$(IMG),format=raw,if=virtio \
+		-display none -serial stdio -no-reboot -no-shutdown 2>&1 | tee $(BUILD_DIR)/serial.log
+
+# Run in VirtualBox: converts the image to .vdi and shows the UEFI VM
+# configuration with the serial port redirected to a host file
+# (requires VBoxManage on PATH; see docs/BUILD-WINDOWS.md)
+run-vbox: image
+	./tools/run-vbox.sh
 
 # Show configuration
 info:

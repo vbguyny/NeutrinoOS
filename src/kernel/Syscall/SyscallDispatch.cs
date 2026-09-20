@@ -2660,8 +2660,8 @@ public static unsafe class SyscallDispatch
             p[i] = 0;
 
         // Fill in system information
-        CopyString(buf->sysname, "ProtonOS", Utsname.FieldLength);
-        CopyString(buf->nodename, "proton", Utsname.FieldLength);
+        CopyString(buf->sysname, "NeutrinoOS", Utsname.FieldLength);
+        CopyString(buf->nodename, "neutrino", Utsname.FieldLength);
         CopyString(buf->release, "0.1.0", Utsname.FieldLength);
         CopyString(buf->version, "#1 SMP", Utsname.FieldLength);
         CopyString(buf->machine, "x86_64", Utsname.FieldLength);

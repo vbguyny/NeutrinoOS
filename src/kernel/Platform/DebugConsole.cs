@@ -1,12 +1,19 @@
-// ProtonOS kernel - Debug console output (COM1 serial)
+// NeutrinoOS kernel - debug console facade
+//
+// Phase 2: the actual serial hardware is driven by Uart16550 and all
+// output is routed through the Console Abstraction Layer once it is
+// initialized (after the scheduler starts). This class is kept as the
+// stable logging API used across the kernel; during early boot (before
+// the CAL exists) it falls back to writing to the UART driver directly.
 
 using System.Runtime.InteropServices;
 
 namespace ProtonOS.Platform;
 
 /// <summary>
-/// Early debug output via COM1 serial port.
-/// Used for kernel debugging before proper console/logging is available.
+/// NeutrinoOS serial console: UART 16550 output on COM1 (115200 8N1).
+/// This is the only console device in Phase 1 (console-only fork - no
+/// framebuffer, no graphics). Logically the system's ttyS0.
 /// </summary>
 public static unsafe class DebugConsole
 {
@@ -29,28 +36,11 @@ public static unsafe class DebugConsole
     private static extern byte inb(ushort port);
 
     /// <summary>
-    /// Initialize COM1 at 115200 baud, 8N1
+    /// Initialize COM1 at 115200 baud, 8N1 via the production UART driver.
     /// </summary>
     public static void Init()
     {
-        // Disable interrupts
-        outb(COM1_IER, 0x00);
-
-        // Enable DLAB (set baud rate divisor)
-        outb(COM1_LCR, 0x80);
-
-        // Set divisor to 1 (115200 baud)
-        outb(COM1_DLL, 0x01);
-        outb(COM1_DLH, 0x00);
-
-        // 8 bits, no parity, one stop bit (8N1), disable DLAB
-        outb(COM1_LCR, 0x03);
-
-        // Enable FIFO, clear them, 14-byte threshold
-        outb(COM1_FCR, 0xC7);
-
-        // Enable DTR, RTS, OUT2
-        outb(COM1_MCR, 0x0B);
+        Uart16550.Initialize(115200, 0);
     }
 
     /// <summary>
@@ -58,7 +48,10 @@ public static unsafe class DebugConsole
     /// </summary>
     public static bool IsDataAvailable()
     {
-        // LSR bit 0 = Data Ready
+        if (Uart16550.InterruptsEnabled)
+            return Uart16550.BytesAvailable > 0;
+
+        // Polled mode (early boot): LSR bit 0 = Data Ready
         return (inb(COM1_LSR) & 0x01) != 0;
     }
 
@@ -67,9 +60,16 @@ public static unsafe class DebugConsole
     /// </summary>
     public static byte ReadByte()
     {
-        // Wait for data available
-        while (!IsDataAvailable()) { }
-        return inb(COM1_DATA);
+        return Uart16550.ReadByte();
+    }
+
+    /// <summary>
+    /// Read a single key byte from the console (blocking).
+    /// Phase 1 console input API; alias for ReadByte().
+    /// </summary>
+    public static byte ReadKey()
+    {
+        return ReadByte();
     }
 
     /// <summary>
@@ -79,19 +79,38 @@ public static unsafe class DebugConsole
     /// <returns>True if a byte was read, false if no data available</returns>
     public static bool TryReadByte(out byte value)
     {
-        if (IsDataAvailable())
+        return Uart16550.TryReadByte(out value);
+    }
+
+    // Tracks the previous byte so "\n" can be translated to "\r\n"
+    // without doubling CR in an existing "\r\n" sequence.
+    private static bool _lastWasCr;
+
+    /// <summary>
+    /// Write a single byte, translating LF to CRLF (console line discipline).
+    /// Routes through the CAL once initialized; otherwise writes the UART
+    /// directly (early boot).
+    /// </summary>
+    public static void WriteByte(byte b)
+    {
+        if (ConsoleAbstractionLayer.IsInitialized)
         {
-            value = inb(COM1_DATA);
-            return true;
+            ConsoleAbstractionLayer.Devices.Write((char)b);
+            return;
         }
-        value = 0;
-        return false;
+
+        if (b == 0x0A && !_lastWasCr)
+        {
+            Uart16550.WriteByte(0x0D);  // CR before LF for serial terminals that need CRLF
+        }
+        Uart16550.WriteByte(b);
+        _lastWasCr = b == 0x0D;
     }
 
     /// <summary>
-    /// Write a single byte
+    /// Write a single byte to the UART without translation.
     /// </summary>
-    public static void WriteByte(byte b)
+    private static void RawWriteByte(byte b)
     {
         // Wait for transmit buffer empty
         while ((inb(COM1_LSR) & 0x20) == 0) { }

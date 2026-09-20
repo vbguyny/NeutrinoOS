@@ -155,7 +155,7 @@ public static unsafe class HTTP
         if (pos == 0) return 0;
 
         // User-Agent header
-        pos = AppendHeader(buffer, bufferSize, pos, "User-Agent", "ProtonOS/1.0");
+        pos = AppendHeader(buffer, bufferSize, pos, "User-Agent", "NeutrinoOS/1.0");
         if (pos == 0) return 0;
 
         // End of headers
@@ -239,7 +239,7 @@ public static unsafe class HTTP
         if (pos == 0) return 0;
 
         // User-Agent header
-        pos = AppendHeader(buffer, bufferSize, pos, "User-Agent", "ProtonOS/1.0");
+        pos = AppendHeader(buffer, bufferSize, pos, "User-Agent", "NeutrinoOS/1.0");
         if (pos == 0) return 0;
 
         // End of headers

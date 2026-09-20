@@ -1,4 +1,4 @@
-# ProtonOS Development Environment
+# NeutrinoOS Development Environment (console-only fork of ProtonOS)
 # Based on .NET 10 SDK for building bflat from source
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0
@@ -74,7 +74,7 @@ RUN rm -rf /build/bflat /nuget-cache
 WORKDIR /workspace
 
 # Verify tools
-RUN echo "=== ProtonOS dev environment ===" && \
+RUN echo "=== NeutrinoOS dev environment ===" && \
     nasm --version && \
     nasm -hf | grep win64 && \
     lld-link --version && \

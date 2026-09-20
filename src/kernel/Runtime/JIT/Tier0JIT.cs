@@ -75,14 +75,9 @@ public static unsafe class Tier0JIT
         DebugConsole.WriteHex(methodToken);
         DebugConsole.WriteLine();
 
-        // Try token-based AOT registry first (fast path for korlib methods)
-        AotTokenEntry tokenEntry;
-        if (AotMethodRegistry.TryLookupByToken(assemblyId, methodToken, out tokenEntry))
-        {
-            // Found in AOT registry - return native code directly
-            _compileNestingLevel--;
-            return JitResult.Ok((void*)tokenEntry.NativeCode, 0);
-        }
+        // Note: the token-based AOT registry fast path (korlib DDK / console
+        // bridge methods) runs AFTER signature parsing below, so the compiled
+        // method registry entry can carry the correct arg/return metadata.
 
         // Save method type arg context - will restore on exit
         // This ensures each method compilation starts with clean context
@@ -490,6 +485,27 @@ public static unsafe class Tier0JIT
             // DebugConsole.Write(" structSize=");
             // DebugConsole.WriteDecimal(returnStructSize);
             // DebugConsole.WriteLine();
+        }
+
+        // Token-based AOT bridge fast path: methods registered by token map
+        // to pre-compiled native code (DDK exports, System.Console /
+        // System.Environment kernel exports, hash-registered korlib methods).
+        // The signature metadata parsed above is materialized into the
+        // compiled method registry so callers can resolve arg count and
+        // return kind, then the native address is returned directly without
+        // JIT-compiling the (stub) body.
+        AotTokenEntry tokenEntry;
+        if (AotMethodRegistry.TryLookupByToken(assemblyId, methodToken, out tokenEntry))
+        {
+            CompiledMethodInfo* bridged = CompiledMethodRegistry.ReserveForCompilation(
+                methodToken, (byte)paramCount, returnKind, returnStructSize, hasThis, assemblyId);
+            if (bridged != null && !bridged->IsCompiled)
+            {
+                CompiledMethodRegistry.CompleteCompilation(
+                    methodToken, (void*)tokenEntry.NativeCode, assemblyId, 0);
+            }
+            RestoreContext(savedAsmId);
+            return JitResult.Ok((void*)tokenEntry.NativeCode, 0);
         }
 
         // Reserve the method slot BEFORE compilation (prevents infinite recursion)

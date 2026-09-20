@@ -2,6 +2,7 @@
 // Provides stub functions called before method calls to ensure lazy compilation.
 // This allows methods to be compiled on-demand just before they are called.
 
+using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 using ProtonOS.Runtime;
 using ProtonOS.X64;
@@ -19,6 +20,13 @@ public static unsafe class JitStubs
     private static nint _ensureVtableSlotCompiledAddress;
     private static bool _initialized;
 
+    // Kept alive for the native linker: these [UnmanagedCallersOnly] exports are
+    // only referenced from the assembly alignment shims in native.asm.
+    private static nint _ensureCompiledExportAddress;
+    private static nint _ensureVirtualCompiledExportAddress;
+    private static nint _ensureVtableSlotCompiledExportAddress;
+    private static nint _getInterfaceMethodExportAddress;
+
     /// <summary>
     /// Initialize the JIT stubs module.
     /// Must be called during kernel initialization before JIT compilation.
@@ -28,10 +36,23 @@ public static unsafe class JitStubs
         if (_initialized)
             return;
 
-        // Get function pointer addresses for direct calls from JIT code
-        _ensureCompiledAddress = (nint)(delegate*<uint, uint, void>)&EnsureCompiled;
-        _ensureVirtualCompiledAddress = (nint)(delegate*<uint, uint, nint, short, void>)&EnsureVirtualCompiled;
-        _ensureVtableSlotCompiledAddress = (nint)(delegate*<nint, short, nint>)&EnsureVtableSlotCompiled;
+        // Get function pointer addresses for direct calls from JIT code.
+        //
+        // The Tier-0 JIT's emitted call sequences can leave RSP 8 bytes off the
+        // 16-byte ABI alignment (an odd number of temporary pushes plus shadow
+        // space), and the AOT helper implementations use SSE instructions whose
+        // alignment the compiler assumed. JIT-emitted calls therefore go through
+        // the native alignment shims in native.asm, which normalise RSP first.
+        _ensureCompiledAddress = jit_ensure_compiled_shim_addr();
+        _ensureVirtualCompiledAddress = jit_ensure_virtual_compiled_shim_addr();
+        _ensureVtableSlotCompiledAddress = jit_ensure_vtable_slot_compiled_shim_addr();
+
+        // Keep the native export entry points alive for the linker (they are
+        // only referenced from the assembly shims).
+        _ensureCompiledExportAddress = (nint)(delegate* unmanaged<uint, uint, void>)&EnsureCompiledExport;
+        _ensureVirtualCompiledExportAddress = (nint)(delegate* unmanaged<uint, uint, nint, short, void>)&EnsureVirtualCompiledExport;
+        _ensureVtableSlotCompiledExportAddress = (nint)(delegate* unmanaged<nint, short, nint>)&EnsureVtableSlotCompiledExport;
+        _getInterfaceMethodExportAddress = (nint)(delegate* unmanaged<nint, MethodTable*, int, nint>)&GetInterfaceMethodExport;
 
         _initialized = true;
         DebugConsole.WriteLine("[JitStubs] Initialized");
@@ -52,6 +73,42 @@ public static unsafe class JitStubs
     /// This takes an object pointer and vtable slot, and ensures the method at that slot is compiled.
     /// </summary>
     public static nint EnsureVtableSlotCompiledAddress => _ensureVtableSlotCompiledAddress;
+
+    // === Alignment shims (native.asm) ===
+    // JIT-emitted calls can enter with a stack that is 8 bytes off the 16-byte
+    // ABI alignment; the shims fix that before entering the managed exports.
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_ensure_compiled_shim_addr();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_ensure_virtual_compiled_shim_addr();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_ensure_vtable_slot_compiled_shim_addr();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_get_interface_method_shim_addr();
+
+    /// <summary>Native entry point called by the jit_ensure_compiled_shim alignment shim.</summary>
+    [UnmanagedCallersOnly(EntryPoint = "Jit_EnsureCompiled")]
+    public static void EnsureCompiledExport(uint methodToken, uint assemblyId)
+        => EnsureCompiled(methodToken, assemblyId);
+
+    /// <summary>Native entry point called by the jit_ensure_virtual_compiled_shim alignment shim.</summary>
+    [UnmanagedCallersOnly(EntryPoint = "Jit_EnsureVirtualCompiled")]
+    public static void EnsureVirtualCompiledExport(uint methodToken, uint assemblyId, nint methodTable, short vtableSlot)
+        => EnsureVirtualCompiled(methodToken, assemblyId, methodTable, vtableSlot);
+
+    /// <summary>Native entry point called by the jit_ensure_vtable_slot_compiled_shim alignment shim.</summary>
+    [UnmanagedCallersOnly(EntryPoint = "Jit_EnsureVtableSlotCompiled")]
+    public static nint EnsureVtableSlotCompiledExport(nint objPtr, short vtableSlot)
+        => EnsureVtableSlotCompiled(objPtr, vtableSlot);
+
+    /// <summary>Native entry point called by the jit_get_interface_method_shim alignment shim.</summary>
+    [UnmanagedCallersOnly(EntryPoint = "Jit_GetInterfaceMethod")]
+    public static nint GetInterfaceMethodExport(nint obj, MethodTable* interfaceMT, int methodIndex)
+        => (nint)TypeHelpers.GetInterfaceMethod((void*)obj, interfaceMT, methodIndex);
 
     /// <summary>
     /// Ensures a method is compiled before it is called.
@@ -342,6 +399,32 @@ public static unsafe class JitStubs
         // Look up the method in the registry by MethodTable and vtable slot
         CompiledMethodInfo* info = CompiledMethodRegistry.LookupByVtableSlot((void*)methodTable, vtableSlot);
         bool foundOnGenericDef = false;
+
+        // Inherited virtual fallback: a derived JIT method table registers only
+        // its own overrides per-slot; the slots it inherits carry the base
+        // class's method. Slot numbers are preserved across the hierarchy, so
+        // the nearest ancestor with a registration for this slot (and no
+        // closer override) provides the implementation.
+        if (info == null)
+        {
+            MethodTable* ancestorMT = mt->_relatedType;
+            while (info == null && ancestorMT != null)
+            {
+                info = CompiledMethodRegistry.LookupByVtableSlot(ancestorMT, vtableSlot);
+                if (info == null)
+                    ancestorMT = ancestorMT->_relatedType;
+            }
+            if (info != null)
+            {
+                DebugConsole.Write("[JitStubs] slot ");
+                DebugConsole.WriteDecimal((uint)vtableSlot);
+                DebugConsole.Write(" resolved from ancestor MT 0x");
+                DebugConsole.WriteHex((ulong)ancestorMT);
+                DebugConsole.Write(" token=0x");
+                DebugConsole.WriteHex(info->Token);
+                DebugConsole.WriteLine();
+            }
+        }
 
         // If not found and this is an instantiated generic type, try the generic definition MT
         if (info == null)

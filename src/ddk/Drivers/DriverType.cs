@@ -31,9 +31,6 @@ public enum DriverType
     /// <summary>Input device driver (keyboard, mouse).</summary>
     Input,
 
-    /// <summary>Graphics/display driver (GOP, virtio-gpu).</summary>
-    Graphics,
-
     /// <summary>Audio device driver (HDA, USB audio).</summary>
     Audio,
 

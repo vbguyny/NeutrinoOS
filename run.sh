@@ -1,5 +1,5 @@
 #!/bin/bash
-# ProtonOS QEMU launcher
+# NeutrinoOS QEMU launcher (full test environment)
 # Run from inside the dev container
 
 set -e
@@ -9,7 +9,7 @@ cd "$SCRIPT_DIR"
 
 ARCH="${ARCH:-x64}"
 BUILD_DIR="build/${ARCH}"
-IMG_FILE="${BUILD_DIR}/boot.img"
+IMG_FILE="${BUILD_DIR}/neutrinoos.img"
 TEST_DISK="${BUILD_DIR}/test.img"
 SATA_DISK="${BUILD_DIR}/sata.img"
 
@@ -34,8 +34,9 @@ if [ ! -f "$SATA_DISK" ]; then
     exit 1
 fi
 
-# Find OVMF firmware
+# Find OVMF firmware (override with OVMF_CODE=/path/to/OVMF_CODE.fd)
 OVMF_PATHS=(
+    "${OVMF_CODE:-}"
     "/usr/share/OVMF/OVMF_CODE_4M.fd"
     "/usr/share/OVMF/OVMF_CODE.fd"
     "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd"

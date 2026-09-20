@@ -559,6 +559,68 @@ get_boot_info:
     mov rax, [rel g_boot_info]
     ret
 
+;; ==================== JIT Stub Alignment Shims ====================
+;; The Tier-0 JIT emits calls to its runtime helper stubs with a stack that can
+;; be 8 bytes off the 16-byte ABI requirement (an odd number of temporary
+;; register saves plus 32 bytes of shadow space). The AOT helper functions use
+;; SSE instructions whose alignment the C# compiler assumed, so a misaligned
+;; entry faults with #GP inside the prologue (movaps).
+;;
+;; All JIT-emitted calls to these helpers therefore go through the shims below,
+;; which normalise RSP before entering the managed implementation:
+;;
+;;   push rbp            ; save caller frame pointer
+;;   mov  rbp, rsp
+;;   and  rsp, -16       ; force 16-byte alignment
+;;   sub  rsp, 32        ; shadow space for the callee
+;;   call <managed export>   ; entered with ABI-correct alignment
+;;   mov  rsp, rbp       ; restore caller stack (return value already in RAX)
+;;   pop  rbp
+;;   ret
+
+extern Jit_EnsureCompiled
+extern Jit_EnsureVirtualCompiled
+extern Jit_EnsureVtableSlotCompiled
+extern Jit_GetInterfaceMethod
+
+%macro JIT_ALIGN_SHIM 2
+global %1
+%1:
+    push rbp
+    mov rbp, rsp
+    and rsp, -16
+    sub rsp, 32
+    call %2
+    mov rsp, rbp
+    pop rbp
+    ret
+%endmacro
+
+JIT_ALIGN_SHIM jit_ensure_compiled_shim, Jit_EnsureCompiled
+JIT_ALIGN_SHIM jit_ensure_virtual_compiled_shim, Jit_EnsureVirtualCompiled
+JIT_ALIGN_SHIM jit_ensure_vtable_slot_compiled_shim, Jit_EnsureVtableSlotCompiled
+JIT_ALIGN_SHIM jit_get_interface_method_shim, Jit_GetInterfaceMethod
+
+global jit_ensure_compiled_shim_addr
+jit_ensure_compiled_shim_addr:
+    lea rax, [rel jit_ensure_compiled_shim]
+    ret
+
+global jit_ensure_virtual_compiled_shim_addr
+jit_ensure_virtual_compiled_shim_addr:
+    lea rax, [rel jit_ensure_virtual_compiled_shim]
+    ret
+
+global jit_ensure_vtable_slot_compiled_shim_addr
+jit_ensure_vtable_slot_compiled_shim_addr:
+    lea rax, [rel jit_ensure_vtable_slot_compiled_shim]
+    ret
+
+global jit_get_interface_method_shim_addr
+jit_get_interface_method_shim_addr:
+    lea rax, [rel jit_get_interface_method_shim]
+    ret
+
 ;; ==================== Context Switching ====================
 ;; CpuContext structure layout (must match C# CpuContext):
 ;;   0x00: rax, 0x08: rbx, 0x10: rcx, 0x18: rdx
@@ -879,6 +941,81 @@ get_rsp:
     add rax, 8              ; adjust for return address pushed by call
     ret
 
+;; ==================== Kernel Context Save/Restore ====================
+;; Used by InitProcess.CreateAndRun: the kernel "jumps" into Ring 3 to run the
+;; init/test process, and when that process calls exit() the kernel must resume
+;; the interrupted kernel control flow instead of terminating the boot thread.
+;;
+;; The exit syscall path runs on the dedicated syscall kernel stack
+;; (see syscall_entry_final / syscall_kernel_stack), completely separate from
+;; the stack captured here, so saving and later restoring this context is safe.
+;;
+;; KernelResumeContext layout (must match the C# side, 30 qwords / 240 bytes):
+;;   0x00 Rip, 0x08 Rsp, 0x10 Rbp, 0x18 Rbx, 0x20 Rdi, 0x28 Rsi,
+;;   0x30 R12, 0x38 R13, 0x40 R14, 0x48 R15,
+;;   0x50-0xEF Xmm6-Xmm15 (10 non-volatile SSE registers, 16 bytes each)
+global kernel_context_save
+; long kernel_context_save(KernelResumeContext* ctx)
+; Saves the current kernel context. Returns 0 on the initial call; when the
+; context is later restored by kernel_context_restore, this call "returns"
+; 1 instead (standard setjmp-style contract).
+; NOTE: the resume RIP is stored explicitly - the return-address slot on the
+; stack cannot be relied upon because later calls from the same frame depth
+; (e.g. jump_to_ring3) reuse that exact slot.
+kernel_context_save:
+    mov rax, [rsp]          ; return address -> resume RIP
+    mov [rcx + 0x00], rax
+    lea rax, [rsp + 8]      ; caller's RSP after the call returns
+    mov [rcx + 0x08], rax
+    mov [rcx + 0x10], rbp
+    mov [rcx + 0x18], rbx
+    mov [rcx + 0x20], rdi
+    mov [rcx + 0x28], rsi
+    mov [rcx + 0x30], r12
+    mov [rcx + 0x38], r13
+    mov [rcx + 0x40], r14
+    mov [rcx + 0x48], r15
+    movups [rcx + 0x50], xmm6
+    movups [rcx + 0x60], xmm7
+    movups [rcx + 0x70], xmm8
+    movups [rcx + 0x80], xmm9
+    movups [rcx + 0x90], xmm10
+    movups [rcx + 0xA0], xmm11
+    movups [rcx + 0xB0], xmm12
+    movups [rcx + 0xC0], xmm13
+    movups [rcx + 0xD0], xmm14
+    movups [rcx + 0xE0], xmm15
+    xor eax, eax            ; first pass: return 0
+    ret
+
+global kernel_context_restore
+; void kernel_context_restore(KernelResumeContext* ctx)
+; Does not return to its caller: switches back to the saved kernel context,
+; making the original kernel_context_save call return 1.
+kernel_context_restore:
+    movups xmm6, [rcx + 0x50]
+    movups xmm7, [rcx + 0x60]
+    movups xmm8, [rcx + 0x70]
+    movups xmm9, [rcx + 0x80]
+    movups xmm10, [rcx + 0x90]
+    movups xmm11, [rcx + 0xA0]
+    movups xmm12, [rcx + 0xB0]
+    movups xmm13, [rcx + 0xC0]
+    movups xmm14, [rcx + 0xD0]
+    movups xmm15, [rcx + 0xE0]
+    mov r11, [rcx + 0x00]   ; resume RIP (r11 is volatile: free to use)
+    mov rsp, [rcx + 0x08]   ; caller's stack pointer
+    mov rbp, [rcx + 0x10]
+    mov rbx, [rcx + 0x18]
+    mov rdi, [rcx + 0x20]
+    mov rsi, [rcx + 0x28]
+    mov r12, [rcx + 0x30]
+    mov r13, [rcx + 0x38]
+    mov r14, [rcx + 0x40]
+    mov r15, [rcx + 0x48]
+    mov eax, 1              ; resumed: kernel_context_save returns 1
+    jmp r11                 ; resume at the saved RIP
+
 ;; ==================== Managed Exception Support ====================
 ;; Assembly support for NativeAOT/managed exception handling.
 ;; These functions handle context capture at throw site and restoration at catch site.
@@ -950,9 +1087,13 @@ RhpThrowEx:
     mov rdx, rsp
     ; Save context pointer in r15 (callee-saved) for verification after call
     mov r15, rsp
+    ; The handler is compiled C# and may use aligned SSE instructions, so make
+    ; sure it is entered with an ABI-conformant stack even if the throw site
+    ; (JIT-emitted code) called us with RSP 8 bytes off alignment.
+    and rsp, -16
     sub rsp, 32             ; shadow space
     call RhpThrowEx_Handler
-    add rsp, 32
+    mov rsp, r15            ; restore context pointer
 
     ; DEBUG: Verify RSP = saved context pointer
     cmp rsp, r15
@@ -1081,9 +1222,12 @@ RhpRethrow:
     ; Call C# handler: void RhpRethrow_Handler(ExceptionContext* context)
     ; rcx = pointer to context
     mov rcx, rsp
+    mov r15, rsp            ; save context pointer (callee-saved)
+    ; Align the stack for the compiled-C# handler (see RhpThrowEx)
+    and rsp, -16
     sub rsp, 32             ; shadow space
     call RhpRethrow_Handler
-    add rsp, 32
+    mov rsp, r15            ; restore context pointer
 
     ; If we return, handler modified context - jump to handler like RhpThrowEx
     mov rax, [rsp + 0x00]   ; handler address
@@ -1150,12 +1294,15 @@ RhpThrowHwEx:
 
     ; Call C# handler: void RhpThrowHwEx_Handler(uint exceptionCode, ExceptionContext* context)
     ; ecx = exception code (32-bit)
-    mov ecx, [rsp + EXCEPTION_CONTEXT_SIZE]       ; get exception code
+    mov ecx, [rsp + EXCEPTION_CONTEXT_SIZE]       ; get exception code (before alignment)
     ; rdx = pointer to context
     mov rdx, rsp
+    mov r15, rsp            ; save context pointer (callee-saved)
+    ; Align the stack for the compiled-C# handler (see RhpThrowEx)
+    and rsp, -16
     sub rsp, 32             ; shadow space
     call RhpThrowHwEx_Handler
-    add rsp, 32
+    mov rsp, r15            ; restore context pointer
 
     ; If we return, handler modified context - call funclet like RhpThrowEx
     mov rax, [rsp + 0x00]   ; funclet address

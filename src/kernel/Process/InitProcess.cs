@@ -20,6 +20,22 @@ public static unsafe class InitProcess
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern void jump_to_ring3(ulong userRip, ulong userRsp);
 
+    // Kernel context capture for resuming the boot thread after the init
+    // process calls exit() (see native.asm kernel_context_save/restore).
+    [DllImport("*", EntryPoint = "kernel_context_save")]
+    private static extern long KernelContextSave(ulong* context);
+
+    [DllImport("*", EntryPoint = "kernel_context_restore")]
+    private static extern void KernelContextRestore(ulong* context);
+
+    // 1 saved RIP + 9 saved GPRs (Rsp,Rbp,Rbx,Rdi,Rsi,R12-R15) + 10 XMM regs.
+    private const int KernelResumeContextQwords = 30;
+
+    private static readonly ulong[] _resumeContext = new ulong[KernelResumeContextQwords];
+    private static Process* _initProc;
+    private static ProtonOS.Threading.Thread* _mainThread;
+    private static int _lastExitCode;
+
     /// <summary>
     /// Create and start the init process with the given code
     /// </summary>
@@ -130,13 +146,92 @@ public static unsafe class InitProcess
             currentThread->IsUserMode = true;
         }
 
-        // Switch to init's address space and jump to user mode
-        AddressSpace.SwitchTo(pml4);
-        jump_to_ring3(entryPoint, userRsp);
+        // Register the exit handler and capture a kernel resume context.
+        // When the user code calls exit(), the syscall path invokes
+        // OnInitProcessExit which restores this context, so the boot thread
+        // continues kernel initialization instead of being terminated.
+        _initProc = initProc;
+        _mainThread = currentThread;
+        _lastExitCode = 0;
+        SyscallDispatch.SetRing3TestExitHandler(&OnInitProcessExit);
 
-        // Should never return
-        DebugConsole.WriteLine("[Init] ERROR: Returned from init!");
-        return false;
+        fixed (ulong* resumeContext = _resumeContext)
+        {
+            if (KernelContextSave(resumeContext) == 0)
+            {
+                // First pass: switch to init's address space and jump to user mode
+                AddressSpace.SwitchTo(pml4);
+                jump_to_ring3(entryPoint, userRsp);
+
+                // Should never return from jump_to_ring3
+                DebugConsole.WriteLine("[Init] ERROR: Returned from jump_to_ring3!");
+                return false;
+            }
+        }
+
+        // === Resumed here after the init process called exit() ===
+        // The exit handler already switched back to the kernel address space
+        // and marked the process as a zombie; detach it from the boot thread.
+        if (currentThread != null)
+        {
+            currentThread->Process = null;
+            currentThread->IsUserMode = false;
+        }
+
+        DebugConsole.Write("[Init] Kernel resumed (exit code ");
+        DebugConsole.WriteDecimal(_lastExitCode);
+        DebugConsole.WriteLine(")");
+        return true;
+    }
+
+    /// <summary>
+    /// Called from the exit syscall path when a thread of the init process exits.
+    /// For cloned (non-main) threads this performs a normal thread termination;
+    /// for the main thread it never returns and restores the kernel context
+    /// captured by CreateAndRun.
+    /// </summary>
+    [UnmanagedCallersOnly]
+    private static void OnInitProcessExit(int exitCode)
+    {
+        var thread = Scheduler.CurrentThread;
+
+        // Cloned threads (e.g. the syscall tests' clone/thread_join tests)
+        // must exit normally; only the main thread's exit resumes the kernel.
+        if (thread != _mainThread)
+        {
+            // Re-install the handler so the eventual main-thread exit is
+            // still captured (the dispatcher cleared it before calling us).
+            SyscallDispatch.SetRing3TestExitHandler(&OnInitProcessExit);
+
+            DebugConsole.WriteLine("[Init] Cloned thread exit - terminating thread");
+            if (_initProc != null)
+            {
+                ProcessTable.MarkZombie(_initProc, exitCode, 0);
+            }
+
+            Scheduler.ExitThread((uint)exitCode);   // never returns
+            CPU.HaltForever();
+            return;
+        }
+
+        _lastExitCode = exitCode;
+
+        // Mark the process as a zombie (its main thread "exited")
+        if (_initProc != null)
+        {
+            ProcessTable.MarkZombie(_initProc, exitCode, 0);
+        }
+
+        // Switch back to the kernel address space before resuming
+        AddressSpace.SwitchTo(VirtualMemory.Pml4Address);
+
+        fixed (ulong* resumeContext = _resumeContext)
+        {
+            KernelContextRestore(resumeContext);   // does not return
+        }
+
+        // Safety: if the restore ever returned, halt
+        CPU.HaltForever();
     }
 
     /// <summary>

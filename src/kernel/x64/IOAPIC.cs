@@ -373,6 +373,12 @@ public static unsafe class IOAPIC
             SetIrqRoute(irq, vector, bspApicId);
         }
 
+        // IRQ2 is the legacy 8259 PIC cascade line - there is no device
+        // behind it once the PICs are disabled, but the line can still
+        // pulse spuriously and it has the same interrupt priority as the
+        // timer. Keep it masked at the IOAPIC.
+        MaskIrq(2);
+
         DebugConsole.WriteLine("[IOAPIC] ISA IRQs routed to BSP");
     }
 
