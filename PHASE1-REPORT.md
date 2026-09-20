@@ -296,11 +296,15 @@ framebuffer, no crash).
   JIT-emitted calls) and fixed with alignment shims; two further boot-critical
   defects (the ring-3 test process terminating the boot thread; unhandled IRQ
   vectors never EOI'd) were fixed behind it. The full boot now reaches
-  `neutrinoos>` with working echo. The original reproduction (4.4) is still
-  worth filing upstream - the defects exist in unmodified ProtonOS.
-- **Publishing the fork** needs the user's GitHub account: create the fork in
-  the GitHub UI, then `git remote add origin <fork-url> && git push -u origin main`
-  (the repository here already carries the full Phase 1 history).
+  `neutrinoos>` with working echo. A copy-paste-ready upstream bug report
+  (all four defects, repro, fixes) is prepared in
+  [`docs/UPSTREAM-REPORT-DRAFT.md`](docs/UPSTREAM-REPORT-DRAFT.md) - file it
+  via the GitHub UI ("New issue", paste). There is no `gh` CLI or token on
+  this machine, so it cannot be filed automatically.
+- ~~Publishing the fork~~ **DONE**: `main` is pushed to
+  `github.com/vbguyny/NeutrinoOS` (latest `a91ec2f`; includes the Phase 1
+  fixes, the Phase 2 console, the JIT-console bridge, and the VirtualBox
+  bootloader fixes).
 - **VirtualBox verification - PASS (root cause found and fixed in-fork):**
   the VirtualBox-EFI #GP after `ExitBootServices` was a bootloader/firmware
   interaction. Fixes: (1) the memory map/key is now re-fetched as the *very
