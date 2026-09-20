@@ -89,9 +89,13 @@ public static unsafe class ConsoleAbstractionLayer
         Uart16550.SetRxConsumer(&OnSerialRxByte);
         Uart16550.EnableInterrupts();
 
-        // Phase 3: VGA text console and PS/2 keyboard.
+        // Phase 3: VGA text console and PS/2 keyboard. The VGA console is
+        // normally brought up early (EarlyInitVgaConsole); the late path
+        // here is a fallback and also performs the device registration.
         Uart16550.Write("[CAL-T1]");
-        InitializeVgaConsole();
+        if (_vgaDevice == null)
+            InitializeVgaConsole();
+        RegisterVgaConsole();
         Uart16550.Write("[CAL-T8]");
         if (_vgaDevice != null)
         {
@@ -107,18 +111,56 @@ public static unsafe class ConsoleAbstractionLayer
             }
         }
 
+        // Output now fans out through the multiplexer (serial + VGA), so
+        // the early debug mirror must be cleared to avoid double-writing
+        // to the VGA console.
+        DebugConsole.SetEarlyMirror(null);
+
         IsInitialized = true;
     }
 
     // ==================== Phase 3: VGA console + PS/2 keyboard ====================
 
     /// <summary>
-    /// Brings up the VGA text console unless the <c>console-vga-off</c>
-    /// marker file is present. The <c>console-vga-80x50</c> marker selects
-    /// the 50-row 8x8-font mode; <c>console-active-vga</c> makes the VGA
-    /// console the initial active input device instead of /dev/ttyS0.
-    /// (Marker files are NeutrinoOS's boot-parameter mechanism - the
-    /// kernel has no command line; see docs/PHASE3-DESIGN.md.)
+    /// Early boot: brings up the VGA text console (unless the
+    /// console-vga-off marker is present) and mirrors DebugConsole output
+    /// to it until CAL.Initialize() reroutes output through the device
+    /// multiplexer. Call once after the heap and arch stage 2 are ready -
+    /// early enough that the whole boot log is visible in the VM window.
+    /// The console-vga-80x50 marker selects the 50-row mode.
+    /// </summary>
+    public static void EarlyInitVgaConsole()
+    {
+        if (_vgaDevice != null || IsInitialized)
+            return;
+        if (BootInfoAccess.FindFile("console-vga-off", out _) != null)
+            return;
+
+        bool mode80x50 = BootInfoAccess.FindFile("console-vga-80x50", out _) != null;
+
+        Uart16550.Write("[VGA-early-a]");
+        var vga = new VgaConsoleDevice();
+        vga.Initialize(mode80x50);
+        Uart16550.Write("[VGA-early-b]");
+
+        _vgaDevice = vga;
+        DebugConsole.SetEarlyMirror(&MirrorEarlyByte);
+    }
+
+    /// <summary>Early-boot mirror target (ISR-safe raw VGA write).</summary>
+    [UnmanagedCallersOnly]
+    private static void MirrorEarlyByte(byte b)
+    {
+        var vga = _vgaDevice;
+        if (vga != null)
+            vga.MirrorRawByte(b);
+    }
+
+    /// <summary>
+    /// Late-boot fallback: creates and initializes the VGA text console
+    /// when the early path did not run (e.g. booted through a path that
+    /// skips EarlyInitVgaConsole). Honours console-vga-off and
+    /// console-vga-80x50.
     /// </summary>
     private static void InitializeVgaConsole()
     {
@@ -133,17 +175,32 @@ public static unsafe class ConsoleAbstractionLayer
         Uart16550.Write("[CAL-T4]");
         vga.Initialize(mode80x50);
         Uart16550.Write("[CAL-T5]");
+        _vgaDevice = vga;
+    }
+
+    /// <summary>
+    /// Registers the (early- or late-initialized) VGA console with the
+    /// multiplexer and the device registry, and applies the active-input
+    /// marker. Honours skip-vga-register - which preserves the legacy
+    /// semantics that no console-device integration (echo sink, PS/2
+    /// keyboard, /dev/vga0) happens in that mode.
+    /// </summary>
+    private static void RegisterVgaConsole()
+    {
+        var vga = _vgaDevice;
+        if (vga == null)
+            return;
 
         if (BootInfoAccess.FindFile("skip-vga-register", out _) != null)
         {
             Uart16550.Write("[CAL-NOREG]");
+            _vgaDevice = null;
             return;
         }
 
         Devices.Register(vga);
         Uart16550.Write("[CAL-T6]");
         ConsoleDeviceRegistry.Register(VgaConsoleDevice.DevicePath, vga);
-        _vgaDevice = vga;
         Uart16550.Write("[CAL-T7]");
 
         if (BootInfoAccess.FindFile("console-active-vga", out _) != null)

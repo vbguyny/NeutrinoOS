@@ -318,8 +318,8 @@ public static unsafe class Tier0JIT
                     DebugConsole.WriteHex(methodSig.ReturnType.Token);
                     DebugConsole.WriteLine();
                 }
-                // Debug: trace return type for struct returns
-                if (returnKind == ReturnKind.Struct)
+                // Debug: trace return type for struct returns (verbose-jit only)
+                if (returnKind == ReturnKind.Struct && JitDiag.VerboseJit)
                 {
                     DebugConsole.Write("[JIT] Struct ret elemType=0x");
                     DebugConsole.WriteHex(methodSig.ReturnType.ElementType);
@@ -335,9 +335,12 @@ public static unsafe class Tier0JIT
             {
                 bool isValueType;
                 ParseMethodSigReturnType(sigBlob, sigLen, out isValueType, out returnStructSize);
-                DebugConsole.Write("[JIT] Parsed ret sz=");
-                DebugConsole.WriteDecimal(returnStructSize);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[JIT] Parsed ret sz=");
+                    DebugConsole.WriteDecimal(returnStructSize);
+                    DebugConsole.WriteLine();
+                }
             }
         }
 
@@ -558,7 +561,7 @@ public static unsafe class Tier0JIT
         compiler.SetDebugContext(assemblyId, methodToken);
 
         // Debug: trace argCount for methods that might be MoveNext
-        if (hasThis && paramCount == 0 && localCount > 0)
+        if (JitDiag.VerboseJit && hasThis && paramCount == 0 && localCount > 0)
         {
             DebugConsole.Write("[JIT] Method asm=");
             DebugConsole.WriteDecimal(assemblyId);
@@ -670,11 +673,14 @@ public static unsafe class Tier0JIT
                 if (hasEH)
                 {
                     compiler.SetILEHClauses(ref ilClauses);
-                    DebugConsole.Write("[Tier0JIT] Method 0x");
-                    DebugConsole.WriteHex(methodToken);
-                    DebugConsole.Write(" has ");
-                    DebugConsole.WriteDecimal(ilClauses.Count);
-                    DebugConsole.WriteLine(" EH clause(s)");
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[Tier0JIT] Method 0x");
+                        DebugConsole.WriteHex(methodToken);
+                        DebugConsole.Write(" has ");
+                        DebugConsole.WriteDecimal(ilClauses.Count);
+                        DebugConsole.WriteLine(" EH clause(s)");
+                    }
                 }
             }
         }
@@ -1015,7 +1021,7 @@ public static unsafe class Tier0JIT
         // }
 
         // Debug: dump signature bytes for methods with 5 locals (potential TestDictKeys)
-        if (numLocals == 5)
+        if (JitDiag.VerboseJit && numLocals == 5)
         {
             DebugConsole.Write("[SigDump] 5-local method, sigLen=");
             DebugConsole.WriteDecimal(sigLen);
@@ -2412,16 +2418,19 @@ public static unsafe class Tier0JIT
                 // Always propagate to existing instantiations
                 AssemblyLoader.PropagateVtableSlotToInstantiations(assemblyId, typeRow, registeredSlot, nativeCode);
 
-                DebugConsole.Write("[PopulateVT] token=0x");
-                DebugConsole.WriteHex(methodToken);
-                DebugConsole.Write(" MT=0x");
-                DebugConsole.WriteHex((ulong)mt);
-                DebugConsole.Write(" slot=");
-                DebugConsole.WriteDecimal((uint)registeredSlot);
-                DebugConsole.Write(mtIsGenericDefinition ? " (gen-def-skip)" : " (stored)");
-                DebugConsole.Write(" code=0x");
-                DebugConsole.WriteHex((ulong)nativeCode);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[PopulateVT] token=0x");
+                    DebugConsole.WriteHex(methodToken);
+                    DebugConsole.Write(" MT=0x");
+                    DebugConsole.WriteHex((ulong)mt);
+                    DebugConsole.Write(" slot=");
+                    DebugConsole.WriteDecimal((uint)registeredSlot);
+                    DebugConsole.Write(mtIsGenericDefinition ? " (gen-def-skip)" : " (stored)");
+                    DebugConsole.Write(" code=0x");
+                    DebugConsole.WriteHex((ulong)nativeCode);
+                    DebugConsole.WriteLine();
+                }
                 _vtableSlotHint = -1;  // Clear hint after use
                 return;
             }
@@ -2451,16 +2460,19 @@ public static unsafe class Tier0JIT
             // Propagate to existing instantiations
             AssemblyLoader.PropagateVtableSlotToInstantiations(assemblyId, typeRow, hintSlot, nativeCode);
 
-            DebugConsole.Write("[PopulateVT] token=0x");
-            DebugConsole.WriteHex(methodToken);
-            DebugConsole.Write(" MT=0x");
-            DebugConsole.WriteHex((ulong)mt);
-            DebugConsole.Write(" slot=");
-            DebugConsole.WriteDecimal((uint)hintSlot);
-            DebugConsole.Write(mtIsGenDefHint ? " (hint-gen-def-skip)" : " (hint)");
-            DebugConsole.Write(" code=0x");
-            DebugConsole.WriteHex((ulong)nativeCode);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[PopulateVT] token=0x");
+                DebugConsole.WriteHex(methodToken);
+                DebugConsole.Write(" MT=0x");
+                DebugConsole.WriteHex((ulong)mt);
+                DebugConsole.Write(" slot=");
+                DebugConsole.WriteDecimal((uint)hintSlot);
+                DebugConsole.Write(mtIsGenDefHint ? " (hint-gen-def-skip)" : " (hint)");
+                DebugConsole.Write(" code=0x");
+                DebugConsole.WriteHex((ulong)nativeCode);
+                DebugConsole.WriteLine();
+            }
             return;
         }
         _vtableSlotHint = -1;  // Clear hint even if not used
@@ -2516,17 +2528,20 @@ public static unsafe class Tier0JIT
         // Validate slot is within range
         if (vtableSlot < 0 || vtableSlot >= mt->_usNumVtableSlots)
         {
-            DebugConsole.Write("[PopulateVT] Slot ");
-            DebugConsole.WriteDecimal((uint)vtableSlot);
-            DebugConsole.Write(" out of range (max ");
-            DebugConsole.WriteDecimal(mt->_usNumVtableSlots);
-            DebugConsole.Write(") MT=0x");
-            DebugConsole.WriteHex((ulong)mt);
-            DebugConsole.Write(" type=0x");
-            DebugConsole.WriteHex(typeToken);
-            DebugConsole.Write(" token=0x");
-            DebugConsole.WriteHex(methodToken);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[PopulateVT] Slot ");
+                DebugConsole.WriteDecimal((uint)vtableSlot);
+                DebugConsole.Write(" out of range (max ");
+                DebugConsole.WriteDecimal(mt->_usNumVtableSlots);
+                DebugConsole.Write(") MT=0x");
+                DebugConsole.WriteHex((ulong)mt);
+                DebugConsole.Write(" type=0x");
+                DebugConsole.WriteHex(typeToken);
+                DebugConsole.Write(" token=0x");
+                DebugConsole.WriteHex(methodToken);
+                DebugConsole.WriteLine();
+            }
             return;
         }
 
@@ -2557,18 +2572,21 @@ public static unsafe class Tier0JIT
         // because they copied the vtable when they were created (possibly with null entries)
         AssemblyLoader.PropagateVtableSlotToInstantiations(assemblyId, typeRow, vtableSlot, nativeCode);
 
-        DebugConsole.Write("[PopulateVT] token=0x");
-        DebugConsole.WriteHex(methodToken);
-        DebugConsole.Write(" type=0x");
-        DebugConsole.WriteHex(typeToken);
-        DebugConsole.Write(" MT=0x");
-        DebugConsole.WriteHex((ulong)mt);
-        DebugConsole.Write(" slot=");
-        DebugConsole.WriteDecimal((uint)vtableSlot);
-        DebugConsole.Write(isGenDef ? " (gen-def-skip)" : " (stored)");
-        DebugConsole.Write(" code=0x");
-        DebugConsole.WriteHex((ulong)nativeCode);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[PopulateVT] token=0x");
+            DebugConsole.WriteHex(methodToken);
+            DebugConsole.Write(" type=0x");
+            DebugConsole.WriteHex(typeToken);
+            DebugConsole.Write(" MT=0x");
+            DebugConsole.WriteHex((ulong)mt);
+            DebugConsole.Write(" slot=");
+            DebugConsole.WriteDecimal((uint)vtableSlot);
+            DebugConsole.Write(isGenDef ? " (gen-def-skip)" : " (stored)");
+            DebugConsole.Write(" code=0x");
+            DebugConsole.WriteHex((ulong)nativeCode);
+            DebugConsole.WriteLine();
+        }
     }
 
     private static bool NameEquals(byte* name, string expected)

@@ -839,23 +839,26 @@ public static unsafe class MetadataReader
                 root.BlobHeap = metadataBase + offset;
                 root.BlobHeapSize = size;
                 // Debug: log blob heap setup
-                DebugConsole.Write("[MDReader] #Blob heap at 0x");
-                DebugConsole.WriteHex((ulong)root.BlobHeap);
-                DebugConsole.Write(" (base=0x");
-                DebugConsole.WriteHex((ulong)metadataBase);
-                DebugConsole.Write(" + off=0x");
-                DebugConsole.WriteHex(offset);
-                DebugConsole.Write(") size=");
-                DebugConsole.WriteDecimal(size);
-                DebugConsole.Write(" first4=[");
-                DebugConsole.WriteHex(root.BlobHeap[0]);
-                DebugConsole.Write(" ");
-                DebugConsole.WriteHex(root.BlobHeap[1]);
-                DebugConsole.Write(" ");
-                DebugConsole.WriteHex(root.BlobHeap[2]);
-                DebugConsole.Write(" ");
-                DebugConsole.WriteHex(root.BlobHeap[3]);
-                DebugConsole.WriteLine("]");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[MDReader] #Blob heap at 0x");
+                    DebugConsole.WriteHex((ulong)root.BlobHeap);
+                    DebugConsole.Write(" (base=0x");
+                    DebugConsole.WriteHex((ulong)metadataBase);
+                    DebugConsole.Write(" + off=0x");
+                    DebugConsole.WriteHex(offset);
+                    DebugConsole.Write(") size=");
+                    DebugConsole.WriteDecimal(size);
+                    DebugConsole.Write(" first4=[");
+                    DebugConsole.WriteHex(root.BlobHeap[0]);
+                    DebugConsole.Write(" ");
+                    DebugConsole.WriteHex(root.BlobHeap[1]);
+                    DebugConsole.Write(" ");
+                    DebugConsole.WriteHex(root.BlobHeap[2]);
+                    DebugConsole.Write(" ");
+                    DebugConsole.WriteHex(root.BlobHeap[3]);
+                    DebugConsole.WriteLine("]");
+                }
             }
             // #Pdb and #- (uncompressed tables) are ignored for now
 

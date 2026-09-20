@@ -1252,19 +1252,25 @@ public static unsafe class AssemblyLoader
         int pos = 0;
         byte elementType = sig[pos++];
 
-        DebugConsole.Write("[AsmLoader] ResolveTypeSpec 0x");
-        DebugConsole.WriteHex(token);
-        DebugConsole.Write(" elemType=0x");
-        DebugConsole.WriteHex(elementType);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[AsmLoader] ResolveTypeSpec 0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" elemType=0x");
+            DebugConsole.WriteHex(elementType);
+            DebugConsole.WriteLine();
+        }
 
         // ELEMENT_TYPE_SZARRAY = 0x1D - single-dimension zero-lower-bound array
         if (elementType == 0x1D)
         {
-            DebugConsole.Write("[AsmLoader] TypeSpec SZARRAY: parsing element type, next byte=0x");
-            if (pos < (int)sigLen)
-                DebugConsole.WriteHex(sig[pos]);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] TypeSpec SZARRAY: parsing element type, next byte=0x");
+                if (pos < (int)sigLen)
+                    DebugConsole.WriteHex(sig[pos]);
+                DebugConsole.WriteLine();
+            }
 
             // Next is the element type
             MethodTable* elementMT = ParseTypeFromSignature(asm, sig, ref pos, sigLen);
@@ -1274,9 +1280,12 @@ public static unsafe class AssemblyLoader
                 return null;
             }
 
-            DebugConsole.Write("[AsmLoader] TypeSpec SZARRAY: element MT=0x");
-            DebugConsole.WriteHex((ulong)elementMT);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] TypeSpec SZARRAY: element MT=0x");
+                DebugConsole.WriteHex((ulong)elementMT);
+                DebugConsole.WriteLine();
+            }
 
             // Get or create array MethodTable
             return GetOrCreateArrayMethodTable(elementMT);
@@ -1320,9 +1329,12 @@ public static unsafe class AssemblyLoader
             // Check if we have a method type argument context
             if (!JIT.MetadataIntegration.HasMethodTypeArgContext())
             {
-                DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
-                DebugConsole.WriteDecimal(index);
-                DebugConsole.WriteLine(" but no MethodSpec context");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
+                    DebugConsole.WriteDecimal(index);
+                    DebugConsole.WriteLine(" but no MethodSpec context");
+                }
                 return null;
             }
 
@@ -1338,9 +1350,12 @@ public static unsafe class AssemblyLoader
             byte mvarElemType = JIT.MetadataIntegration.GetMethodTypeArgElementType((int)index);
             if (mvarElemType == 0)
             {
-                DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
-                DebugConsole.WriteDecimal(index);
-                DebugConsole.WriteLine(" - index out of range");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
+                    DebugConsole.WriteDecimal(index);
+                    DebugConsole.WriteLine(" - index out of range");
+                }
                 return null;
             }
 
@@ -1357,11 +1372,14 @@ public static unsafe class AssemblyLoader
                 return GetPrimitiveMethodTable(0x1C);  // Object
             }
 
-            DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
-            DebugConsole.WriteDecimal(index);
-            DebugConsole.Write(" unknown elemType 0x");
-            DebugConsole.WriteHex(mvarElemType);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] TypeSpec MVAR !!");
+                DebugConsole.WriteDecimal(index);
+                DebugConsole.Write(" unknown elemType 0x");
+                DebugConsole.WriteHex(mvarElemType);
+                DebugConsole.WriteLine();
+            }
             return null;
         }
 
@@ -1384,11 +1402,14 @@ public static unsafe class AssemblyLoader
             MethodTable* varMt = JIT.MetadataIntegration.GetTypeTypeArgMethodTable((int)index);
             if (varMt != null)
             {
-                DebugConsole.Write("[AsmLoader] TypeSpec VAR index=");
-                DebugConsole.WriteDecimal(index);
-                DebugConsole.Write(" resolved to MT=0x");
-                DebugConsole.WriteHex((ulong)varMt);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[AsmLoader] TypeSpec VAR index=");
+                    DebugConsole.WriteDecimal(index);
+                    DebugConsole.Write(" resolved to MT=0x");
+                    DebugConsole.WriteHex((ulong)varMt);
+                    DebugConsole.WriteLine();
+                }
                 return varMt;
             }
 
@@ -1523,14 +1544,17 @@ public static unsafe class AssemblyLoader
                         allResolved = false;
                         break;
                     }
-                    // DEBUG: trace resolved type args for GenericInst
-                    DebugConsole.Write("[GenArg] ");
-                    DebugConsole.WriteDecimal(i);
-                    DebugConsole.Write(" elemType=0x");
-                    DebugConsole.WriteHex(peekElem);
-                    DebugConsole.Write(" -> MT=0x");
-                    DebugConsole.WriteHex((ulong)typeArgMTs[i]);
-                    DebugConsole.WriteLine();
+                    // DEBUG: trace resolved type args for GenericInst (verbose-jit only)
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[GenArg] ");
+                        DebugConsole.WriteDecimal(i);
+                        DebugConsole.Write(" elemType=0x");
+                        DebugConsole.WriteHex(peekElem);
+                        DebugConsole.Write(" -> MT=0x");
+                        DebugConsole.WriteHex((ulong)typeArgMTs[i]);
+                        DebugConsole.WriteLine();
+                    }
                 }
 
                 if (allResolved)
@@ -1671,16 +1695,22 @@ public static unsafe class AssemblyLoader
                     index = ((uint)(b & 0x3F) << 8) | sig[pos++];
             }
 
-            DebugConsole.Write("[AsmLoader] ParseType VAR index=");
-            DebugConsole.WriteDecimal(index);
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] ParseType VAR index=");
+                DebugConsole.WriteDecimal(index);
+            }
 
             // Try to get the actual type argument from the type context
             MethodTable* varMt = JIT.MetadataIntegration.GetTypeTypeArgMethodTable((int)index);
             if (varMt != null)
             {
-                DebugConsole.Write(" resolved to MT=0x");
-                DebugConsole.WriteHex((ulong)varMt);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write(" resolved to MT=0x");
+                    DebugConsole.WriteHex((ulong)varMt);
+                    DebugConsole.WriteLine();
+                }
                 return varMt;
             }
 
@@ -1688,11 +1718,12 @@ public static unsafe class AssemblyLoader
             // This is expected during generic definition interface resolution (no concrete T yet)
             if (_resolvingGenericDefInterfaces)
             {
-                DebugConsole.WriteLine(" -> Object (expected in generic def)");
+                if (JitDiag.VerboseJit)
+                    DebugConsole.WriteLine(" -> Object (expected in generic def)");
             }
             else
             {
-                DebugConsole.WriteLine(" WARNING: NO TYPE CONTEXT - using Object fallback");
+                DebugConsole.WriteLine("[AsmLoader] WARNING: type variable without context - using Object fallback");
             }
             return GetPrimitiveMethodTable(0x1C);  // Object
         }
@@ -1850,21 +1881,27 @@ public static unsafe class AssemblyLoader
             {
                 // Return normalized token with target assembly
                 uint normalized = MakeNormalizedToken(targetAsm->AssemblyId, targetToken & 0x00FFFFFF);
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[Normalize] TypeRef row=");
+                    DebugConsole.WriteDecimal(row);
+                    DebugConsole.Write(" asm=");
+                    DebugConsole.WriteDecimal(asm->AssemblyId);
+                    DebugConsole.Write(" -> 0x");
+                    DebugConsole.WriteHex(normalized);
+                    DebugConsole.WriteLine();
+                }
+                return normalized;
+            }
+            // Fall through if resolution fails
+            if (JitDiag.VerboseJit)
+            {
                 DebugConsole.Write("[Normalize] TypeRef row=");
                 DebugConsole.WriteDecimal(row);
                 DebugConsole.Write(" asm=");
                 DebugConsole.WriteDecimal(asm->AssemblyId);
-                DebugConsole.Write(" -> 0x");
-                DebugConsole.WriteHex(normalized);
-                DebugConsole.WriteLine();
-                return normalized;
+                DebugConsole.WriteLine(" FAILED");
             }
-            // Fall through if resolution fails
-            DebugConsole.Write("[Normalize] TypeRef row=");
-            DebugConsole.WriteDecimal(row);
-            DebugConsole.Write(" asm=");
-            DebugConsole.WriteDecimal(asm->AssemblyId);
-            DebugConsole.WriteLine(" FAILED");
         }
 
         // TypeSpec or failed resolution - return with current assembly context
@@ -2394,16 +2431,22 @@ public static unsafe class AssemblyLoader
                 if ((overriddenSlots & 0x02) == 0)  // Equals not overridden
                 {
                     vtable[1] = AotMethodRegistry.LookupByName("System.ValueType", "Equals");
-                    DebugConsole.Write("[VT vtable] Equals=0x");
-                    DebugConsole.WriteHex((ulong)vtable[1]);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[VT vtable] Equals=0x");
+                        DebugConsole.WriteHex((ulong)vtable[1]);
+                        DebugConsole.WriteLine();
+                    }
                 }
                 if ((overriddenSlots & 0x04) == 0)  // GetHashCode not overridden
                 {
                     vtable[2] = AotMethodRegistry.LookupByName("System.ValueType", "GetHashCode");
-                    DebugConsole.Write("[VT vtable] GetHashCode=0x");
-                    DebugConsole.WriteHex((ulong)vtable[2]);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[VT vtable] GetHashCode=0x");
+                        DebugConsole.WriteHex((ulong)vtable[2]);
+                        DebugConsole.WriteLine();
+                    }
                 }
             }
             else
@@ -2427,17 +2470,20 @@ public static unsafe class AssemblyLoader
             vtable[4] = AotMethodRegistry.LookupByName("System.MulticastDelegate", "RemoveImpl");
         }
 
-        DebugConsole.Write("[CreateMT] token=0x");
-        DebugConsole.WriteHex(token);
-        DebugConsole.Write(" base=");
-        DebugConsole.WriteDecimal(baseVtableSlots);
-        DebugConsole.Write(" new=");
-        DebugConsole.WriteDecimal(newVirtualSlots);
-        DebugConsole.Write(" iface=");
-        DebugConsole.WriteDecimal(interfaceMethodSlots);
-        DebugConsole.Write(" total=");
-        DebugConsole.WriteDecimal(totalVtableSlots);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[CreateMT] token=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" base=");
+            DebugConsole.WriteDecimal(baseVtableSlots);
+            DebugConsole.Write(" new=");
+            DebugConsole.WriteDecimal(newVirtualSlots);
+            DebugConsole.Write(" iface=");
+            DebugConsole.WriteDecimal(interfaceMethodSlots);
+            DebugConsole.Write(" total=");
+            DebugConsole.WriteDecimal(totalVtableSlots);
+            DebugConsole.WriteLine();
+        }
 
         // For interfaces, register in global registry to ensure canonical MT across assemblies
         if (isInterface)
@@ -5550,12 +5596,15 @@ public static unsafe class AssemblyLoader
                 uint wellKnownToken = GetWellKnownTypeToken(targetName);
                 if (wellKnownToken != 0)
                 {
-                    DebugConsole.Write("[AsmLoader] WellKnown type resolve: ");
-                    for (int i = 0; targetName[i] != 0 && i < 32; i++)
-                        DebugConsole.WriteChar((char)targetName[i]);
-                    DebugConsole.Write(" -> 0x");
-                    DebugConsole.WriteHex(wellKnownToken);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[AsmLoader] WellKnown type resolve: ");
+                        for (int i = 0; targetName[i] != 0 && i < 32; i++)
+                            DebugConsole.WriteChar((char)targetName[i]);
+                        DebugConsole.Write(" -> 0x");
+                        DebugConsole.WriteHex(wellKnownToken);
+                        DebugConsole.WriteLine();
+                    }
                     targetAsm = GetAssembly(KernelAssemblyId);  // Well-known types belong to kernel
                     typeDefToken = wellKnownToken;
                     return true;
@@ -6832,16 +6881,19 @@ public static unsafe class AssemblyLoader
         CodedIndex classRef = MetadataReader.GetMemberRefClass(
             ref sourceAsm->Tables, ref sourceAsm->Sizes, rowId);
 
-        // Debug: Print MemberRef resolution info
-        DebugConsole.Write("[AsmLoader] ResolveMemberRef 0x");
-        DebugConsole.WriteHex(memberRefToken);
-        DebugConsole.Write(" from asm ");
-        DebugConsole.WriteDecimal(sourceAsmId);
-        DebugConsole.Write(", class table=");
-        DebugConsole.WriteDecimal((uint)classRef.Table);
-        DebugConsole.Write(" row=");
-        DebugConsole.WriteDecimal(classRef.RowId);
-        DebugConsole.WriteLine();
+        // Debug: Print MemberRef resolution info (verbose-jit only)
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[AsmLoader] ResolveMemberRef 0x");
+            DebugConsole.WriteHex(memberRefToken);
+            DebugConsole.Write(" from asm ");
+            DebugConsole.WriteDecimal(sourceAsmId);
+            DebugConsole.Write(", class table=");
+            DebugConsole.WriteDecimal((uint)classRef.Table);
+            DebugConsole.Write(" row=");
+            DebugConsole.WriteDecimal(classRef.RowId);
+            DebugConsole.WriteLine();
+        }
 
         // Get member name and signature
         uint nameIdx = MetadataReader.GetMemberRefName(ref sourceAsm->Tables, ref sourceAsm->Sizes, rowId);
@@ -7411,11 +7463,14 @@ public static unsafe class AssemblyLoader
             // Get the instantiated interface MT for proper interface dispatch
             // Use ResolveTypeSpec to get/create the generic instantiation MT
             interfaceMT = ResolveTypeSpec(sourceAsm, 0x1B000000 | typeSpecRow);
-            DebugConsole.Write("[IsIfaceMethod] TypeSpec resolved MT=0x");
-            DebugConsole.WriteHex((ulong)interfaceMT);
-            DebugConsole.Write(" typeSpecRow=");
-            DebugConsole.WriteDecimal(typeSpecRow);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[IsIfaceMethod] TypeSpec resolved MT=0x");
+                DebugConsole.WriteHex((ulong)interfaceMT);
+                DebugConsole.Write(" typeSpecRow=");
+                DebugConsole.WriteDecimal(typeSpecRow);
+                DebugConsole.WriteLine();
+            }
         }
         else
         {
@@ -7479,23 +7534,26 @@ public static unsafe class AssemblyLoader
                 methodSlot = slot;
 
                 // Debug: log interface method detection
-                DebugConsole.Write("[IsIfaceMethod] TRUE token=0x");
-                DebugConsole.WriteHex(memberRefToken);
-                DebugConsole.Write(" ifaceMT=0x");
-                DebugConsole.WriteHex((ulong)interfaceMT);
-                if (interfaceMT != null)
+                if (JitDiag.VerboseJit)
                 {
-                    DebugConsole.Write(" slots=");
-                    DebugConsole.WriteDecimal(interfaceMT->_usNumVtableSlots);
-                    DebugConsole.Write(" hash=0x");
-                    DebugConsole.WriteHex(interfaceMT->_uHashCode);
+                    DebugConsole.Write("[IsIfaceMethod] TRUE token=0x");
+                    DebugConsole.WriteHex(memberRefToken);
+                    DebugConsole.Write(" ifaceMT=0x");
+                    DebugConsole.WriteHex((ulong)interfaceMT);
+                    if (interfaceMT != null)
+                    {
+                        DebugConsole.Write(" slots=");
+                        DebugConsole.WriteDecimal(interfaceMT->_usNumVtableSlots);
+                        DebugConsole.Write(" hash=0x");
+                        DebugConsole.WriteHex(interfaceMT->_uHashCode);
+                    }
+                    DebugConsole.Write(" slot=");
+                    DebugConsole.WriteDecimal((uint)slot);
+                    DebugConsole.Write(" name=");
+                    for (byte* p = memberName; *p != 0 && p < memberName + 30; p++)
+                        DebugConsole.WriteChar((char)*p);
+                    DebugConsole.WriteLine();
                 }
-                DebugConsole.Write(" slot=");
-                DebugConsole.WriteDecimal((uint)slot);
-                DebugConsole.Write(" name=");
-                for (byte* p = memberName; *p != 0 && p < memberName + 30; p++)
-                    DebugConsole.WriteChar((char)*p);
-                DebugConsole.WriteLine();
 
                 return true;
             }
@@ -9238,19 +9296,22 @@ public static unsafe class AssemblyLoader
             argHash = argHash * 31 + (ulong)typeArgMTs[i];
         }
 
-        // Debug: show cache lookup
-        DebugConsole.Write("[GenInst] Lookup: def=0x");
-        DebugConsole.WriteHex(genDefToken);
-        DebugConsole.Write(" argHash=0x");
-        DebugConsole.WriteHex(argHash);
-        DebugConsole.Write(" args=[");
-        for (int i = 0; i < typeArgCount; i++)
+        // Debug: show cache lookup (verbose-jit only)
+        if (JitDiag.VerboseJit)
         {
-            if (i > 0) DebugConsole.Write(",");
-            DebugConsole.Write("0x");
-            DebugConsole.WriteHex((ulong)typeArgMTs[i]);
+            DebugConsole.Write("[GenInst] Lookup: def=0x");
+            DebugConsole.WriteHex(genDefToken);
+            DebugConsole.Write(" argHash=0x");
+            DebugConsole.WriteHex(argHash);
+            DebugConsole.Write(" args=[");
+            for (int i = 0; i < typeArgCount; i++)
+            {
+                if (i > 0) DebugConsole.Write(",");
+                DebugConsole.Write("0x");
+                DebugConsole.WriteHex((ulong)typeArgMTs[i]);
+            }
+            DebugConsole.WriteLine("]");
         }
-        DebugConsole.WriteLine("]");
 
         // Compute bucket index for hash lookup (multiply-shift hash)
         int bucket = (int)(((genDefToken ^ (uint)argHash ^ (uint)(argHash >> 32)) * 0x9E3779B9u) >> 24) & HashBucketMask;
@@ -9268,13 +9329,16 @@ public static unsafe class AssemblyLoader
             }
             if (_genericInstCacheDefTokens[idx] == genDefToken && _genericInstCacheArgHashes[idx] == argHash)
             {
-                DebugConsole.Write("[GenInst] CACHE HIT at ");
-                DebugConsole.WriteDecimal((uint)idx);
-                DebugConsole.Write(" (bucket ");
-                DebugConsole.WriteDecimal((uint)bucket);
-                DebugConsole.Write(") MT=0x");
-                DebugConsole.WriteHex((ulong)_genericInstCacheInstMTs[idx]);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst] CACHE HIT at ");
+                    DebugConsole.WriteDecimal((uint)idx);
+                    DebugConsole.Write(" (bucket ");
+                    DebugConsole.WriteDecimal((uint)bucket);
+                    DebugConsole.Write(") MT=0x");
+                    DebugConsole.WriteHex((ulong)_genericInstCacheInstMTs[idx]);
+                    DebugConsole.WriteLine();
+                }
                 return _genericInstCacheInstMTs[idx];
             }
             // Linear probe to next bucket
@@ -9371,19 +9435,25 @@ public static unsafe class AssemblyLoader
         {
             numVtableSlots = genDefMT->_usNumVtableSlots;
             numInterfaces = genDefMT->_usNumInterfaces;
-            DebugConsole.Write("[GenInst] genDefMT=0x");
-            DebugConsole.WriteHex((ulong)genDefMT);
-            DebugConsole.Write(" slots=");
-            DebugConsole.WriteDecimal(numVtableSlots);
-            DebugConsole.Write(" ifaces=");
-            DebugConsole.WriteDecimal(numInterfaces);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[GenInst] genDefMT=0x");
+                DebugConsole.WriteHex((ulong)genDefMT);
+                DebugConsole.Write(" slots=");
+                DebugConsole.WriteDecimal(numVtableSlots);
+                DebugConsole.Write(" ifaces=");
+                DebugConsole.WriteDecimal(numInterfaces);
+                DebugConsole.WriteLine();
+            }
         }
         else
         {
-            DebugConsole.Write("[GenInst] genDefMT is NULL for token 0x");
-            DebugConsole.WriteHex(genDefToken);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[GenInst] genDefMT is NULL for token 0x");
+                DebugConsole.WriteHex(genDefToken);
+                DebugConsole.WriteLine();
+            }
 
             // When genDefMT is null, try to get interface count from metadata
             if (defAsm != null && defTypeDefToken != 0)
@@ -9393,11 +9463,14 @@ public static unsafe class AssemblyLoader
                 numVtableSlots = CountVtableSlotsForType(defAsm, typeDefRow);
                 if (numVtableSlots < 3) numVtableSlots = 3;  // Minimum Object methods
 
-                DebugConsole.Write("[GenInst] From metadata: vtSlots=");
-                DebugConsole.WriteDecimal(numVtableSlots);
-                DebugConsole.Write(" ifaces=");
-                DebugConsole.WriteDecimal(numInterfaces);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst] From metadata: vtSlots=");
+                    DebugConsole.WriteDecimal(numVtableSlots);
+                    DebugConsole.Write(" ifaces=");
+                    DebugConsole.WriteDecimal(numInterfaces);
+                    DebugConsole.WriteLine();
+                }
             }
         }
 
@@ -9476,11 +9549,14 @@ public static unsafe class AssemblyLoader
                 uint computedSize = ComputeInstanceSize(defAsm, typeDefRow, true) + 8;
                 instMT->_uBaseSize = computedSize;
 
-                DebugConsole.Write("[GenInst] ValueType recalculated size: ");
-                DebugConsole.WriteDecimal(computedSize);
-                DebugConsole.Write(" (was ");
-                DebugConsole.WriteDecimal(genDefMT->_uBaseSize);
-                DebugConsole.WriteLine(")");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst] ValueType recalculated size: ");
+                    DebugConsole.WriteDecimal(computedSize);
+                    DebugConsole.Write(" (was ");
+                    DebugConsole.WriteDecimal(genDefMT->_uBaseSize);
+                    DebugConsole.WriteLine(")");
+                }
 
                 // Restore context
                 if (savedContextCnt > 0)
@@ -9585,13 +9661,16 @@ public static unsafe class AssemblyLoader
 
                             JIT.MetadataIntegration.SetTypeTypeArgs(typeArgMTs, typeArgCount);
 
-                            DebugConsole.Write("[GenInst] Eager compile slot ");
-                            DebugConsole.WriteDecimal((uint)i);
-                            DebugConsole.Write(" token=0x");
-                            DebugConsole.WriteHex(info->Token);
-                            DebugConsole.Write(" for MT=0x");
-                            DebugConsole.WriteHex((ulong)instMT);
-                            DebugConsole.WriteLine();
+                            if (JitDiag.VerboseJit)
+                            {
+                                DebugConsole.Write("[GenInst] Eager compile slot ");
+                                DebugConsole.WriteDecimal((uint)i);
+                                DebugConsole.Write(" token=0x");
+                                DebugConsole.WriteHex(info->Token);
+                                DebugConsole.Write(" for MT=0x");
+                                DebugConsole.WriteHex((ulong)instMT);
+                                DebugConsole.WriteLine();
+                            }
 
                             // Set vtable slot hint so PopulateVtableSlot uses the correct slot
                             // instead of computing it (which can be wrong for interface implementations)
@@ -9602,11 +9681,14 @@ public static unsafe class AssemblyLoader
                             if (jitResult.Success && jitResult.CodeAddress != null)
                             {
                                 dstVtable[i] = (nint)jitResult.CodeAddress;
-                                DebugConsole.Write("[GenInst] Slot ");
-                                DebugConsole.WriteDecimal((uint)i);
-                                DebugConsole.Write(" = 0x");
-                                DebugConsole.WriteHex((ulong)jitResult.CodeAddress);
-                                DebugConsole.WriteLine();
+                                if (JitDiag.VerboseJit)
+                                {
+                                    DebugConsole.Write("[GenInst] Slot ");
+                                    DebugConsole.WriteDecimal((uint)i);
+                                    DebugConsole.Write(" = 0x");
+                                    DebugConsole.WriteHex((ulong)jitResult.CodeAddress);
+                                    DebugConsole.WriteLine();
+                                }
                             }
 
                             // Restore context
@@ -9676,14 +9758,17 @@ public static unsafe class AssemblyLoader
                             // With type context set, resolving it will give us Comparer<int>
                             uint typeSpecToken = 0x1B000000 | extendsIdx.RowId;
                             instBaseMT = ResolveTypeSpec(defAsm, typeSpecToken);
-                            DebugConsole.Write("[GenInst] Resolved TypeSpec base class MT=0x");
-                            DebugConsole.WriteHex((ulong)instBaseMT);
-                            if (instBaseMT != null)
+                            if (JitDiag.VerboseJit)
                             {
-                                DebugConsole.Write(" ifaces=");
-                                DebugConsole.WriteDecimal(instBaseMT->_usNumInterfaces);
+                                DebugConsole.Write("[GenInst] Resolved TypeSpec base class MT=0x");
+                                DebugConsole.WriteHex((ulong)instBaseMT);
+                                if (instBaseMT != null)
+                                {
+                                    DebugConsole.Write(" ifaces=");
+                                    DebugConsole.WriteDecimal(instBaseMT->_usNumInterfaces);
+                                }
+                                DebugConsole.WriteLine();
                             }
-                            DebugConsole.WriteLine();
                         }
                         else if (extendsIdx.Table == MetadataTableId.TypeDef)
                         {
@@ -9709,9 +9794,12 @@ public static unsafe class AssemblyLoader
                         InterfaceMapEntry* srcMap = instBaseMT->GetInterfaceMapPtr();
                         InterfaceMapEntry* dstMap = instMT->GetInterfaceMapPtr();
 
-                        DebugConsole.Write("[GenInst] Copying ");
-                        DebugConsole.WriteDecimal((uint)inheritedIfaceCount);
-                        DebugConsole.WriteLine(" inherited interfaces from instantiated base");
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[GenInst] Copying ");
+                            DebugConsole.WriteDecimal((uint)inheritedIfaceCount);
+                            DebugConsole.WriteLine(" inherited interfaces from instantiated base");
+                        }
 
                         for (int i = 0; i < inheritedIfaceCount; i++)
                         {
@@ -9755,9 +9843,12 @@ public static unsafe class AssemblyLoader
                 if ((typeFlags & 0x20) == tdInterface)
                 {
                     flags |= (ushort)(MTFlags.IsInterface >> 16);
-                    DebugConsole.Write("[GenInst] Detected interface type from metadata, row=");
-                    DebugConsole.WriteDecimal(typeDefRow);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[GenInst] Detected interface type from metadata, row=");
+                        DebugConsole.WriteDecimal(typeDefRow);
+                        DebugConsole.WriteLine();
+                    }
                 }
 
                 // Check if this type extends MulticastDelegate (i.e., is a delegate)
@@ -9765,9 +9856,12 @@ public static unsafe class AssemblyLoader
                 if (extendsIdx.RowId != 0 && IsDelegateBase(defAsm, extendsIdx))
                 {
                     flags |= (ushort)(MTFlags.IsDelegate >> 16);
-                    DebugConsole.Write("[GenInst] Detected delegate type from metadata, row=");
-                    DebugConsole.WriteDecimal(typeDefRow);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[GenInst] Detected delegate type from metadata, row=");
+                        DebugConsole.WriteDecimal(typeDefRow);
+                        DebugConsole.WriteLine();
+                    }
                 }
 
                 // Set type context before computing size (for field type resolution)
@@ -9782,9 +9876,12 @@ public static unsafe class AssemblyLoader
                 uint computedSize = ComputeInstanceSize(defAsm, typeDefRow, false);
                 instMT->_uBaseSize = computedSize;
 
-                DebugConsole.Write("[GenInst] No genDefMT - computed size: ");
-                DebugConsole.WriteDecimal(computedSize);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst] No genDefMT - computed size: ");
+                    DebugConsole.WriteDecimal(computedSize);
+                    DebugConsole.WriteLine();
+                }
 
                 // Restore context
                 if (savedContextCnt > 0)
@@ -9824,9 +9921,12 @@ public static unsafe class AssemblyLoader
 
                 PopulateGenericInstInterfaceMap(defAsm, typeDefRow, instMT, null, 3);
 
-                DebugConsole.Write("[GenInst] Populated ");
-                DebugConsole.WriteDecimal(numInterfaces);
-                DebugConsole.WriteLine(" interface(s) for genDefMT=null case");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst] Populated ");
+                    DebugConsole.WriteDecimal(numInterfaces);
+                    DebugConsole.WriteLine(" interface(s) for genDefMT=null case");
+                }
 
                 // Restore context
                 if (savedCtxCnt > 0)
@@ -9857,7 +9957,7 @@ public static unsafe class AssemblyLoader
         instMT->_uHashCode = (uint)(genDefToken ^ argHash ^ (argHash >> 32));
 
         // Log the cache slot used (caching was done early to break recursive loops)
-        if (cacheSlot >= 0)
+        if (cacheSlot >= 0 && JitDiag.VerboseJit)
         {
             DebugConsole.Write("[GenInst] CACHE MISS - creating at ");
             DebugConsole.WriteDecimal((uint)cacheSlot);
@@ -9874,23 +9974,26 @@ public static unsafe class AssemblyLoader
             Reflection.ReflectionRuntime.RegisterTypeInfo(defAsm->AssemblyId, defTypeDefToken, instMT);
         }
 
-        // Debug output
-        DebugConsole.Write("[AsmLoader] Created GenericInst MT 0x");
-        DebugConsole.WriteHex((ulong)instMT);
-        DebugConsole.Write(" for def 0x");
-        DebugConsole.WriteHex(genDefToken);
-        DebugConsole.Write(" with ");
-        DebugConsole.WriteDecimal((uint)typeArgCount);
-        DebugConsole.Write(" type args, isVT=");
-        DebugConsole.Write(isValueType ? "Y" : "N");
-        DebugConsole.Write(" [args:");
-        for (int i = 0; i < typeArgCount && i < 4; i++)
+        // Debug output (verbose-jit only)
+        if (JitDiag.VerboseJit)
         {
-            DebugConsole.Write(" 0x");
-            DebugConsole.WriteHex((ulong)typeArgMTs[i]);
+            DebugConsole.Write("[AsmLoader] Created GenericInst MT 0x");
+            DebugConsole.WriteHex((ulong)instMT);
+            DebugConsole.Write(" for def 0x");
+            DebugConsole.WriteHex(genDefToken);
+            DebugConsole.Write(" with ");
+            DebugConsole.WriteDecimal((uint)typeArgCount);
+            DebugConsole.Write(" type args, isVT=");
+            DebugConsole.Write(isValueType ? "Y" : "N");
+            DebugConsole.Write(" [args:");
+            for (int i = 0; i < typeArgCount && i < 4; i++)
+            {
+                DebugConsole.Write(" 0x");
+                DebugConsole.WriteHex((ulong)typeArgMTs[i]);
+            }
+            DebugConsole.Write("]");
+            DebugConsole.WriteLine();
         }
-        DebugConsole.Write("]");
-        DebugConsole.WriteLine();
 
         return instMT;
     }
@@ -9911,14 +10014,17 @@ public static unsafe class AssemblyLoader
         // may store TypeSpec tokens (0x03...) instead of normalized tokens
         uint typeSpecToken = 0x03000000 | typeDefRow;
 
-        // Debug: show what we're looking for
-        DebugConsole.Write("[PropagateVT] Searching for def 0x");
-        DebugConsole.WriteHex(normalizedGenDefToken);
-        DebugConsole.Write(" slot ");
-        DebugConsole.WriteDecimal((uint)vtableSlot);
-        DebugConsole.Write(" in cache (count=");
-        DebugConsole.WriteDecimal((uint)_genericInstCacheCount);
-        DebugConsole.WriteLine(")");
+        // Debug: show what we're looking for (verbose-jit only)
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[PropagateVT] Searching for def 0x");
+            DebugConsole.WriteHex(normalizedGenDefToken);
+            DebugConsole.Write(" slot ");
+            DebugConsole.WriteDecimal((uint)vtableSlot);
+            DebugConsole.Write(" in cache (count=");
+            DebugConsole.WriteDecimal((uint)_genericInstCacheCount);
+            DebugConsole.WriteLine(")");
+        }
 
         // Scan the generic instantiation cache for MTs derived from this generic definition
         for (int i = 0; i < _genericInstCacheCount; i++)
@@ -9933,13 +10039,16 @@ public static unsafe class AssemblyLoader
                     nint* vtable = instMT->GetVtablePtr();
                     if (vtable[vtableSlot] == 0)  // Only update if currently null
                     {
-                        DebugConsole.Write("[PropagateVT] Updated slot ");
-                        DebugConsole.WriteDecimal((uint)vtableSlot);
-                        DebugConsole.Write(" on MT 0x");
-                        DebugConsole.WriteHex((ulong)instMT);
-                        DebugConsole.Write(" with code 0x");
-                        DebugConsole.WriteHex((ulong)nativeCode);
-                        DebugConsole.WriteLine();
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[PropagateVT] Updated slot ");
+                            DebugConsole.WriteDecimal((uint)vtableSlot);
+                            DebugConsole.Write(" on MT 0x");
+                            DebugConsole.WriteHex((ulong)instMT);
+                            DebugConsole.Write(" with code 0x");
+                            DebugConsole.WriteHex((ulong)nativeCode);
+                            DebugConsole.WriteLine();
+                        }
                         vtable[vtableSlot] = nativeCode;
                     }
                 }

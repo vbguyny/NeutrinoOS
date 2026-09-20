@@ -2668,13 +2668,16 @@ public static unsafe class MetadataIntegration
 
         if (found)
         {
-            DebugConsole.Write("[AotMemberRef] Found AOT method: ");
-            WriteByteString(typeName);
-            DebugConsole.Write(".");
-            WriteByteString(memberName);
-            DebugConsole.Write(" -> 0x");
-            DebugConsole.WriteHex((ulong)entry.NativeCode);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AotMemberRef] Found AOT method: ");
+                WriteByteString(typeName);
+                DebugConsole.Write(".");
+                WriteByteString(memberName);
+                DebugConsole.Write(" -> 0x");
+                DebugConsole.WriteHex((ulong)entry.NativeCode);
+                DebugConsole.WriteLine();
+            }
 
             result.NativeCode = (void*)entry.NativeCode;
             result.IsAotTarget = true;
@@ -3124,13 +3127,16 @@ public static unsafe class MetadataIntegration
             byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
             if (name != null && name[0] == 'g' && name[1] == 'e' && name[2] == 't' && name[3] == '_')
             {
-                DebugConsole.Write("[MemberRef] IsIface tok=0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.Write(" = ");
-                DebugConsole.Write(isIface ? "Y" : "N");
-                DebugConsole.Write(" MT=0x");
-                DebugConsole.WriteHex((ulong)interfaceMT);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[MemberRef] IsIface tok=0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.Write(" = ");
+                    DebugConsole.Write(isIface ? "Y" : "N");
+                    DebugConsole.Write(" MT=0x");
+                    DebugConsole.WriteHex((ulong)interfaceMT);
+                    DebugConsole.WriteLine();
+                }
             }
         }
         if (isIface)
@@ -3224,11 +3230,14 @@ public static unsafe class MetadataIntegration
                 SetTypeTypeArgs(typeArgs, typeArgCount);
                 hasGenericContext = true;
 
-                DebugConsole.Write("[MetaInt] Set type arg context: ");
-                DebugConsole.WriteDecimal((uint)typeArgCount);
-                DebugConsole.Write(" args for MemberRef 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[MetaInt] Set type arg context: ");
+                    DebugConsole.WriteDecimal((uint)typeArgCount);
+                    DebugConsole.Write(" args for MemberRef 0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.WriteLine();
+                }
             }
             else if (genericInstMT->_relatedType != null)
             {
@@ -3237,11 +3246,14 @@ public static unsafe class MetadataIntegration
                 SetTypeTypeArgs(typeArgs, 1);
                 hasGenericContext = true;
 
-                DebugConsole.Write("[MetaInt] Set type arg context (legacy): MT=0x");
-                DebugConsole.WriteHex((ulong)genericInstMT->_relatedType);
-                DebugConsole.Write(" for MemberRef 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[MetaInt] Set type arg context (legacy): MT=0x");
+                    DebugConsole.WriteHex((ulong)genericInstMT->_relatedType);
+                    DebugConsole.Write(" for MemberRef 0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.WriteLine();
+                }
             }
         }
 
@@ -3358,22 +3370,25 @@ public static unsafe class MetadataIntegration
             byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
             if (name != null && name[0] == 'g' && name[1] == 'e' && name[2] == 't' && name[3] == '_')
             {
-                DebugConsole.Write("[ResolveMDef] get_* method=0x");
-                DebugConsole.WriteHex(methodToken);
-                DebugConsole.Write(" asm=");
-                DebugConsole.WriteDecimal(targetAsmId);
-                DebugConsole.Write(" info=");
-                DebugConsole.WriteHex((ulong)info);
-                if (info != null)
+                if (JitDiag.VerboseJit)
                 {
-                    DebugConsole.Write(" isComp=");
-                    DebugConsole.Write(info->IsCompiled ? "Y" : "N");
-                    DebugConsole.Write(" isVirt=");
-                    DebugConsole.Write(info->IsVirtual ? "Y" : "N");
-                    DebugConsole.Write(" slot=");
-                    DebugConsole.WriteDecimal((uint)(ushort)info->VtableSlot);
+                    DebugConsole.Write("[ResolveMDef] get_* method=0x");
+                    DebugConsole.WriteHex(methodToken);
+                    DebugConsole.Write(" asm=");
+                    DebugConsole.WriteDecimal(targetAsmId);
+                    DebugConsole.Write(" info=");
+                    DebugConsole.WriteHex((ulong)info);
+                    if (info != null)
+                    {
+                        DebugConsole.Write(" isComp=");
+                        DebugConsole.Write(info->IsCompiled ? "Y" : "N");
+                        DebugConsole.Write(" isVirt=");
+                        DebugConsole.Write(info->IsVirtual ? "Y" : "N");
+                        DebugConsole.Write(" slot=");
+                        DebugConsole.WriteDecimal((uint)(ushort)info->VtableSlot);
+                    }
+                    DebugConsole.WriteLine();
                 }
-                DebugConsole.WriteLine();
             }
         }
 
@@ -3606,13 +3621,16 @@ public static unsafe class MetadataIntegration
                 byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
                 if (name != null && name[0] == 'g' && name[1] == 'e' && name[2] == 't' && name[3] == '_')
                 {
-                    DebugConsole.Write("[ResolveMDef] get_* result: isVirt=");
-                    DebugConsole.Write(result.IsVirtual ? "Y" : "N");
-                    DebugConsole.Write(" slot=");
-                    DebugConsole.WriteDecimal((uint)(ushort)result.VtableSlot);
-                    DebugConsole.Write(" code=0x");
-                    DebugConsole.WriteHex((ulong)result.NativeCode);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[ResolveMDef] get_* result: isVirt=");
+                        DebugConsole.Write(result.IsVirtual ? "Y" : "N");
+                        DebugConsole.Write(" slot=");
+                        DebugConsole.WriteDecimal((uint)(ushort)result.VtableSlot);
+                        DebugConsole.Write(" code=0x");
+                        DebugConsole.WriteHex((ulong)result.NativeCode);
+                        DebugConsole.WriteLine();
+                    }
                 }
             }
         }
@@ -4015,10 +4033,13 @@ public static unsafe class MetadataIntegration
     /// </summary>
     public static void ClearMethodTypeArgContext()
     {
-        DebugConsole.Write("[MetaInt] CLEAR context: count ");
-        DebugConsole.WriteDecimal((uint)_methodTypeArgCount);
-        DebugConsole.Write(" -> 0");
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[MetaInt] CLEAR context: count ");
+            DebugConsole.WriteDecimal((uint)_methodTypeArgCount);
+            DebugConsole.Write(" -> 0");
+            DebugConsole.WriteLine();
+        }
         _methodTypeArgCount = 0;
         // Also clear the MT array to prevent stale MTs from being saved
         for (int i = 0; i < MaxMethodTypeArgs; i++)
@@ -4106,20 +4127,27 @@ public static unsafe class MetadataIntegration
     /// </summary>
     public static MethodTable* GetTypeTypeArgMethodTable(int index)
     {
-        DebugConsole.Write("[GetTypeArg] idx=");
-        DebugConsole.WriteDecimal((uint)index);
-        DebugConsole.Write(" count=");
-        DebugConsole.WriteDecimal((uint)_typeTypeArgCount);
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[GetTypeArg] idx=");
+            DebugConsole.WriteDecimal((uint)index);
+            DebugConsole.Write(" count=");
+            DebugConsole.WriteDecimal((uint)_typeTypeArgCount);
+        }
 
         if (index < 0 || index >= _typeTypeArgCount)
         {
-            DebugConsole.WriteLine(" -> OUT OF RANGE");
+            if (JitDiag.VerboseJit)
+                DebugConsole.WriteLine(" -> OUT OF RANGE");
             return null;
         }
 
-        DebugConsole.Write(" -> MT=0x");
-        DebugConsole.WriteHex((ulong)_typeTypeArgMTs[index]);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write(" -> MT=0x");
+            DebugConsole.WriteHex((ulong)_typeTypeArgMTs[index]);
+            DebugConsole.WriteLine();
+        }
         return _typeTypeArgMTs[index];
     }
 
@@ -4128,16 +4156,19 @@ public static unsafe class MetadataIntegration
     /// </summary>
     public static void SetTypeTypeArgs(MethodTable** mts, int count)
     {
-        DebugConsole.Write("[SetTypeArgs] count=");
-        DebugConsole.WriteDecimal((uint)count);
-        for (int i = 0; i < count && i < 4; i++)
+        if (JitDiag.VerboseJit)
         {
-            DebugConsole.Write(" arg");
-            DebugConsole.WriteDecimal((uint)i);
-            DebugConsole.Write("=0x");
-            DebugConsole.WriteHex((ulong)mts[i]);
+            DebugConsole.Write("[SetTypeArgs] count=");
+            DebugConsole.WriteDecimal((uint)count);
+            for (int i = 0; i < count && i < 4; i++)
+            {
+                DebugConsole.Write(" arg");
+                DebugConsole.WriteDecimal((uint)i);
+                DebugConsole.Write("=0x");
+                DebugConsole.WriteHex((ulong)mts[i]);
+            }
+            DebugConsole.WriteLine();
         }
-        DebugConsole.WriteLine();
 
         _typeTypeArgCount = count > MaxTypeTypeArgs ? MaxTypeTypeArgs : count;
         for (int i = 0; i < _typeTypeArgCount; i++)

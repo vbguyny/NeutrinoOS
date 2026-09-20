@@ -35,6 +35,14 @@ Remove-Item -Force $vdi -ErrorAction SilentlyContinue
 Write-Host "Converting image to VDI..."
 & $vb convertfromraw $img $vdi --format VDI | Out-Null
 
+# Force a stable UUID on the VDI. The media registry remembers media by
+# file path with the UUID value from when it was first registered; a
+# freshly converted file gets a random UUID, which then fails to match
+# and storageattach errors with a UUID-mismatch (VBOX_E_OBJECT_IN_USE /
+# E_FAIL). Setting a fixed UUID keeps the registry value consistent
+# across recreations of this file.
+& $vb internalcommands sethduuid $vdi "8b104360-046c-482f-ab1d-7c2a8b8af8d4" | Out-Null
+
 Write-Host "Creating VM..."
 & $vb createvm --name $name --ostype Other_64 --register | Out-Null
 # NOTE: 2 vCPUs are required - VirtualBox's EFI firmware #GPs in its

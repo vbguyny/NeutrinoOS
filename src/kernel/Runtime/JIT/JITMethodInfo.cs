@@ -373,15 +373,18 @@ public unsafe struct JITMethodInfo
         {
             fixed (byte* src = _ehClauseData)
             {
-                DebugConsole.Write("[BuildEHInfo] clauseDataSize=");
-                DebugConsole.WriteDecimal((uint)clauseDataSize);
-                DebugConsole.Write(" bytes: ");
-                for (int i = 0; i < clauseDataSize && i < 16; i++)
+                if (JitDiag.VerboseJit)
                 {
-                    DebugConsole.WriteHex((ulong)src[i]);
-                    DebugConsole.Write(" ");
+                    DebugConsole.Write("[BuildEHInfo] clauseDataSize=");
+                    DebugConsole.WriteDecimal((uint)clauseDataSize);
+                    DebugConsole.Write(" bytes: ");
+                    for (int i = 0; i < clauseDataSize && i < 16; i++)
+                    {
+                        DebugConsole.WriteHex((ulong)src[i]);
+                        DebugConsole.Write(" ");
+                    }
+                    DebugConsole.WriteLine();
                 }
-                DebugConsole.WriteLine();
 
                 for (int i = 0; i < clauseDataSize; i++)
                 {
@@ -990,27 +993,30 @@ public static unsafe class JITMethodRegistry
 
         if (success)
         {
-            DebugConsole.Write("[JITRegistry] Registered method base=0x");
-            DebugConsole.WriteHex(info.CodeBase);
-            DebugConsole.Write(" RVA 0x");
-            DebugConsole.WriteHex(info.Function.BeginAddress);
-            DebugConsole.Write("-0x");
-            DebugConsole.WriteHex(info.Function.EndAddress);
-            DebugConsole.Write(" unwind=0x");
-            DebugConsole.WriteHex(unwindRva);
-            if (info.EHClauseCount > 0)
+            if (JitDiag.VerboseJit)
             {
-                DebugConsole.Write(" with ");
-                DebugConsole.WriteDecimal(info.EHClauseCount);
-                DebugConsole.Write(" EH clause(s)");
+                DebugConsole.Write("[JITRegistry] Registered method base=0x");
+                DebugConsole.WriteHex(info.CodeBase);
+                DebugConsole.Write(" RVA 0x");
+                DebugConsole.WriteHex(info.Function.BeginAddress);
+                DebugConsole.Write("-0x");
+                DebugConsole.WriteHex(info.Function.EndAddress);
+                DebugConsole.Write(" unwind=0x");
+                DebugConsole.WriteHex(unwindRva);
+                if (info.EHClauseCount > 0)
+                {
+                    DebugConsole.Write(" with ");
+                    DebugConsole.WriteDecimal(info.EHClauseCount);
+                    DebugConsole.Write(" EH clause(s)");
+                }
+                if (info.FuncletCount > 0)
+                {
+                    DebugConsole.Write(" + ");
+                    DebugConsole.WriteDecimal(info.FuncletCount);
+                    DebugConsole.Write(" funclet(s)");
+                }
+                DebugConsole.WriteLine();
             }
-            if (info.FuncletCount > 0)
-            {
-                DebugConsole.Write(" + ");
-                DebugConsole.WriteDecimal(info.FuncletCount);
-                DebugConsole.Write(" funclet(s)");
-            }
-            DebugConsole.WriteLine();
         }
 
         return success;

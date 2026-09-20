@@ -86,10 +86,26 @@ public static unsafe class DebugConsole
     // without doubling CR in an existing "\r\n" sequence.
     private static bool _lastWasCr;
 
+    // Optional early VGA mirror: set by ConsoleAbstractionLayer once the
+    // VGA text console is up (before the CAL routes output through the
+    // device multiplexer). Receives the same byte stream as the UART,
+    // including the CR inserted for LF. Must be ISR-safe.
+    private static delegate* unmanaged<byte, void> _earlyMirror;
+
+    /// <summary>
+    /// Installs (or clears, with null) the early VGA mirror used between
+    /// early VGA console bring-up and full CAL initialization.
+    /// </summary>
+    public static void SetEarlyMirror(delegate* unmanaged<byte, void> mirror)
+    {
+        _earlyMirror = mirror;
+    }
+
     /// <summary>
     /// Write a single byte, translating LF to CRLF (console line discipline).
     /// Routes through the CAL once initialized; otherwise writes the UART
-    /// directly (early boot).
+    /// directly (early boot) and mirrors to the early VGA console, if one
+    /// was brought up.
     /// </summary>
     public static void WriteByte(byte b)
     {
@@ -99,11 +115,16 @@ public static unsafe class DebugConsole
             return;
         }
 
+        delegate* unmanaged<byte, void> mirror = _earlyMirror;
         if (b == 0x0A && !_lastWasCr)
         {
             Uart16550.WriteByte(0x0D);  // CR before LF for serial terminals that need CRLF
+            if (mirror != null)
+                mirror(0x0D);
         }
         Uart16550.WriteByte(b);
+        if (mirror != null)
+            mirror(b);
         _lastWasCr = b == 0x0D;
     }
 

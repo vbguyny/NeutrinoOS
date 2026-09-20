@@ -2038,7 +2038,7 @@ public unsafe struct ILCompiler
                     uint token = *(uint*)(_il + _ilOffset);
                     _ilOffset += 4;
                     // DEBUG: trace all stfld opcodes for VirtIO (asm 4)
-                    if (_debugAssemblyId == 4)
+                    if (_debugAssemblyId == 4 && JitDiag.VerboseJit)
                     {
                         DebugConsole.Write("[STFLD-OP] asm=4 tok=0x");
                         DebugConsole.WriteHex(token);
@@ -6285,11 +6285,14 @@ public unsafe struct ILCompiler
 
             case ReturnKind.Struct:
                 // Handle struct returns based on size
-                DebugConsole.Write("[JIT Call] tok=0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.Write(" structRet=");
-                DebugConsole.WriteDecimal(method.ReturnStructSize);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[JIT Call] tok=0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.Write(" structRet=");
+                    DebugConsole.WriteDecimal(method.ReturnStructSize);
+                    DebugConsole.WriteLine();
+                }
                 if (method.ReturnStructSize <= 8)
                 {
                     // Small struct (1-8 bytes): value in RAX, push directly
@@ -6969,7 +6972,7 @@ public unsafe struct ILCompiler
         }
 
         // Debug: Trace callvirt method resolution
-        if (method.IsVirtual && method.VtableSlot >= 0)
+        if (JitDiag.VerboseJit && method.IsVirtual && method.VtableSlot >= 0)
         {
             DebugConsole.Write("[callvirt] tok=0x");
             DebugConsole.WriteHex(token);
@@ -6984,15 +6987,18 @@ public unsafe struct ILCompiler
         else
         {
             // Debug: trace direct callvirt (non-virtual or devirtualized)
-            DebugConsole.Write("[callvirt-direct] tok=0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" code=0x");
-            DebugConsole.WriteHex((ulong)method.NativeCode);
-            DebugConsole.Write(" args=");
-            DebugConsole.WriteDecimal((uint)method.ArgCount);
-            DebugConsole.Write(" hasThis=");
-            DebugConsole.Write(method.HasThis ? "Y" : "N");
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[callvirt-direct] tok=0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" code=0x");
+                DebugConsole.WriteHex((ulong)method.NativeCode);
+                DebugConsole.Write(" args=");
+                DebugConsole.WriteDecimal((uint)method.ArgCount);
+                DebugConsole.Write(" hasThis=");
+                DebugConsole.Write(method.HasThis ? "Y" : "N");
+                DebugConsole.WriteLine();
+            }
         }
 
         // Special case: delegate Invoke
@@ -8841,7 +8847,7 @@ public unsafe struct ILCompiler
             // subsequent field accesses use the correct byte offsets.
 
             // Debug ldfld for reference type fields from value types
-            if (isValueType && !fieldTypeIsValueType && size == 8)
+            if (isValueType && !fieldTypeIsValueType && size == 8 && JitDiag.VerboseJit)
             {
                 DebugConsole.Write("[ldfld] ref field from VT: tok=0x");
                 DebugConsole.WriteHex(token);
@@ -8964,8 +8970,8 @@ public unsafe struct ILCompiler
     /// </summary>
     private bool CompileStfld(uint token)
     {
-        // DEBUG: unconditionally trace stfld entry for VirtIO
-        if (_debugAssemblyId == 4)
+        // DEBUG: trace stfld entry for VirtIO (verbose-jit only)
+        if (_debugAssemblyId == 4 && JitDiag.VerboseJit)
         {
             DebugConsole.Write("[CS] tok=0x");
             DebugConsole.WriteHex(token);
@@ -8986,15 +8992,18 @@ public unsafe struct ILCompiler
             isFieldTypeValueType = field.IsFieldTypeValueType;
 
             // DEBUG: trace stfld resolution
-            DebugConsole.Write("[stfld] token=0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" off=");
-            DebugConsole.WriteDecimal(offset);
-            DebugConsole.Write(" size=");
-            DebugConsole.WriteDecimal(size);
-            DebugConsole.Write(" isValType=");
-            DebugConsole.Write(isFieldTypeValueType ? "Y" : "N");
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[stfld] token=0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" off=");
+                DebugConsole.WriteDecimal(offset);
+                DebugConsole.Write(" size=");
+                DebugConsole.WriteDecimal(size);
+                DebugConsole.Write(" isValType=");
+                DebugConsole.Write(isFieldTypeValueType ? "Y" : "N");
+                DebugConsole.WriteLine();
+            }
         }
         else
         {
@@ -10048,11 +10057,14 @@ public unsafe struct ILCompiler
         uint elemSize = MetadataIntegration.GetTypeSize(token);
 
         // Debug: trace ldelema element size
-        DebugConsole.Write("[ldelema] token=0x");
-        DebugConsole.WriteHex(token);
-        DebugConsole.Write(" elemSize=");
-        DebugConsole.WriteDecimal(elemSize);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[ldelema] token=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" elemSize=");
+            DebugConsole.WriteDecimal(elemSize);
+            DebugConsole.WriteLine();
+        }
 
         // Pop index and array
         X64Emitter.Pop(ref _code, VReg.R1);  // index
@@ -10118,26 +10130,32 @@ public unsafe struct ILCompiler
     /// </summary>
     private bool CompileNewobj(uint token)
     {
-        DebugConsole.Write("[JIT newobj] token=0x");
-        DebugConsole.WriteHex(token);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[JIT newobj] token=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.WriteLine();
+        }
 
         // Try to resolve as a registered constructor
         ResolvedMethod ctor;
         bool resolved = ResolveMethod(token, out ctor);
 
-        DebugConsole.Write("[JIT newobj] resolved=");
-        DebugConsole.Write(resolved ? "Y" : "N");
-        if (resolved)
+        if (JitDiag.VerboseJit)
         {
-            DebugConsole.Write(" valid=");
-            DebugConsole.Write(ctor.IsValid ? "Y" : "N");
-            DebugConsole.Write(" MT=0x");
-            DebugConsole.WriteHex((ulong)ctor.MethodTable);
-            DebugConsole.Write(" code=0x");
-            DebugConsole.WriteHex((ulong)ctor.NativeCode);
+            DebugConsole.Write("[JIT newobj] resolved=");
+            DebugConsole.Write(resolved ? "Y" : "N");
+            if (resolved)
+            {
+                DebugConsole.Write(" valid=");
+                DebugConsole.Write(ctor.IsValid ? "Y" : "N");
+                DebugConsole.Write(" MT=0x");
+                DebugConsole.WriteHex((ulong)ctor.MethodTable);
+                DebugConsole.Write(" code=0x");
+                DebugConsole.WriteHex((ulong)ctor.NativeCode);
+            }
+            DebugConsole.WriteLine();
         }
-        DebugConsole.WriteLine();
 
         // Special case: Factory-style constructors (like String..ctor, Exception..ctor)
         // These are registered with HasThis=false - they allocate and return the object themselves
@@ -10340,7 +10358,7 @@ public unsafe struct ILCompiler
             int newobjTempOffset = -(X64Emitter.CalleeSaveSize + (_localCount + 1) * 64);
 
             // Debug: trace newobj temp offset for DisposableTests
-            if (_debugAssemblyId == 6 && mt != null && mt->NumVtableSlots == 4)
+            if (_debugAssemblyId == 6 && mt != null && mt->NumVtableSlots == 4 && JitDiag.VerboseJit)
             {
                 DebugConsole.Write("[newobj] tempOff=");
                 DebugConsole.WriteDecimal((uint)(-newobjTempOffset));
@@ -10473,11 +10491,14 @@ public unsafe struct ILCompiler
             }
 
             // Debug: trace constructor call address
-            DebugConsole.Write("[JIT newobj] Calling ctor at 0x");
-            DebugConsole.WriteHex((ulong)ctor.NativeCode);
-            DebugConsole.Write(" MT=0x");
-            DebugConsole.WriteHex((ulong)ctor.MethodTable);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[JIT newobj] Calling ctor at 0x");
+                DebugConsole.WriteHex((ulong)ctor.NativeCode);
+                DebugConsole.Write(" MT=0x");
+                DebugConsole.WriteHex((ulong)ctor.MethodTable);
+                DebugConsole.WriteLine();
+            }
 
             // Debug: dump code bytes before ctor call
             int preCtorPos = _code.Position;
@@ -10487,14 +10508,17 @@ public unsafe struct ILCompiler
 
             // Debug: dump the ctor call bytes
             int postCtorPos = _code.Position;
-            DebugConsole.Write("[JIT newobj] code bytes: ");
-            byte* codePtr = _code.Code;
-            for (int i = preCtorPos; i < postCtorPos && i < preCtorPos + 20; i++)
+            if (JitDiag.VerboseJit)
             {
-                DebugConsole.WriteHex((ulong)codePtr[i]);
-                DebugConsole.Write(" ");
+                DebugConsole.Write("[JIT newobj] code bytes: ");
+                byte* codePtr = _code.Code;
+                for (int i = preCtorPos; i < postCtorPos && i < preCtorPos + 20; i++)
+                {
+                    DebugConsole.WriteHex((ulong)codePtr[i]);
+                    DebugConsole.Write(" ");
+                }
+                DebugConsole.WriteLine();
             }
-            DebugConsole.WriteLine();
 
             RecordSafePoint();
 
@@ -11730,11 +11754,14 @@ public unsafe struct ILCompiler
         {
             // Method is already compiled - use direct address
             fnPtr = (ulong)resolved.NativeCode;
-            DebugConsole.Write("[ldftn] token 0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" -> fnPtr=0x");
-            DebugConsole.WriteHex(fnPtr);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[ldftn] token 0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" -> fnPtr=0x");
+                DebugConsole.WriteHex(fnPtr);
+                DebugConsole.WriteLine();
+            }
             X64Emitter.MovRI64(ref _code, VReg.R0, fnPtr);
         }
         else if (resolved.RegistryEntry != null)
@@ -11744,11 +11771,14 @@ public unsafe struct ILCompiler
             // Emit code to load from the registry entry at runtime.
             // By the time the ldftn executes, the target method should be compiled.
             CompiledMethodInfo* entry = (CompiledMethodInfo*)resolved.RegistryEntry;
-            DebugConsole.Write("[ldftn] token 0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" -> INDIRECT via registry 0x");
-            DebugConsole.WriteHex((ulong)entry);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[ldftn] token 0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" -> INDIRECT via registry 0x");
+                DebugConsole.WriteHex((ulong)entry);
+                DebugConsole.WriteLine();
+            }
 
             // Emit: mov rax, [registry + 8]  ; Load NativeCode from registry
             X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)entry);
@@ -13358,17 +13388,20 @@ public unsafe struct ILCompiler
                 int nativeTryStartInt = GetNativeOffset(tryStartIL);
                 int nativeTryEndInt = GetNativeOffset(tryEndIL);
 
-                DebugConsole.Write("[CompileWithFunclets] EH clause ");
-                DebugConsole.WriteDecimal((uint)i);
-                DebugConsole.Write(": IL try=[");
-                DebugConsole.WriteDecimal((uint)tryStartIL);
-                DebugConsole.Write("-");
-                DebugConsole.WriteDecimal((uint)tryEndIL);
-                DebugConsole.Write("] -> native=[");
-                DebugConsole.WriteDecimal((uint)nativeTryStartInt);
-                DebugConsole.Write("-");
-                DebugConsole.WriteDecimal((uint)nativeTryEndInt);
-                DebugConsole.WriteLine("]");
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[CompileWithFunclets] EH clause ");
+                    DebugConsole.WriteDecimal((uint)i);
+                    DebugConsole.Write(": IL try=[");
+                    DebugConsole.WriteDecimal((uint)tryStartIL);
+                    DebugConsole.Write("-");
+                    DebugConsole.WriteDecimal((uint)tryEndIL);
+                    DebugConsole.Write("] -> native=[");
+                    DebugConsole.WriteDecimal((uint)nativeTryStartInt);
+                    DebugConsole.Write("-");
+                    DebugConsole.WriteDecimal((uint)nativeTryEndInt);
+                    DebugConsole.WriteLine("]");
+                }
 
                 uint nativeTryStart = (uint)nativeTryStartInt;
                 uint nativeTryEnd = (uint)nativeTryEndInt;

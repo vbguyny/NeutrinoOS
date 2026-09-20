@@ -225,6 +225,12 @@ public static unsafe class Kernel
         // Second-stage arch init (timers, enable interrupts)
         CurrentArch.InitStage2();
 
+        // Early VGA text console: bring the screen up before the long boot
+        // and mirror the boot log to it, so a manual QEMU/VirtualBox boot
+        // is visible in the VM window. Skipped when the console-vga-off
+        // marker is present (automated serial-only test runs).
+        ConsoleAbstractionLayer.EarlyInitVgaConsole();
+
         // Boot progress timing starts here (the HPET is available now)
         BootLog.Status("Arch initialized (timers + interrupts)");
 

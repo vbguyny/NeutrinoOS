@@ -493,19 +493,47 @@ public static unsafe class VgaTextDriver
     /// 0x08 = backspace, everything else is a printable CP437 cell.
     /// Wraps at the right edge and scrolls at the bottom.
     /// </summary>
-    public static void WriteRawByte(byte b)
+    public static void WriteRawByte(byte b) => WriteRawByteCore(b, true);
+
+    /// <summary>
+    /// Like <see cref="WriteRawByte"/> but skips the per-character
+    /// hardware cursor update (the CRTC cursor is still updated on line
+    /// feeds and scrolls). Used by the early boot-log mirror: the mirror
+    /// can emit hundreds of thousands of bytes, and two CRTC port writes
+    /// per character are prohibitively slow on hypervisors that trap
+    /// every port access (e.g. VirtualBox under NEM).
+    /// </summary>
+    public static void WriteRawMirrorByte(byte b) => WriteRawByteCore(b, false);
+
+    private static void WriteRawByteCore(byte b, bool updateCursor)
     {
         switch (b)
         {
             case 0x0D:
-                SetCursorPositionInternal(0, _cursorY);
+                if (updateCursor)
+                {
+                    SetCursorPositionInternal(0, _cursorY);
+                }
+                else
+                {
+                    _cursorX = 0;
+                }
                 return;
             case 0x0A:
                 AdvanceLine();
                 return;
             case 0x08:
                 if (_cursorX > 0)
-                    SetCursorPositionInternal(_cursorX - 1, _cursorY);
+                {
+                    if (updateCursor)
+                    {
+                        SetCursorPositionInternal(_cursorX - 1, _cursorY);
+                    }
+                    else
+                    {
+                        _cursorX--;
+                    }
+                }
                 return;
             default:
                 PutChar(_cursorX, _cursorY, b, _attribute);
@@ -517,7 +545,8 @@ public static unsafe class VgaTextDriver
                 }
                 else
                 {
-                    UpdateHardwareCursor();
+                    if (updateCursor)
+                        UpdateHardwareCursor();
                 }
                 return;
         }

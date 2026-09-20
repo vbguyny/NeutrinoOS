@@ -108,11 +108,14 @@ public static unsafe class CodeHeap
             _currentChunkSize = chunkSize;
             _totalAllocated += chunkSize;
 
-            DebugConsole.Write("[CodeHeap] New chunk at 0x");
-            DebugConsole.WriteHex(virtAddr);
-            DebugConsole.Write(", size ");
-            DebugConsole.WriteDecimal((uint)(chunkSize / 1024));
-            DebugConsole.WriteLine(" KB");
+            if (ProtonOS.Runtime.JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[CodeHeap] New chunk at 0x");
+                DebugConsole.WriteHex(virtAddr);
+                DebugConsole.Write(", size ");
+                DebugConsole.WriteDecimal((uint)(chunkSize / 1024));
+                DebugConsole.WriteLine(" KB");
+            }
         }
 
         // Bump allocate

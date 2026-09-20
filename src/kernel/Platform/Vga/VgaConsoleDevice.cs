@@ -190,6 +190,18 @@ public sealed class VgaConsoleDevice : IConsoleDevice
         TrackChar((char)b);
     }
 
+    /// <summary>
+    /// Raw byte entry used by the early boot-log mirror: same as
+    /// <see cref="EchoRawByte"/> but without the per-character hardware
+    /// cursor update (see <see cref="VgaTextDriver.WriteRawMirrorByte"/>),
+    /// so mirroring hundreds of thousands of boot-log bytes stays cheap.
+    /// </summary>
+    public void MirrorRawByte(byte b)
+    {
+        VgaTextDriver.WriteRawMirrorByte(b);
+        TrackChar((char)b);
+    }
+
     private void TrackChar(char c)
     {
         // Prompt tail: text since the last newline (line redraw support).
