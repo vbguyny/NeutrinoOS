@@ -339,6 +339,11 @@ framebuffer, no crash).
   returns real errno values (`-ENOENT`/`-EROFS`). The suite result is
   otherwise `20 passed, 4 failed` - not a functional failure; tightening
   the test expectations is a candidate cleanup.
+- **Minor: one remaining benign lookup fallback** -
+  `System.RuntimeTypeHandle.get_Value` (20 notices per suite boot) falls
+  back to compiling the korlib IL instead of binding to an AOT entry.
+  Same cleanup class as the NaN/Infinity registrations above; not a
+  failure.
 - **Build-script defects in `make deps`** (section 4.5) - **fixed in-fork**:
 the kernel rule now clears `src/korlib/obj|bin` before invoking bflat and
 the ILCompiler pack step uses an absolute `IntermediateOutputPath`.
