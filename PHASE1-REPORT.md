@@ -302,7 +302,7 @@ framebuffer, no crash).
   via the GitHub UI ("New issue", paste). There is no `gh` CLI or token on
   this machine, so it cannot be filed automatically.
 - ~~Publishing the fork~~ **DONE**: `main` is pushed to
-  `github.com/vbguyny/NeutrinoOS` (latest `a91ec2f`; includes the Phase 1
+  `github.com/vbguyny/NeutrinoOS` (latest `dc64c56`; includes the Phase 1
   fixes, the Phase 2 console, the JIT-console bridge, and the VirtualBox
   bootloader fixes).
 - **VirtualBox verification - PASS (root cause found and fixed in-fork):**
