@@ -70,6 +70,16 @@ public unsafe class AhciController : IDisposable
         _portCount = (int)(_capabilities & (uint)HbaCap.NP_MASK) + 1;
         _cmdSlotCount = (int)((_capabilities >> (int)HbaCap.NCS_SHIFT) & 0x1F) + 1;
 
+        // Reset the HBA to clear any controller state left behind by the
+        // firmware. VirtualBox's EFI uses the disk via AHCI and can leave
+        // the port engine in a state where issued commands are never
+        // fetched from the command list (PxCI stays set, PxIS stays clear).
+        if (!ResetController())
+        {
+            Debug.WriteLine("[AHCI] HBA reset failed");
+            return false;
+        }
+
         // Enable AHCI mode
         if (!EnableAhciMode())
         {

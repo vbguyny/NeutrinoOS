@@ -313,8 +313,19 @@ public static class AhciConst
     // Sector size (512 bytes for most drives)
     public const uint SECTOR_SIZE = 512;
 
+    // H2D register FIS is exactly 20 bytes = 5 DWORDs. The CFL field in a
+    // command header must be exactly this value. Do NOT use
+    // sizeof(FisRegH2D) for this: the JIT rounds struct sizes to 8 bytes
+    // (reporting 24), and VirtualBox rejects commands whose CFL * 4 != 20
+    // by silently dropping them (the port's CI bit then stays set forever).
+    public const int FIS_H2D_DWORDS = 5;
+
     // Timeout values (in loop iterations)
     public const int TIMEOUT_SPINUP = 1000000;
-    public const int TIMEOUT_CMD = 5000000;
-    public const int TIMEOUT_RESET = 1000000;
+    // Poll-iteration bounds. Kept bounded and moderate: an IDENTIFY or a
+    // port reset completes in milliseconds on real hardware; 200k MMIO
+    // poll iterations already tolerate very slow emulated controllers
+    // without stalling the boot for minutes when a controller wedges.
+    public const int TIMEOUT_CMD = 200000;
+    public const int TIMEOUT_RESET = 200000;
 }

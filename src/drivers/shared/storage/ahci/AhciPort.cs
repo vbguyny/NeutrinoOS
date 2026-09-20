@@ -118,6 +118,11 @@ public unsafe class AhciPort : IDisposable
         // Start the command engine
         StartCommandEngine();
 
+        // Wait for the SATA link to (re)establish. After an HBA reset
+        // PxSSTS.DET reports "device detected, phy not established" (1)
+        // until the COMINIT/COMWAKE handshake completes.
+        WaitForDeviceLink();
+
         // Detect device
         if (!DetectDevice())
         {
@@ -232,6 +237,27 @@ public unsafe class AhciPort : IDisposable
     }
 
     /// <summary>
+    /// Waits (bounded) for the SATA link to establish: polls PxSSTS
+    /// until device presence is reported with an active interface power
+    /// state, or the timeout expires. Ports without a device (DET 0)
+    /// return immediately.
+    /// </summary>
+    private void WaitForDeviceLink()
+    {
+        int timeout = AhciConst.TIMEOUT_RESET;
+        while (timeout-- > 0)
+        {
+            uint ssts = ReadPort(PortRegs.SSTS);
+            uint det = ssts & PortSsts.DET_MASK;
+            uint ipm = (ssts & PortSsts.IPM_MASK) >> (int)PortSsts.IPM_SHIFT;
+            if (det == PortSsts.DET_PHY && ipm == PortSsts.IPM_ACTIVE)
+                return;
+            if (det == 0)
+                return; // no device present
+        }
+    }
+
+    /// <summary>
     /// Check if a device is present on this port.
     /// </summary>
     private bool DetectDevice()
@@ -286,7 +312,7 @@ public unsafe class AhciPort : IDisposable
 
         // Set up command header
         ref var header = ref _cmdList[CMD_SLOT];
-        header.Flags1 = (byte)((sizeof(FisRegH2D) / 4) & 0x1F);  // CFL in DWORDs
+        header.Flags1 = (byte)AhciConst.FIS_H2D_DWORDS;  // CFL in DWORDs (exactly 5)
         header.Flags2 = (byte)CmdHeaderFlags2.C;  // Clear busy on R_OK
         header.PrdtLength = 1;
         header.PrdByteCount = 0;
@@ -466,7 +492,7 @@ public unsafe class AhciPort : IDisposable
 
         // Set up command header
         ref var header = ref _cmdList[CMD_SLOT];
-        header.Flags1 = (byte)((sizeof(FisRegH2D) / 4) & 0x1F);  // CFL
+        header.Flags1 = (byte)AhciConst.FIS_H2D_DWORDS;  // CFL
         header.Flags2 = (byte)CmdHeaderFlags2.C;
         header.PrdtLength = 1;
         header.PrdByteCount = 0;
@@ -513,7 +539,7 @@ public unsafe class AhciPort : IDisposable
 
         // Set up command header
         ref var header = ref _cmdList[CMD_SLOT];
-        header.Flags1 = (byte)(((sizeof(FisRegH2D) / 4) & 0x1F) | (1 << 6));  // CFL + W bit
+        header.Flags1 = (byte)(AhciConst.FIS_H2D_DWORDS | (1 << 6));  // CFL + W bit
         header.Flags2 = (byte)CmdHeaderFlags2.C;
         header.PrdtLength = 1;
         header.PrdByteCount = 0;
@@ -545,7 +571,7 @@ public unsafe class AhciPort : IDisposable
 
         // Set up command header (no data transfer)
         ref var header = ref _cmdList[CMD_SLOT];
-        header.Flags1 = (byte)((sizeof(FisRegH2D) / 4) & 0x1F);
+        header.Flags1 = (byte)AhciConst.FIS_H2D_DWORDS;
         header.Flags2 = (byte)CmdHeaderFlags2.C;
         header.PrdtLength = 0;
         header.PrdByteCount = 0;
