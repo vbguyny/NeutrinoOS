@@ -162,6 +162,7 @@ bootloader: $(BOOTLOADER_EFI)
 # Compile kernel (korlib + kernel C# sources together)
 $(KERNEL_OBJ): $(KORLIB_SRC) $(KERNEL_SRC) | $(BUILD_DIR)
 	@echo "BFLAT kernel"
+	rm -rf $(KORLIB_DIR)/obj $(KORLIB_DIR)/bin
 	$(BFLAT) build $(BFLAT_FLAGS) -c -o $@ $(KORLIB_SRC) $(KERNEL_SRC)
 
 kernel: $(KERNEL_OBJ)
@@ -342,7 +343,7 @@ deps: check-deps
 	@echo "Packing ILCompiler..."
 	cd $(RUNTIME_DIR) && ./dotnet.sh pack bflat/pack/ILCompiler.Compiler.nuproj \
 		-p:Version=$(ILC_VERSION) \
-		-p:IntermediateOutputPath=artifacts/bin/coreclr/linux.x64.Release/ilc/
+		-p:IntermediateOutputPath=$(CURDIR)/$(RUNTIME_DIR)/artifacts/bin/coreclr/linux.x64.Release/ilc/
 	@mkdir -p $(NUGET_LOCAL)
 	cp $(RUNTIME_DIR)/artifacts/packages/Release/Shipping/BFlat.Compiler.$(ILC_VERSION).nupkg $(NUGET_LOCAL)/
 	@echo "Building bflat..."

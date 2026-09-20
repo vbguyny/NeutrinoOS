@@ -196,8 +196,9 @@ The interactive shell supports echo, backspace editing, Enter submit,
 arrow-key history (32 entries), Ctrl+C (cancel line), Ctrl+D (logout) and
 ANSI colors via `System.Console` in `korlib`. Boot markers on the image
 root: `skip-boot-tests` (fast console cycles) and `run-console-test`
-(run `console_io_test.dll`; see [PHASE2-REPORT.md](PHASE2-REPORT.md) for
-the one remaining JIT-bridge item).
+(run `console_io_test.dll` — the JIT-app console test, 46/46 passing via
+the JIT→System.Console AOT bridge; see
+[PHASE2-REPORT.md](PHASE2-REPORT.md) §5).
 
 ### Verifying a boot
 

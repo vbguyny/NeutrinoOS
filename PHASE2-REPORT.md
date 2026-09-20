@@ -1,11 +1,10 @@
 # NeutrinoOS Phase 2 Report — Serial Console
 
-Status: **implemented and verified at the shell level**; one JIT-bridge item
-remains for the JIT-app test binary (details in §5).
-
-All work is committed on `main` (see the `phase2:` commits). Verification
-was performed in WSL2 Ubuntu 24.04 with QEMU/KVM + OVMF on the standard
-q35 configuration.
+Status: **implemented and verified** — both at the shell level and at the
+JIT-application level (`console_io_test.dll`: 46/46 checks plus the shell
+acceptance run). All work is committed on `main` (see the `phase2:`
+commits and the JIT-bridge fix commit). Verification was performed in WSL2
+Ubuntu 24.04 with QEMU/KVM + OVMF on the standard q35 configuration.
 
 ## 1. What was delivered
 
@@ -69,7 +68,7 @@ Found while unblocking the console; all committed with analysis:
 |------|---------------|--------|
 | Full boot + Phase 1 checks | `python3 build/wsl-boot-test2.py --minimal` | **PASS** (banner, boot, console, shell, prompt, echo, no crash) |
 | Fast console acceptance | `timeout 300 python3 build/wsl-conio-runner.py` | **PASS** — prompt, line echo, backspace (`ab␡z`→`az`), Enter submit, history recall (Up), Ctrl+C (`^C`+re-prompt, still alive), Ctrl+D (`logout`) |
-| Console test binary | `--with-jit-test` | compiles; execution blocked (see §5) |
+| Console test binary | `--with-jit-test` | **PASS** — `console_io_test.dll` 46/46 checks + shell acceptance (see §5) |
 
 The acceptance runner is hermetic (deletes stale markers first), prints
 progress every 15 s, aborts on 75 s of silence, and runs under `timeout`
@@ -91,30 +90,46 @@ progress every 15 s, aborts on 75 s of silence, and runs under `timeout`
   assembly: the console must exist before the driver framework and the
   UART IRQ feeds system input (rationale in `PHASE2-DESIGN.md`).
 
-## 5. Remaining item — JIT → System.Console AOT bridge
+## 5. JIT → System.Console AOT bridge (complete)
 
-`console_io_test.dll` (a JIT-compiled .NET 10 console app) now compiles:
-its `System.Console`/`Encoding`/`Environment` assembly references resolve
-to korlib via the loader's virtual-assembly mapping, and
-`String.Concat(4 args)` was registered in `AotMethodRegistry`. At
-**execution**, however, `Console.WriteLine` binds to korlib's IL stub
-(`PlatformNotSupportedException`) instead of the AOT implementation,
-because `AotMethodRegistry` has no `System.Console` entries; the kernel's
-runtime-EH then reports:
+The console surface is registered in `AotMethodRegistry`
+(`RegisterConsoleMethods()` / `RegisterEncodingMethods()`, included in
+the `#define`d `BRIDGE_PART_*` groups), with signature hashes for the
+overloads, a struct-return registration for `ConsoleKeyInfo`
+(`ReturnStructSize=17` forcing the hidden-buffer ABI), and `Encoding`/
+`Environment` members. `console_io_test.dll` now executes end-to-end.
+
+Three boot-critical defects surfaced during the JIT-app test and were
+fixed:
+
+1. **JIT→AOT call stack alignment** — Tier-0 JIT call sites do not
+guarantee 16-byte RSP alignment, and AOT callees with SSE frame stores
+(`movaps [rsp+x]`) took a #GP (`get_CursorLeft` was the first victim).
+Fixed in `ILCompiler` by routing register-argument calls through a native
+alignment shim (`jit_align_call`: target in R11, re-aligned RSP, shadow
+space). Calls with stack-passed arguments intentionally stay unshimmed —
+a shim frame would move RSP out from under the callee's stack arguments.
+2. **Key-queue starvation** — the 16-entry key queue dropped keys under
+the 10 KB bulk RX test (queue-full drop policy), blocking the test
+forever. Capacity is now 16384.
+3. **ISR echo wedge** — echo runs inside the RX interrupt handler; when
+the TX ring filled, the blocking write path spun waiting for a THRE
+interrupt that the active ISR could never allow. Echo now uses
+non-blocking `Uart16550.TryWriteByte` (best-effort; drops under load).
+
+Acceptance result (runner, `--with-jit-test`):
 
 ```
-[EH] FATAL: Unhandled managed exception!  [EH] Type: System.PlatformNotSupportedException
+[PASS] console_io_test summary 0 failures   (passed=46 failed=0)
+[PASS] colors / clear / cursor escape sequences
+[PASS] shell prompt, echo, backspace, history, ctrl-c, ctrl-d logout
+=== PHASE 2 CONSOLE CHECK: PASS ===
 ```
 
-**Next step (well-scoped):** register the console surface in
-`AotMethodRegistry.RegisterConsoleMethods()` the same way
-`RegisterStringMethods()` does —
-`Write/WriteLine` (string/char/int/long/bool/object, signature hashes via
-`ComputeSignatureHash`), `ReadLine`, `ReadKey` (needs a struct-return
-registration path for `ConsoleKeyInfo`), `Clear`, `SetCursorPosition`,
-cursor/color/size properties, plus `Encoding.GetBytes/GetString` and
-`Environment` getters — then flip the test to `--with-jit-test` in the
-default acceptance run.
+The two debug assertions in `RhpThrowEx` that required JIT funclets at
+`0x02xxxxxx` were also removed: test-assembly JIT code lives at
+`0x03xxxxxx`, so legitimate caught exceptions in test assemblies
+mis-fired the assertion and halted the system.
 
 ## 6. Deferred to later phases
 

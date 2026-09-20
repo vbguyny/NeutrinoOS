@@ -301,13 +301,16 @@ framebuffer, no crash).
 - **Publishing the fork** needs the user's GitHub account: create the fork in
   the GitHub UI, then `git remote add origin <fork-url> && git push -u origin main`
   (the repository here already carries the full Phase 1 history).
-- **VirtualBox verification** was not performed in this environment (no
-  VirtualBox installed); QEMU + OVMF was used, which is the bring-up target the
-  phase brief specifies.
-- **Build-script defects in `make deps`** (section 4.5) - worked around for
-  verification; worth fixing upstream (`Makefile`: absolute
-  `IntermediateOutputPath`; kernel rule: clear `src/korlib/obj|bin` before
-  invoking bflat).
+- **VirtualBox verification** (performed on this machine, VirtualBox 7.1.8):
+the image boots and the loader runs under VirtualBox's EFI firmware
+(`NeutrinoOS v0.1`, kernel load/relocation, `[BOOT] Exiting boot
+services...`), but the firmware (`VBoxEfiFirmware` `CpuDxe`) then raises a
+#GP and prints its own exception dump. QEMU/OVMF is unaffected, so this is
+a VirtualBox-EFI interaction that remains a follow-up (reproduce with
+`scripts/test-vbox.ps1`; serial capture in `build/vbox-serial.log`).
+- **Build-script defects in `make deps`** (section 4.5) - **fixed in-fork**:
+the kernel rule now clears `src/korlib/obj|bin` before invoking bflat and
+the ILCompiler pack step uses an absolute `IntermediateOutputPath`.
 - The verification helper scripts used for this report live in the git-ignored
   `build/` directory of the working tree (`wsl-*.sh`, `wsl-boot-test2.py`) so the
   experiments can be repeated.

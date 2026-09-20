@@ -43,27 +43,26 @@ asserts against the captured log `build/x64/serial-conio.log`:
 | 5 | Ctrl+C clears the line, prints `^C`, re-prompts | `^C` + fresh prompt; shell still responds | PASS |
 | 6 | Ctrl+D on empty line → `logout` | `logout` printed, shell exits | PASS |
 | 7 | Up arrow recalls the previous line | `two` submitted, `ESC[A` + Enter re-submits `two` | PASS |
-| 8 | ANSI SGR colors (`DarkRed`→31, `Red`→91, reset→0) | `console_io_test.dll`; log inspected for `\x1b[31m`, `\x1b[91m`, `\x1b[0m` | see note |
-| 9 | `Console.Clear()` emits `\x1b[2J\x1b[H` | `console_io_test.dll` | see note |
-| 10 | `Console.SetCursorPosition(10,5)` emits `\x1b[6;11H`, `CursorLeft/Top` read back | `console_io_test.dll` | see note |
-| 11 | `Console.ReadKey(true)` key mapping (letters, digits, Enter, Escape, Tab, Backspace, arrows, Home, End, Delete, PgUp, PgDn, F1–F12) | `console_io_test.dll` | see note |
+| 8 | ANSI SGR colors (`DarkRed`→31, `Red`→91, reset→0) | `console_io_test.dll`; log inspected for `\x1b[31m`, `\x1b[91m`, `\x1b[0m` | PASS |
+| 9 | `Console.Clear()` emits `\x1b[2J\x1b[H` | `console_io_test.dll` | PASS |
+| 10 | `Console.SetCursorPosition(10,5)` emits `\x1b[6;11H`, `CursorLeft/Top` read back | `console_io_test.dll` | PASS |
+| 11 | `Console.ReadKey(true)` key mapping (letters, digits, Enter, Escape, Tab, Backspace, arrows, Home, End, Delete, PgUp, PgDn, F1–F12) | `console_io_test.dll` | PASS |
 | 12 | `Console.ReadLine()` editing/history/cancel | shell-level checks 2-7 (same discipline path) | PASS |
-| 13 | RX is interrupt-driven; 10 KB stream does not drop characters | `console_io_test.dll` bulk section (paced stream, count == 10240) | see note |
+| 13 | RX is interrupt-driven; 10 KB stream does not drop characters | `console_io_test.dll` bulk section (paced stream, count == 10240) | PASS |
 | 14 | No C/C++ files outside the bootloader/native asm | `git ls-files` inspection | PASS |
 | 15 | `docs/BUILD-WINDOWS.md` still works | unchanged flow + this document | PASS |
 
-**Note (items 8–11, 13):** these run inside `console_io_test.dll`, which is
-JIT-compiled by the kernel's Tier-0 JIT. The test **compiles** (System.Console
-references resolve to korlib), but executing its Console calls currently hits
-korlib's IL stubs (the JIT→AOT registry lacks System.Console method entries),
-which throw `PlatformNotSupportedException`. Until that bridge is completed
-(tracked in `PHASE2-REPORT.md`), run the test explicitly with:
+**Note (items 8–11, 13):** these run inside `console_io_test.dll`, JIT-compiled
+by the kernel's Tier-0 JIT, bound to the AOT console implementation through
+the `AotMethodRegistry` bridge (`PHASE2-REPORT.md` §5). The full run is done
+by the runner
+default; shell-only checks can be selected with `--skip-jit-test`:
 
 ```powershell
-wsl -d Ubuntu-24.04 -u root -- timeout 300 python3 /mnt/d/Projects/Code/neutrino/build/wsl-conio-runner.py --with-jit-test
+wsl -d Ubuntu-24.04 -u root -- timeout 300 python3 /mnt/d/Projects/Code/NeutrinoOS/build/wsl-conio-runner.py
 ```
 
-The same behaviors are covered on the **AOT shell path** by items 2–7, 12
+The same behaviors are also covered on the **AOT shell path** by items 2–7, 12
 (the shell itself is compiled AOT with the real System.Console).
 
 ## 4. Manual spot checks
@@ -80,7 +79,7 @@ The same behaviors are covered on the **AOT shell path** by items 2–7, 12
 - **Boot looks stalled**: the full boot runs the in-boot test suites
   (~4-6 min). For console work add the `skip-boot-tests` marker
   (`mcopy -o -i build/x64/neutrinoos.img marker ::/skip-boot-tests`).
-- **Runner says "console test did not execute"**: expected unless
-  `--with-jit-test` is passed (see note above).
+- **Runner says console test didn't execute**: check the `run-console-test`
+  marker (the runner adds it by default; `--skip-jit-test` omits it).
 - **Stale markers**: markers persist in the image; the runner deletes and
   re-adds them each run. `make image` removes them entirely.

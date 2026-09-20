@@ -1160,15 +1160,6 @@ RhpThrowEx:
     int3                    ; R11 is too small to be a valid stack address!
 .rsp_not_small:
 
-    ; DEBUG: Verify RAX is a valid code address (high bits should be 0x00000002 for JIT code)
-    mov r8, rax
-    shr r8, 32
-    cmp r8d, 2
-    je .rax_ok
-    ; RAX doesn't look like JIT code address, might be reading wrong field
-    int3
-.rax_ok:
-
     ; Load the funclet arguments from context (set by C# handler)
     mov rcx, [rsp + 0x30]   ; Rcx = exception object
     mov rdx, [rsp + 0x10]   ; Rdx = frame pointer (RBP) - establisher frame
@@ -1185,17 +1176,6 @@ RhpThrowEx:
     ; For inline handlers (not funclets), context->Rsp already points to return address
     ; Handler's RET will pop the return address and return to the original caller
     mov rsp, r11
-
-    ; DEBUG: Before jmp, print the values we're using
-    ; We'll use int 0xF0 as a special debug marker that our exception handler can recognize
-    ; Actually, let's just do a simple validation: verify [rsp] contains a JIT code address
-    mov r8, [rsp]        ; Load the return address
-    shr r8, 32
-    cmp r8d, 2           ; Should be 0x00000002xxxxxxxx
-    je .ret_addr_ok
-    ; Return address doesn't look like JIT code - BAD!
-    int3
-.ret_addr_ok:
 
     ; Jump directly to handler - it will RET to the original caller
     ; The C# code has set up RSP to point at the return address

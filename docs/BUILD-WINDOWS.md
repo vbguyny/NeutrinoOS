@@ -220,7 +220,8 @@ scripts/test-console.ps1              # rebuild + acceptance (~1-2 min)
 scripts/test-console.ps1 -SkipBuild   # reuse the current image
 ```
 
-Expected end state: `=== PHASE 2 CONSOLE ACCEPTANCE: PASS ===`
+Expected end state: `=== PHASE 2 CONSOLE CHECK: PASS ===` (includes the
+JIT-app console test: `console_io_test: passed=46 failed=0`) —
 (log: `build/x64/serial-conio.log`; see `docs/PHASE2-ACCEPTANCE.md`).
 
 > **Quick note on boot markers:** the acceptance runner adds a
@@ -231,7 +232,23 @@ Expected end state: `=== PHASE 2 CONSOLE ACCEPTANCE: PASS ===`
 
 ## 7. VirtualBox (optional)
 
-Convert the raw image and configure a UEFI VM with serial logging to a file:
+A reproducible script (convert → create VM → headless boot → assert
+banner/shell → power off) is provided; it caps the wait at 60 s by default:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\test-vbox.ps1
+powershell -ExecutionPolicy Bypass -File scripts\test-vbox.ps1 -TimeoutSec 240
+```
+
+**Current result (VirtualBox 7.1.8):** the loader runs under VirtualBox's EFI
+firmware (`NeutrinoOS v0.1`, kernel relocation, `[BOOT] Exiting boot
+services...`), after which VirtualBox's own firmware
+(`VBoxEfiFirmware\...\CpuDxe`) raises a #GP and prints its exception dump to
+the serial log (`build/vbox-serial.log`). QEMU + OVMF is unaffected — this
+VirtualBox-EFI interaction is a tracked follow-up (see `PHASE1-REPORT.md`
+§5).
+
+To configure the VM manually instead:
 
 ```bash
 make run-vbox          # requires VBoxManage on PATH
