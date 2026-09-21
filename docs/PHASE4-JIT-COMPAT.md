@@ -49,16 +49,71 @@ below was verified empirically on the Phase 4 test applications
    same parity rule. Frame sizes are computed once at allocation time and
    reused at cleanup time.
 4. **Crash diagnostics** (`Arch`): the raw exception path dumps the first
-   24 stack words after `RAWV` for offline call-chain reconstruction.
+   24 stack words after `RAWV` for offline call-chain reconstruction, plus
+   `CR2` on page faults.
+
+### Alignment-stack completion (post-audit)
+
+The remaining virtual/interface call misalignment blocker was resolved by
+finding that four independent bugs stacked together:
+
+5. **`RhpStackProbe` ABI** (`native.asm`): the bflat/ILC code generator
+   emits the R11-target calling convention
+   (`lea r11,[rsp-N]; call RhpStackProbe; mov rsp,r11`). The previous
+   implementation read the probe length from `rax` (Windows chkstk style);
+   with whatever the caller left in `rax` it walked multi-megabyte spans
+   and page-faulted on unmapped memory. Rewritten to the R11 convention.
+6. **Interface dispatch stub** (`RhpInitialDynamicInterfaceDispatch`):
+   RSP is normalized (16-byte aligned) around the resolver call with a
+   **callee-saved (RBX) anchor** - R11 is volatile across the resolver call
+   and restoring `rsp` from it put wild values into RSP. The shadow space
+   is reserved 48 bytes below the saved argument registers so the callee's
+   register homing cannot clobber them.
+7. **Exact eval-stack accounting** (`ILCompiler`): branch sources record
+   the eval-stack byte size together with the depth (packed `ushort`), and
+   merge targets restore both verbatim (re-deriving the size from the entry
+   list picked up the other arm's shape at merges).
+   `CompileWithFunclets` pass-1 (the emitted main body of EH methods) now
+   performs the same branch-merge resync as `Compile()`, and `CompileLeave`
+   resets `_evalStackByteSize` (previously depth-only).
+8. **Parity pads re-enabled** now that the accounting is exact:
+   `callvirt` and the raw 0-4 argument call frames pad by
+   `(16 - (_evalStackByteSize & 15)) & 15` before the call and fold the
+   same amount into the cleanup.
+9. **`RhpStackProbe` / `[PHYS]` diagnostics** (`X64Emitter` +
+   `ILCompiler.CheckPhysStack`): the emitter accumulates its own RSP
+   deltas and the compiler compares them with the tracked eval-stack byte
+   size at every opcode boundary; divergences are printed with the
+   previous opcode that caused them.
+10. **Private execution stack** (`BigStackRunner` + `run_on_big_stack`):
+    the whole `run` pipeline (file load, triggered JIT compiles, `Main`)
+    executes on a private 8 MB stack allocated from the page allocator;
+    the boot firmware stack (tens of KB) cannot host the nested compile
+    chains of a standard app.
+11. **Abstract-method AOT bridges** (`MetadataIntegration`
+    `TryResolveAbstractMethodAotBridge` + `AotMethodRegistry`
+    `RegisterEncodingMethods`): abstract methods on korlib-backed types
+    (`System.Text.Encoding.GetBytes`/`GetString`/`GetByteCount`/
+    `GetCharCount`/`get_EncodingName`) are resolved to their kernel bridge
+    forwarders instead of vtable dispatch - NativeAOT-optimized AOT
+    vtables carry no entries for those slots (UTF8Encoding `vtable[5]` is
+    empty), which previously halted in `EnsureVtableSlotCompiled`.
 
 ## Known open JIT issues (blocking the Phase 4 acceptance items)
 
 | Issue | Symptom | Where |
 |-------|---------|-------|
-| Virtual/interface call sites with stack args are not parity-corrected | `movaps` #GP inside `MethodTable.GetInterfaceMethodSlot` (via `RhpResolveInterfaceMethod` in the interface dispatch stub) for the file I/O write path | `ILCompiler` callvirt emission (the second, larger emission path around the `callvirt` handler); the stub chain `RhpInitialDynamicInterfaceDispatch -> RhpResolveInterfaceMethod -> GetInterfaceMethodSlot` assumes standard call-site alignment, so the misalignment must be fixed in the JIT caller. |
+| JIT-type vtable registration gaps beyond the resolved Encoding case | `[JitStubs] FATAL: VTable slot N has no registered method for MT 0x33Fxxx` (e.g. slot 20/MT `0x33F248`, asm=1 type `0x020000C9`) during `p4fileio`'s later checks (instance disposal / writer flushes). Ancestor/interface resolution succeeds for neighbouring slots (4, 17, 21) but not this one. | `CompiledMethodRegistry` registration coverage for inherited virtuals on JIT-created types; extend the ancestor/interface fallback in `JitStubs.EnsureVtableSlotCompiled` or the per-type slot registration. |
 | Unresolved `newobj` token in generic contexts | `[JIT newobj] FAIL: unresolved token 0x0A000032` aborts `p4linq` at the first `new List<int>()` | `ILCompiler.CompileNewobj` MemberRef resolution for BCL generic ctors. |
 | `async` state machine hang | `p4async` completes the first two checks, then stops responding | Suspected await continuation path (`AsyncTaskMethodBuilder`/`TaskAwaiter` interaction with the synchronous Task); under investigation. |
+| `p4fileio` "two lines" check | `[fileio] ok: line 1` then `[fileio] FAIL: line 2` - the second line written does not read back | Data-level issue in the write/read round trip (see `tests/phase4/FileIo/Program.cs`); separate from the vtable/alignment work. |
 | `p4cs14` produced no serial output | needs a dedicated re-run with serial capture | re-run and fix. |
+
+## Fixed since the initial audit (kept for history)
+
+| Former issue | Status |
+|--------------|--------|
+| Virtual/interface call sites not parity-corrected (`movaps` `#GP` inside `MethodTable.GetInterfaceMethodSlot` via the dispatch stub, file I/O write path) | FIXED - root causes were the `RhpStackProbe` ABI mismatch (item 5), the dispatch-stub RSP restore anchor (item 6), merge-point byte-size accounting (item 7) and the resulting wrong/absent parity pads (items 3, 8). `run /apps/p4fileio.dll` now executes the write path and completes several further checks. |
 
 ## Guidance for application authors (current state)
 
@@ -66,8 +121,9 @@ below was verified empirically on the Phase 4 test applications
 - Prefer `Task.Run(...).Result`/`.Wait()` style over deep await chains.
 - Avoid `Span<T>`/`ReadOnlySpan<T>` in application code for now.
 - Keep assembly names FAT-short (<= 8 chars).
-- `System.IO` file writes currently fault on the write path (see the
-  open issues table); reads work.
+- `System.IO` file path: the write path is functional; the "two lines"
+  round-trip check still fails on its second line (see the open issues
+  table).
 
 These constraints shrink as the JIT issues above are fixed; the test
 suite (`tests/run-phase4-tests.ps1`) is the guard for that work.

@@ -143,9 +143,24 @@ public static unsafe class ConsoleHelpers
 
     public static System.Text.Encoding GetUTF8() => System.Text.Encoding.UTF8;
 
+    public static int GetEncodingName(System.Text.Encoding encoding)
+        => encoding.EncodingName.Length;
+
+    public static int GetByteCount(System.Text.Encoding encoding, string s)
+        => encoding.GetByteCount(s);
+
     public static byte[] GetBytes(System.Text.Encoding encoding, string s)
         => encoding.GetBytes(s);
 
+    public static byte[] GetBytes(System.Text.Encoding encoding, char[] chars, int index, int count)
+        => encoding.GetBytes(chars, index, count);
+
+    public static int GetCharCount(System.Text.Encoding encoding, byte[] bytes)
+        => encoding.GetCharCount(bytes);
+
     public static string GetString(System.Text.Encoding encoding, byte[] bytes)
         => encoding.GetString(bytes);
+
+    public static string GetString(System.Text.Encoding encoding, byte[] bytes, int index, int count)
+        => encoding.GetString(bytes, index, count);
 }

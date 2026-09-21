@@ -3444,9 +3444,43 @@ public static unsafe class MetadataIntegration
 
             if (isAbstract && isVirtual)
             {
-                // Abstract virtual method - calculate vtable slot for runtime dispatch
-                short vtableSlot = CalculateVtableSlotForMethod(targetAsmId, methodRowId);
-                if (vtableSlot >= 0)
+                // AOT bridge: abstract methods whose behavior korlib implements
+                // natively (e.g. System.Text.Encoding.GetBytes/GetString) have
+                // bridge entries in the AOT method registry. Prefer the direct
+                // bridge call over vtable dispatch - NativeAOT-optimized AOT
+                // vtables do not carry entries for these slots (UTF8Encoding
+                // vtable[5] is empty), so the runtime slot lookup would
+                // otherwise halt in EnsureVtableSlotCompiled.
+                if (TryResolveAbstractMethodAotBridge(targetAsmId, methodRowId, out AotMethodEntry bridgeEntry))
+                {
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[AotBridge] abstract method -> bridge 0x");
+                        DebugConsole.WriteHex((ulong)bridgeEntry.NativeCode);
+                        DebugConsole.WriteLine();
+                    }
+
+                    result.NativeCode = (void*)bridgeEntry.NativeCode;
+                    result.IsAotTarget = true;
+                    result.ArgCount = (byte)bridgeEntry.ArgCount;
+                    result.ReturnKind = bridgeEntry.ReturnKind;
+                    result.ReturnStructSize = bridgeEntry.ReturnStructSize;
+                    result.HasThis = bridgeEntry.HasThis;
+                    result.IsValid = true;
+                    result.IsVirtual = false;  // direct bridge call
+                    result.VtableSlot = -1;
+                    result.MethodTable = null;
+                    result.IsInterfaceMethod = false;
+                    result.InterfaceMT = null;
+                    result.InterfaceMethodSlot = -1;
+                    result.RegistryEntry = null;
+                    success = true;
+                }
+
+                // No bridge - abstract virtual method; calculate the vtable
+                // slot for runtime dispatch.
+                short vtableSlot = success ? (short)-1 : CalculateVtableSlotForMethod(targetAsmId, methodRowId);
+                if (!success && vtableSlot >= 0)
                 {
                     // Get signature info for the abstract method
                     uint sigIdx = MetadataReader.GetMethodDefSignature(ref *_tablesHeader, ref *_tableSizes, methodRowId);
@@ -7415,6 +7449,74 @@ public static unsafe class MetadataIntegration
             return (int)(((pb & 0x1F) << 24) | (sig[pos + 1] << 16) | (sig[pos + 2] << 8) | sig[pos + 3]);
 
         return -1;
+    }
+
+    /// <summary>
+    /// Resolve an abstract method declared on an AOT-backed type (for example
+    /// System.Text.Encoding) to its kernel bridge implementation registered in
+    /// the AOT method registry (ConsoleHelpers forwarders). Returns false when
+    /// the declaring type has no bridge entry.
+    /// </summary>
+    private static bool TryResolveAbstractMethodAotBridge(uint asmId, uint methodRowId, out AotMethodEntry entry)
+    {
+        entry = default;
+        var asm = AssemblyLoader.GetAssembly(asmId);
+        if (asm == null)
+            return false;
+
+        // Find the TypeDef that owns this MethodDef row (method lists are
+        // contiguous per type def).
+        uint typeDefCount = asm->Tables.RowCounts[(int)MetadataTableId.TypeDef];
+        for (uint typeRow = 1; typeRow <= typeDefCount; typeRow++)
+        {
+            uint methodStart = MetadataReader.GetTypeDefMethodList(ref asm->Tables, ref asm->Sizes, typeRow);
+            uint methodEnd = (typeRow < typeDefCount)
+                ? MetadataReader.GetTypeDefMethodList(ref asm->Tables, ref asm->Sizes, typeRow + 1)
+                : asm->Tables.RowCounts[(int)MetadataTableId.MethodDef] + 1;
+            if (methodRowId < methodStart || methodRowId >= methodEnd)
+                continue;
+
+            uint nameIdx = MetadataReader.GetTypeDefName(ref asm->Tables, ref asm->Sizes, typeRow);
+            uint nsIdx = MetadataReader.GetTypeDefNamespace(ref asm->Tables, ref asm->Sizes, typeRow);
+            byte* typeName = MetadataReader.GetString(ref asm->Metadata, nameIdx);
+            byte* typeNs = MetadataReader.GetString(ref asm->Metadata, nsIdx);
+            if (typeName == null)
+                return false;
+            if (typeNs == null)
+            {
+                byte* emptyNs = stackalloc byte[1];
+                emptyNs[0] = 0;
+                typeNs = emptyNs;
+            }
+
+            // Build the full name "Namespace.TypeName"
+            byte* fullName = stackalloc byte[160];
+            int pos = 0;
+            for (int i = 0; typeNs[i] != 0 && pos < 120; i++)
+                fullName[pos++] = typeNs[i];
+            if (pos > 0)
+                fullName[pos++] = (byte)'.';
+            for (int i = 0; typeName[i] != 0 && pos < 158; i++)
+                fullName[pos++] = typeName[i];
+            fullName[pos] = 0;
+
+            uint methodNameIdx = MetadataReader.GetMethodDefName(ref asm->Tables, ref asm->Sizes, methodRowId);
+            byte* methodName = MetadataReader.GetString(ref asm->Metadata, methodNameIdx);
+            if (methodName == null)
+                return false;
+
+            uint sigIdx = MetadataReader.GetMethodDefSignature(ref asm->Tables, ref asm->Sizes, methodRowId);
+            byte* sig = MetadataReader.GetBlob(ref asm->Metadata, sigIdx, out uint sigLen);
+            byte argCount = (sig != null && sigLen > 1) ? sig[1] : (byte)0;
+            ulong sigHash = (sig != null && sigLen > 0)
+                ? AotMethodRegistry.ComputeSignatureHashFromBlob(sig, (int)sigLen)
+                : 0;
+
+            return AotMethodRegistry.TryLookupWithSignature(fullName, methodName, argCount, sigHash, out entry)
+                || AotMethodRegistry.TryLookup(fullName, methodName, argCount, out entry);
+        }
+
+        return false;
     }
 
     /// <summary>

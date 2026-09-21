@@ -913,11 +913,46 @@ public static unsafe class AotMethodRegistry
             1, ReturnKind.IntPtr, true, false,
             ComputeSignatureHash(ELEMENT_TYPE_STRING));
 
+        // Remaining abstract members of System.Text.Encoding. Abstract-method
+        // call sites resolve through TryResolveAbstractMethodAotBridge in the
+        // JIT resolver; AOT-optimized vtables have no entries for these slots
+        // (UTF8Encoding vtable[5] is empty), so the bridge is the only
+        // workable implementation for JIT-compiled callers.
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetByteCount",
+            (nint)(delegate*<System.Text.Encoding, string, int>)&ConsoleHelpers.GetByteCount,
+            1, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING));
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetBytes",
+            (nint)(delegate*<System.Text.Encoding, char[], int, int, byte[]>)&ConsoleHelpers.GetBytes,
+            3, ReturnKind.IntPtr, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_SZARRAY, ELEMENT_TYPE_I4, ELEMENT_TYPE_I4));
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetCharCount",
+            (nint)(delegate*<System.Text.Encoding, byte[], int>)&ConsoleHelpers.GetCharCount,
+            1, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_SZARRAY));
+
         RegisterWithSignature(
             "System.Text.Encoding", "GetString",
             (nint)(delegate*<System.Text.Encoding, byte[], string>)&ConsoleHelpers.GetString,
             1, ReturnKind.IntPtr, true, false,
             ComputeSignatureHash(ELEMENT_TYPE_SZARRAY));
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "GetString",
+            (nint)(delegate*<System.Text.Encoding, byte[], int, int, string>)&ConsoleHelpers.GetString,
+            3, ReturnKind.IntPtr, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_SZARRAY, ELEMENT_TYPE_I4, ELEMENT_TYPE_I4));
+
+        RegisterWithSignature(
+            "System.Text.Encoding", "get_EncodingName",
+            (nint)(delegate*<System.Text.Encoding, int>)&ConsoleHelpers.GetEncodingName,
+            0, ReturnKind.Int32, true, false,
+            ComputeSignatureHash());
     }
 
     /// <summary>
