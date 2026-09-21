@@ -299,6 +299,11 @@ public static unsafe class Kernel
                 // System.Environment IL stubs to the kernel console exports)
                 BuildConsoleTokenRegistry();
 
+                // Build JIT file bridge (maps korlib System.IO.File /
+                // System.IO.Directory IL stubs to the kernel FileExports,
+                // which drive the JIT-loaded FAT driver)
+                BuildFileTokenRegistry();
+
                 // Initialize critical interface types (IDisposable) from korlib
                 AssemblyLoader.InitializeKorlibInterfaces(_korlibId);
 
@@ -1427,6 +1432,55 @@ public static unsafe class Kernel
         DebugConsole.Write("[Kernel] Registered ");
         DebugConsole.WriteDecimal(registered);
         DebugConsole.WriteLine(" console methods in token registry");
+    }
+
+    /// <summary>
+    /// Build token registry entries for the System.IO.File and
+    /// System.IO.Directory kernel exports (the JIT file bridge).
+    ///
+    /// In the korlib IL assembly the bridge primitives are stubs that
+    /// throw PlatformNotSupportedException; the real implementations are
+    /// the [UnmanagedCallersOnly] exports in Platform.FileExports, which
+    /// drive the JIT-loaded FAT driver. Mapping the korlib stub method
+    /// tokens to the export addresses lets JIT-compiled applications
+    /// perform file I/O against the boot volume.
+    /// </summary>
+    private static void BuildFileTokenRegistry()
+    {
+        if (_korlibId == AssemblyLoader.InvalidAssemblyId)
+            return;
+
+        LoadedAssembly* korlib = AssemblyLoader.GetAssembly(_korlibId);
+        if (korlib == null)
+            return;
+
+        int registered = 0;
+
+        // System.IO.File -> FileExports
+        registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootRead",
+            (void*)(delegate* unmanaged<char*, int, byte*, int, int>)&Platform.FileExports.FileBootRead);
+        registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootWrite",
+            (void*)(delegate* unmanaged<char*, int, byte*, int, int, int>)&Platform.FileExports.FileBootWrite);
+        registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootSize",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.FileBootSize);
+        registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootExists",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.FileBootExists);
+        registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootDelete",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.FileBootDelete);
+
+        // System.IO.Directory -> FileExports
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootExists",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootExists);
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootCreate",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootCreate);
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootDelete",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootDelete);
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootEntry",
+            (void*)(delegate* unmanaged<char*, int, int, char*, int, int*, int>)&Platform.FileExports.DirBootEntry);
+
+        DebugConsole.Write("[Kernel] Registered ");
+        DebugConsole.WriteDecimal(registered);
+        DebugConsole.WriteLine(" file methods in token registry");
     }
 
     /// <summary>

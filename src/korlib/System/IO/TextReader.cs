@@ -49,6 +49,29 @@ public abstract class TextReader : IDisposable
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Reads up to <paramref name="count"/> characters into the buffer
+    /// starting at <paramref name="index"/>; returns the number read.
+    /// The default implementation reads character by character.
+    /// </summary>
+    public virtual int Read(char[] buffer, int index, int count)
+    {
+        if (buffer == null)
+            throw new ArgumentNullException(nameof(buffer));
+        if (index < 0 || count < 0 || index + count > buffer.Length)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        int read = 0;
+        while (read < count)
+        {
+            int c = Read();
+            if (c < 0)
+                break;
+            buffer[index + read] = (char)c;
+            read++;
+        }
+        return read;
+    }
+
     /// <summary>Closes the reader (no-op in Phase 2).</summary>
     public virtual void Close() { }
 

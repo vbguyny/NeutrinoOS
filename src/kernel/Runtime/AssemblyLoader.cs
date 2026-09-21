@@ -5860,6 +5860,19 @@ public static unsafe class AssemblyLoader
         }
         if (target == null)
         {
+            // Phase 4: on-demand load of the referenced assembly from the
+            // boot volume's /lib directory ("/lib/<name>.dll") through the
+            // kernel file bridge (the same JIT-loaded FAT driver path the
+            // System.IO layer uses). A no-op when the file does not exist,
+            // when the driver is not bound yet (boot-time loads), or when
+            // the volume is unavailable.
+            uint loadedId = TryLoadAssemblyFromLib(name);
+            if (loadedId != InvalidAssemblyId)
+                target = GetAssembly(loadedId);
+        }
+
+        if (target == null)
+        {
             DebugConsole.WriteLine("[AsmLoader] ResolveAsmRef NOT FOUND");
             return InvalidAssemblyId;
         }
@@ -5877,6 +5890,66 @@ public static unsafe class AssemblyLoader
         }
 
         return target->AssemblyId;
+    }
+
+    /// <summary>
+    /// Load an assembly referenced by simple name from the boot volume's
+    /// /lib directory ("/lib/&lt;name&gt;.dll"). Returns InvalidAssemblyId
+    /// when the file is unavailable or cannot be loaded. The PE bytes are
+    /// kept in kernel heap memory for the lifetime of the boot (the
+    /// loader keeps referencing them, the same contract `run` images use).
+    /// </summary>
+    private static uint TryLoadAssemblyFromLib(byte* name)
+    {
+        int nameLen = 0;
+        while (name[nameLen] != 0 && nameLen < 120)
+            nameLen++;
+        if (nameLen == 0 || nameLen >= 120)
+            return InvalidAssemblyId;
+
+        // Build "/lib/<name>.dll" as UTF-16 (the driver helper takes
+        // a length-counted buffer; no NUL terminator required).
+        char* pathBuf = stackalloc char[nameLen + 9];
+        int pos = 0;
+        pathBuf[pos++] = '/';
+        pathBuf[pos++] = 'l';
+        pathBuf[pos++] = 'i';
+        pathBuf[pos++] = 'b';
+        pathBuf[pos++] = '/';
+        for (int i = 0; i < nameLen; i++)
+            pathBuf[pos++] = (char)name[i];
+        pathBuf[pos++] = '.';
+        pathBuf[pos++] = 'd';
+        pathBuf[pos++] = 'l';
+        pathBuf[pos++] = 'l';
+
+        int size = ProtonOS.Platform.FileExports.KernelBootSize(pathBuf, pos);
+        if (size <= 0 || size > 64 * 1024 * 1024)
+            return InvalidAssemblyId;
+
+        byte* bytes = (byte*)HeapAllocator.Alloc((ulong)size);
+        if (bytes == null)
+            return InvalidAssemblyId;
+
+        int read = ProtonOS.Platform.FileExports.KernelBootRead(pathBuf, pos, bytes, size);
+        if (read != size)
+        {
+            HeapAllocator.Free(bytes);
+            return InvalidAssemblyId;
+        }
+
+        uint id = Load(bytes, (ulong)size);
+        if (id == InvalidAssemblyId)
+        {
+            HeapAllocator.Free(bytes);
+            return InvalidAssemblyId;
+        }
+
+        DebugConsole.Write("[AsmLoader] Loaded referenced assembly from /lib: ");
+        for (int i = 0; i < nameLen; i++)
+            DebugConsole.WriteChar((char)name[i]);
+        DebugConsole.WriteLine();
+        return id;
     }
 
     /// <summary>
@@ -5935,6 +6008,11 @@ public static unsafe class AssemblyLoader
                 name[15] == 'E' && name[16] == 'x' && name[17] == 't' && name[18] == 'e' &&
                 name[19] == 'n' && name[20] == 's' && name[21] == 'i' && name[22] == 'o' &&
                 name[23] == 'n' && name[24] == 's' && name[25] == 0)
+                return true;
+
+            // "System.Linq" (Enumerable lives in korlib for Phase 4)
+            if (name[7] == 'L' && name[8] == 'i' && name[9] == 'n' && name[10] == 'q' &&
+                name[11] == 0)
                 return true;
 
             // "System.Text.Encoding" (facade: System.Text.Encoding.* names)

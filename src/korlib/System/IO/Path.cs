@@ -1,0 +1,146 @@
+// NeutrinoOS korlib - System.IO.Path
+//
+// Phase 4: path string helpers for console applications. NeutrinoOS uses
+// '/' as the directory separator exclusively (the FAT driver accepts
+// leading '/' and subdirectory paths like "/apps/out.txt"); '\' is not a
+// separator. Deviations from the official BCL: no drive letters, no
+// GetFullPath normalization (paths are already root-relative), no
+// GetTempFileName/GetRandomFileName/GetInvalidPathChars.
+
+namespace System.IO;
+
+/// <summary>
+/// Performs operations on String instances that contain file or directory
+/// path information. See the file header for the NeutrinoOS subset.
+/// </summary>
+public static class Path
+{
+    /// <summary>Gets the platform directory separator character ('/').</summary>
+    public const char DirectorySeparatorChar = '/';
+
+    /// <summary>Gets the platform alternate directory separator character ('/'; both separators are '/').</summary>
+    public const char AltDirectorySeparatorChar = '/';
+
+    /// <summary>Gets the path separator character used to split path lists (':').</summary>
+    public const char PathSeparator = ':';
+
+    /// <summary>Changes the extension of a path string ("" removes it).</summary>
+    public static string ChangeExtension(string path, string? extension)
+    {
+        if (path == null)
+            return null!;
+
+        int dot = path.LastIndexOf('.');
+        int sep = path.LastIndexOf('/');
+        if (dot < 0 || dot < sep)
+            return extension == null ? path : path + "." + extension;
+
+        string root = path.Substring(0, dot);
+        if (string.IsNullOrEmpty(extension))
+            return root;
+        return root + "." + extension;
+    }
+
+    /// <summary>Combines two path strings with a separating '/' (does not normalize "." or "..").</summary>
+    public static string Combine(string path1, string path2)
+    {
+        if (path1 == null || path2 == null)
+            throw new ArgumentNullException(path1 == null ? "path1" : "path2");
+        if (path1.Length == 0)
+            return path2;
+        if (path2.Length == 0)
+            return path1;
+        if (IsPathRooted(path2))
+            return path2;
+        if (path1[path1.Length - 1] == '/')
+            return path1 + path2;
+        return path1 + "/" + path2;
+    }
+
+    /// <summary>Returns the directory portion of a path, or "" at the root.</summary>
+    public static string? GetDirectoryName(string path)
+    {
+        if (path == null)
+            return null;
+        string trimmed = path;
+        while (trimmed.Length > 1 && trimmed[trimmed.Length - 1] == '/')
+            trimmed = trimmed.Substring(0, trimmed.Length - 1);
+        int sep = trimmed.LastIndexOf('/');
+        if (sep < 0)
+            return "";
+        if (sep == 0)
+            return "/";
+        return trimmed.Substring(0, sep);
+    }
+
+    /// <summary>Returns the file name (with extension) of a path, or "" when the path ends in a separator.</summary>
+    public static string GetFileName(string path)
+    {
+        if (path == null)
+            return null!;
+        int sep = path.LastIndexOf('/');
+        if (sep < 0)
+            return path;
+        return path.Substring(sep + 1);
+    }
+
+    /// <summary>Returns the file name without its extension.</summary>
+    public static string GetFileNameWithoutExtension(string path)
+    {
+        string name = GetFileName(path);
+        int dot = name.LastIndexOf('.');
+        if (dot < 0)
+            return name;
+        return name.Substring(0, dot);
+    }
+
+    /// <summary>Returns the extension (including the leading '.') of a path, or "".</summary>
+    public static string GetExtension(string path)
+    {
+        if (path == null)
+            return null!;
+        int dot = path.LastIndexOf('.');
+        int sep = path.LastIndexOf('/');
+        if (dot < 0 || dot < sep)
+            return "";
+        return path.Substring(dot);
+    }
+
+    /// <summary>Determines whether a path includes a root ('/' prefix).</summary>
+    public static bool IsPathRooted(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+        return path![0] == '/';
+    }
+
+    /// <summary>Determines whether the path has a file extension.</summary>
+    public static bool HasExtension(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+        int dot = path!.LastIndexOf('.');
+        int sep = path.LastIndexOf('/');
+        return dot >= 0 && dot > sep;
+    }
+
+    /// <summary>
+    /// Returns the path unchanged: NeutrinoOS paths are already absolute
+    /// root-relative, so no normalization is required. (Deviation from
+    /// the official BCL, which resolves relative paths and "..".)
+    /// </summary>
+    public static string GetFullPath(string path)
+    {
+        if (path == null)
+            throw new ArgumentNullException("path");
+        return path;
+    }
+
+    /// <summary>Returns the root ("/") of the specified path.</summary>
+    public static string? GetPathRoot(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return null;
+        return path![0] == '/' ? "/" : "";
+    }
+}

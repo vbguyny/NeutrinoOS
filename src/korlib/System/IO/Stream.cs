@@ -44,6 +44,9 @@ namespace System.IO
             Dispose(true);
         }
 
+        /// <summary>Closes the current stream and releases any resources associated with it.</summary>
+        public virtual void Close() => Dispose();
+
         /// <summary>Releases the unmanaged resources used by the Stream and optionally releases the managed resources.</summary>
         protected virtual void Dispose(bool disposing) { }
 

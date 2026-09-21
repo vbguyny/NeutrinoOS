@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Keep the assembly name FAT 8.3-safe (<= 8 chars before .dll): the
+         NeutrinoOS FAT driver resolves files by their short name, so
+         long application names do not open. -->
+    <AssemblyName>myapp</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Standard .NET 10 build: the app compiles against the normal BCL and
+         runs against korlib on NeutrinoOS through the kernel's virtual
+         assembly redirect (System.Runtime/System.Console/System.Linq/...
+         resolve to korlib at load time). -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+</Project>

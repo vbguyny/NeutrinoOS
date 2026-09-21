@@ -5489,6 +5489,14 @@ public unsafe struct ILCompiler
         // Args 5+ go on the stack at [RSP+32], [RSP+40], etc.
         int stackArgs = totalArgs > 4 ? totalArgs - 4 : 0;
 
+        // Alignment padding applied to the stack-args call frame (see the
+        // >4-args allocation paths below). A raw JIT-&gt;AOT call with stack
+        // arguments must enter the callee with RSP % 16 == 8; the JIT keeps
+        // pending eval-stack items on the machine stack, so the frame size
+        // alone does not guarantee the parity - the pad is computed from
+        // _evalStackByteSize at allocation time and reused at cleanup time.
+        int stackArgAlignmentPad = 0;
+
         // Pop arguments from eval stack into registers or temp storage
         // IL stack has args in order: arg0 at bottom, argN-1 at top
         // We need to pop in reverse order (top first)
@@ -5850,8 +5858,12 @@ public unsafe struct ILCompiler
 
             int extraStackSpace = ((stackArgs * 8) + 15) & ~15;
 
-            // Step 1: Allocate call frame first (shadow space + stack args)
+            // Step 1: Allocate call frame first (shadow space + stack args),
+            // padded so the call site keeps ABI parity with the pending
+            // eval-stack bytes (the callee must enter with RSP % 16 == 8).
             int callFrameSize = 32 + extraStackSpace;
+            stackArgAlignmentPad = (16 - ((_evalStackByteSize + callFrameSize) & 15)) & 15;
+            callFrameSize += stackArgAlignmentPad;
             X64Emitter.SubRI(ref _code, VReg.SP, callFrameSize);
 
             // Calculate actual byte offsets of args on eval stack (accounting for large structs)
@@ -5936,8 +5948,11 @@ public unsafe struct ILCompiler
             int physicalExtraStackSpace = ((physicalStackArgs * 8) + 15) & ~15;
             int bufferRounded = (hiddenBufferSize + 15) & ~15;
 
-            // Allocate: shadow (32) + stack args + buffer
+            // Allocate: shadow (32) + stack args + buffer, padded for the
+            // pending eval-stack bytes (see stackArgAlignmentPad).
             int callFrameSize = 32 + physicalExtraStackSpace + bufferRounded;
+            stackArgAlignmentPad = (16 - ((_evalStackByteSize + callFrameSize) & 15)) & 15;
+            callFrameSize += stackArgAlignmentPad;
             X64Emitter.SubRI(ref _code, VReg.SP, callFrameSize);
 
             // Copy stack args (arg3 through argN-1) from eval stack to their positions
@@ -6027,7 +6042,7 @@ public unsafe struct ILCompiler
             // Buffer is at [RSP + 32 + physicalExtraStackSpace]
             // To leave buffer at RSP after cleanup, we clean up exactly 32 + physicalExtraStackSpace
             // The eval stack args above the buffer are orphaned and will be overwritten by future ops
-            fourArgsHiddenBufferCleanup = 32 + physicalExtraStackSpace;
+            fourArgsHiddenBufferCleanup = 32 + physicalExtraStackSpace + stackArgAlignmentPad;
         }
 
         // Allocate shadow space for calls with 0-4 args
@@ -6229,7 +6244,7 @@ public unsafe struct ILCompiler
             // Deallocate the full call frame (shadow space + extra stack args space)
             // PLUS the eval stack args that were left in place above the call frame
             int extraStackSpace = ((stackArgs * 8) + 15) & ~15;
-            int callFrameSize = 32 + extraStackSpace + largeStructArgBytes;
+            int callFrameSize = 32 + extraStackSpace + largeStructArgBytes + stackArgAlignmentPad;
             // We didn't pop the eval stack before the call - the args are still at [RSP+callFrameSize]
             // Clean up both: call frame + eval stack args
             X64Emitter.AddRI(ref _code, VReg.SP, callFrameSize + totalArgs * 8);
