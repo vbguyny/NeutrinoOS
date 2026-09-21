@@ -609,6 +609,30 @@ JIT_ALIGN_SHIM jit_ensure_virtual_compiled_shim, Jit_EnsureVirtualCompiled
 JIT_ALIGN_SHIM jit_ensure_vtable_slot_compiled_shim, Jit_EnsureVtableSlotCompiled
 JIT_ALIGN_SHIM jit_get_interface_method_shim, Jit_GetInterfaceMethod
 
+;; Allocation helpers: the Tier-0 JIT calls these directly from generated
+;; code (newobj/newarr/box/delegate/string allocation) and its call sites do
+;; not guarantee 16-byte RSP alignment (live eval-stack data is kept on the
+;; stack at irregular depths).  The allocators (and the GC / console paths
+;; they invoke) contain SSE frame stores emitted by the AOT compiler
+;; (movaps [rsp+x]); a misaligned entry #GPs inside those prologues and the
+;; fault surfaces as an "RAWV" crash during `run <app>`.  Route the helpers
+;; through the same alignment shims as the other JIT runtime stubs.
+extern kernel_ProtonOS_Runtime_RuntimeHelpers__RhpNewFast
+extern kernel_ProtonOS_Runtime_RuntimeHelpers__RhpNewArray
+
+JIT_ALIGN_SHIM jit_new_fast_shim, kernel_ProtonOS_Runtime_RuntimeHelpers__RhpNewFast
+JIT_ALIGN_SHIM jit_new_array_shim, kernel_ProtonOS_Runtime_RuntimeHelpers__RhpNewArray
+
+global jit_new_fast_shim_addr
+jit_new_fast_shim_addr:
+    lea rax, [rel jit_new_fast_shim]
+    ret
+
+global jit_new_array_shim_addr
+jit_new_array_shim_addr:
+    lea rax, [rel jit_new_array_shim]
+    ret
+
 ;; ==================== Generic JIT call alignment shim ====================
 ;; JIT-emitted method calls load the callee address into R11 and this shim's
 ;; address into RAX, then call the shim.  It re-aligns RSP to the 16-byte ABI

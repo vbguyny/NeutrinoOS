@@ -10349,6 +10349,20 @@ public unsafe struct ILCompiler
             //   shadowReserve >= totalArgBytes + 32
             int extraStackArgs = ctorArgs > 3 ? ctorArgs - 3 : 0;
             int shadowReserve = totalArgBytes + 32 + extraStackArgs * 8;
+            // Make the RSP 16-byte aligned at the RhpNewFast/constructor calls
+            // below. The JIT keeps pending eval-stack items on the machine stack
+            // (see _evalStackByteSize), so RSP right here is at
+            // frameBase - _evalStackByteSize (mod 16). The calls need
+            // (evalBytes + shadowReserve) % 16 == 0. Padding by just the modulus
+            // (rather than always rounding the reserve to a multiple of 16) also
+            // keeps call sites aligned when an odd number of 8-byte eval items
+            // is pending - e.g. a newobj whose argument expression left a live
+            // value on the eval stack. Getting this wrong misaligns the
+            // constructor call, and the 8-off delta then propagates down
+            // JIT->JIT calls until an AOT callee faults in an SSE prologue
+            // (movaps) - observed as a boot-test crash in /proc/stat.
+            int alignPad = (16 - ((_evalStackByteSize + shadowReserve) & 15)) & 15;
+            shadowReserve += alignPad;
             X64Emitter.SubRI(ref _code, VReg.SP, shadowReserve);
 
             // newobjTempOffset must be AFTER all local variable slots.

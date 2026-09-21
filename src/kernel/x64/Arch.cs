@@ -417,6 +417,16 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
             RawDiag(" rsp=0x", frame->Rsp);
             RawDiagCrlf();
 
+            // Crash triage: dump the first 24 stack words. Return addresses
+            // into the kernel AOT image (0x8xxxxxx) or JIT code
+            // (0x2000xxxxx) let us reconstruct the call chain offline.
+            for (int i = 0; i < 24; i++)
+            {
+                ulong v = *(ulong*)(frame->Rsp + (ulong)(i * 8));
+                RawDiag(" s=0x", v);
+            }
+            RawDiagCrlf();
+
             // Try to dispatch through exception handling infrastructure
             if (ExceptionHandling.DispatchException(frame, vector))
             {

@@ -78,6 +78,19 @@ public static unsafe class Kernel
     private static uint _virtioNetDriverId;
     private static uint _korlibId;
     private static uint _protonOsNetId;
+
+    /// <summary>
+    /// Assembly ID of the AHCI driver, used by Platform.AssemblyRunner to
+    /// read files (e.g. /apps/*.dll) from the boot volume at runtime.
+    /// </summary>
+    public static uint AhciDriverAssemblyId => _ahciDriverId;
+
+    /// <summary>
+    /// Assembly ID of TestSupport, used by Platform.AssemblyRunner for
+    /// the JIT-side ShellRunSupport.InvokeMain helper (managed argument
+    /// materialization and entry-point invocation).
+    /// </summary>
+    public static uint TestSupportAssemblyId => _testSupportId;
     private static uint _appTestId;
     private static uint _jitTestId;
     private static uint _consoleIoTestId;

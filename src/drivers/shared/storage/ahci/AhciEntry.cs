@@ -463,6 +463,124 @@ public static unsafe class AhciEntry
         return success ? 1 : 0;
     }
 
+    // Keeps the most recent boot-volume path string GC-rooted across the
+    // mount allocations. JIT-assembly static fields are GC roots; a
+    // char*-built local string can be missed by the Tier-0 JIT's GC info
+    // and collected mid-call (observed as a GP in interface dispatch on
+    // the freed string). Boot-time FAT tests never hit this because their
+    // ldstr strings live in the StringPool.
+    private static string? _pinnedBootPath;
+
+    /// <summary>
+    /// Get the size of a file on the boot (FAT) volume, or a negative
+    /// error code. Used by the kernel's AssemblyRunner to size the read
+    /// buffer for `run &lt;path&gt;` before calling ReadBootFile.
+    ///
+    /// The path is a UTF-16 buffer of pathLen chars (not necessarily
+    /// NUL-terminated). The managed String is created here (JIT-compiled
+    /// code) so the GC keeps it alive - the kernel must not pass managed
+    /// objects across this boundary.
+    ///
+    /// NOTE: the string is built with the explicit 3-arg char*
+    /// constructor on purpose: the kernel's JIT bridges System.String's
+    /// char* ctor to a fixed 3-parameter factory, so the 1-arg
+    /// `new string(char*)` overload would receive garbage for
+    /// startIndex/length.
+    /// </summary>
+    public static int GetBootFileSize(char* pathBuf, int pathLen)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = GetLastDevice();
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+
+        int length = (int)file.Length;
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return length;
+    }
+
+    /// <summary>
+    /// Read a file from the boot (FAT) volume into a caller-provided
+    /// buffer. Returns the number of bytes read, or a negative error
+    /// code. The FAT volume is mounted on demand: the runtime root
+    /// filesystem expects ext2, so boot-volume files (including
+    /// /apps/*.dll) are read directly by the kernel through this helper.
+    ///
+    /// The path is a UTF-16 buffer of pathLen chars (see GetBootFileSize).
+    /// </summary>
+    public static int ReadBootFile(char* pathBuf, int pathLen, byte* buffer, int capacity)
+    {
+        if (pathBuf == null || pathLen <= 0 || buffer == null || capacity <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = GetLastDevice();
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+
+        int length = (int)file.Length;
+        if (length > capacity)
+        {
+            file.Dispose();
+            fat.Unmount();
+            fat.Shutdown();
+            return -4;
+        }
+
+        int bytesRead = file.Read(buffer, length);
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return bytesRead;
+    }
+
     /// <summary>
     /// Test mounting EXT2 filesystem on the SATA test disk (last device).
     /// </summary>

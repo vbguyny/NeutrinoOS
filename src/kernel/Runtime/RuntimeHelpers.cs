@@ -42,9 +42,21 @@ public static unsafe class RuntimeHelpers
     private static void* _isAssignableToPtr;
     private static void* _getInterfaceMethodPtr;
 
+    // Kept alive (written in Init) so the linker emits the real allocators;
+    // the native alignment shims call them by mangled symbol name.
+    private static void* _keepAliveRhpNewFast;
+    private static void* _keepAliveRhpNewArray;
+
     /// <summary>Address of the interface-dispatch alignment shim in native.asm.</summary>
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern nint jit_get_interface_method_shim_addr();
+
+    /// <summary>Alignment shims for the allocation helpers (see native.asm).</summary>
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_new_fast_shim_addr();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint jit_new_array_shim_addr();
 
     // MD array allocation helper pointers
     private static void* _newMDArray2DPtr;
@@ -93,9 +105,19 @@ public static unsafe class RuntimeHelpers
 
         DebugConsole.WriteLine("[RuntimeHelpers] Initializing...");
 
-        // Cache allocation helper function pointers for the ILCompiler
-        _rhpNewFastPtr = (void*)(delegate*<MethodTable*, void*>)&RhpNewFast;
-        _rhpNewArrayPtr = (void*)(delegate*<MethodTable*, int, void*>)&RhpNewArray;
+        // Cache allocation helper function pointers for the ILCompiler.
+        // These point at the native alignment shims: JIT-emitted call sites do
+        // not guarantee 16-byte RSP alignment (live eval-stack data is kept at
+        // irregular stack depths), and the allocators/GC contain SSE frame
+        // stores that #GP on a misaligned entry (observed as an "RAWV" crash
+        // when running a shell-launched app).
+        _rhpNewFastPtr = (void*)jit_new_fast_shim_addr();
+        _rhpNewArrayPtr = (void*)jit_new_array_shim_addr();
+
+        // Keep the real allocators alive so the linker emits them - the
+        // native shims above call them by their mangled symbol names.
+        _keepAliveRhpNewFast = (void*)(delegate*<MethodTable*, void*>)&RhpNewFast;
+        _keepAliveRhpNewArray = (void*)(delegate*<MethodTable*, int, void*>)&RhpNewArray;
 
         // Cache type helper function pointers for castclass/isinst
         _isAssignableToPtr = (void*)(delegate*<MethodTable*, MethodTable*, bool>)&TypeHelpers.IsAssignableTo;

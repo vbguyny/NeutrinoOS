@@ -323,6 +323,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mmd -i $(IMG) ::/EFI/BOOT
 	mmd -i $(IMG) ::/drivers
 	mmd -i $(IMG) ::/lib
+	mmd -i $(IMG) ::/apps
 	mcopy -i $(IMG) $(BOOTLOADER_EFI) ::/EFI/BOOT/$(EFI_NAME)
 	mcopy -i $(IMG) $(BUILD_DIR)/BOOTX64.EFI ::/EFI/BOOT/$(KERNEL_NAME)
 	mcopy -i $(IMG) $(JITTEST_DLL) ::/JITTest.dll
@@ -331,6 +332,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mcopy -i $(IMG) $(DDK_DLL) ::/ProtonOS.DDK.dll
 	mcopy -i $(IMG) $(APPTEST_DLL) ::/AppTest.dll
 	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/HelloApp.dll
+	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/apps/hello.dll
 	mcopy -i $(IMG) $(ARGSAPP_DLL) ::/ArgsApp.dll
 	mcopy -i $(IMG) $(CONSOLETEST_DLL) ::/console_io_test.dll
 	mcopy -i $(IMG) $(VGATEST_DLL) ::/vga_test.dll

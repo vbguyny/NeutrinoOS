@@ -343,7 +343,7 @@ public static unsafe class NetExecutable
     /// <summary>
     /// Information about the Main method signature
     /// </summary>
-    private struct MainSignatureInfo
+    internal struct MainSignatureInfo
     {
         public bool TakesStringArrayArg;  // Main(string[] args)
         public bool ReturnsInt;           // int Main() vs void Main()
@@ -352,7 +352,7 @@ public static unsafe class NetExecutable
     /// <summary>
     /// Analyze the entry point's signature to determine if it takes string[] args
     /// </summary>
-    private static MainSignatureInfo GetMainSignatureInfo(LoadedAssembly* asm, uint entryPointToken)
+    internal static MainSignatureInfo GetMainSignatureInfo(LoadedAssembly* asm, uint entryPointToken)
     {
         var info = new MainSignatureInfo { TakesStringArrayArg = false, ReturnsInt = true };
 
@@ -427,7 +427,7 @@ public static unsafe class NetExecutable
     /// <summary>
     /// Get entry point token from assembly's CLI header
     /// </summary>
-    private static uint GetEntryPointToken(LoadedAssembly* asm)
+    internal static uint GetEntryPointToken(LoadedAssembly* asm)
     {
         if (asm == null || asm->ImageBase == null)
             return 0;
