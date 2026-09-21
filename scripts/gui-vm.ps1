@@ -2,7 +2,7 @@ param(
     [switch]$Rebuild,
     [switch]$NoStart
 )
-# Create (or recreate) a separate VirtualBox VM "NeutrinoOSGui" that boots the
+# Create (or recreate) a separate VirtualBox VM "NeutrinoOSCli" that boots the
 # GUI image variant produced by build/gui-image.sh:
 #   - VGA text console mirrored from early boot (boot log + shell visible in
 #     the VM window)
@@ -19,7 +19,7 @@ param(
 #   ... -NoStart   -> create the VM but do not start it
 $ErrorActionPreference = "Stop"
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
-$name = "NeutrinoOSGui"
+$name = "NeutrinoOSCli"
 $base = "d:\Projects\Code\NeutrinoOS\build"
 $img = Join-Path $base "neutrinoos-gui.img"
 $vdi = Join-Path $base "neutrinoos-gui.vdi"

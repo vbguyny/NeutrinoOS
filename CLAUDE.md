@@ -8,7 +8,7 @@
 ./kill.sh     # Kill any running QEMU instances
 ```
 
-## VirtualBox GUI VM (NeutrinoOSGui)
+## VirtualBox GUI VM (NeutrinoOSCli)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1            # create/recreate the VM from the GUI image + start it (window)
