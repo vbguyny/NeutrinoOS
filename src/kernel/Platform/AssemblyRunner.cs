@@ -52,6 +52,42 @@ public static unsafe class AssemblyRunner
     /// <returns>Main's exit code, or a negative Errno on failure.</returns>
     public static int Run(string path, string[] args)
     {
+        // Everything below - the file load, the JIT compiles it triggers
+        // (boot-volume helpers, then Main and its call graph) and Main itself -
+        // runs on a private large stack. The shell executes on the firmware
+        // boot stack (tens of KB), which these nested compile chains overflow
+        // (observed as an RhpStackProbe page fault). See BigStackRunner.
+        RunRequest req;
+        req.Path = path;
+        req.Args = args;
+        req.ExitCode = -1;
+        BigStackRunner.Run(&RunOuterThunk, &req);
+        return req.ExitCode;
+    }
+
+    /// <summary>State block for <see cref="RunOuterThunk"/> (caller's stack).</summary>
+    private struct RunRequest
+    {
+        public string Path;
+        public string[] Args;
+        public int ExitCode;
+    }
+
+    /// <summary>Body executed on the private stack (see <see cref="Run"/>).</summary>
+    private static int RunOuterThunk(void* arg)
+    {
+        var req = (RunRequest*)arg;
+        // Copy the managed references to locals in this frame (on the private
+        // stack) so they remain in the GC root-scan range for the whole call.
+        string path = req->Path;
+        string[] args = req->Args;
+        int rc = RunFull(path, args);
+        req->ExitCode = rc;
+        return rc;
+    }
+
+    private static int RunFull(string path, string[] args)
+    {
         DebugConsole.Write("[run] ");
         DebugConsole.Write(path);
         DebugConsole.WriteLine();
@@ -95,14 +131,12 @@ public static unsafe class AssemblyRunner
 
         var sig = NetExecutable.GetMainSignatureInfo(asm, entryToken);
 
-        var jitResult = Tier0JIT.CompileMethod(asmId, entryToken);
-        if (!jitResult.Success || jitResult.CodeAddress == null)
-        {
-            DebugConsole.WriteLine("[run] error: JIT compilation of Main failed");
-            return -Errno.ENOEXEC;
-        }
-
         int exitCode = 0;
+        int argCount = 0;
+
+        char* packed = null;
+        int* lengths = null;
+
         if (sig.TakesStringArrayArg)
         {
             string[] effectiveArgs = args ?? new string[0];
@@ -119,8 +153,8 @@ public static unsafe class AssemblyRunner
             for (int i = 0; i < effectiveArgs.Length; i++)
                 packedChars += effectiveArgs[i].Length;
 
-            char* packed = (char*)HeapAllocator.Alloc((ulong)((packedChars + 1) * 2));
-            int* lengths = (int*)HeapAllocator.Alloc((ulong)((effectiveArgs.Length + 1) * 4));
+            packed = (char*)HeapAllocator.Alloc((ulong)((packedChars + 1) * 2));
+            lengths = (int*)HeapAllocator.Alloc((ulong)((effectiveArgs.Length + 1) * 4));
             if (packed == null || lengths == null)
             {
                 DebugConsole.WriteLine("[run] error: out of memory for args");
@@ -137,24 +171,32 @@ public static unsafe class AssemblyRunner
             }
             packed[w] = '\0';
 
-            var invokeMain = (delegate*<void*, char*, int*, int, int, int>)_fnInvokeMain;
-            exitCode = invokeMain(jitResult.CodeAddress, packed, lengths, effectiveArgs.Length, sig.ReturnsInt ? 1 : 0);
+            argCount = effectiveArgs.Length;
+        }
 
-            HeapAllocator.Free(lengths);
-            HeapAllocator.Free(packed);
+        // Compile Main and invoke it (running on the private execution stack
+        // established by Run - see the wrapper above).
+        var jitResult = Tier0JIT.CompileMethod(asmId, entryToken);
+        if (!jitResult.Success || jitResult.CodeAddress == null)
+        {
+            DebugConsole.WriteLine("[run] error: JIT compilation of Main failed");
+            return -Errno.ENOEXEC;
+        }
+
+        if (sig.TakesStringArrayArg)
+        {
+            var invokeMain = (delegate*<void*, char*, int*, int, int, int>)_fnInvokeMain;
+            exitCode = invokeMain(jitResult.CodeAddress, packed, lengths, argCount, sig.ReturnsInt ? 1 : 0);
+        }
+        else if (sig.ReturnsInt)
+        {
+            var main = (delegate*<int>)jitResult.CodeAddress;
+            exitCode = main();
         }
         else
         {
-            if (sig.ReturnsInt)
-            {
-                var main = (delegate*<int>)jitResult.CodeAddress;
-                exitCode = main();
-            }
-            else
-            {
-                var main = (delegate*<void>)jitResult.CodeAddress;
-                main();
-            }
+            var main = (delegate*<void>)jitResult.CodeAddress;
+            main();
         }
 
         if (sig.ReturnsInt)

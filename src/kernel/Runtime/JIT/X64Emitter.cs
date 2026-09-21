@@ -618,6 +618,7 @@ public unsafe struct X64Emitter : ICodeEmitter<X64Emitter>
 
     public static void AddImm(ref CodeBuffer code, VReg dst, int imm)
     {
+        if (RspDeltaTracking && dst == VReg.SP) RspDeltaAccumulator -= imm;
         var d = Map(dst);
         EmitRexSingle(ref code, true, d);
         if (imm >= -128 && imm <= 127)
@@ -645,6 +646,7 @@ public unsafe struct X64Emitter : ICodeEmitter<X64Emitter>
 
     public static void SubImm(ref CodeBuffer code, VReg dst, int imm)
     {
+        if (RspDeltaTracking && dst == VReg.SP) RspDeltaAccumulator += imm;
         var d = Map(dst);
         EmitRexSingle(ref code, true, d);
         if (imm >= -128 && imm <= 127)
@@ -965,12 +967,25 @@ public unsafe struct X64Emitter : ICodeEmitter<X64Emitter>
     }
 
     // === Stack Operations ===
+
+    /// <summary>
+    /// Diagnostic: accumulates the net RSP delta (bytes; positive = bytes pushed
+    /// below the frame base) of every stack-pointer movement the emitter performs
+    /// (push/pop/sub sp/add sp). ILCompiler re-bases this at method-body start and
+    /// compares it with the tracked eval-stack byte size at every opcode boundary
+    /// so a handler whose emitted stack moves disagree with its PushEntry/PopEntry
+    /// accounting is pinpointed instead of silently skewing RSP-parity pads.
+    /// </summary>
+    public static int RspDeltaAccumulator;
+    public static bool RspDeltaTracking;
+
     public static void Push(ref CodeBuffer code, VReg reg)
     {
         var r = Map(reg);
         if ((byte)r >= 8)
             code.EmitByte((byte)(REX | REX_B));
         code.EmitByte((byte)(0x50 + ((byte)r & 7)));  // PUSH r64
+        if (RspDeltaTracking) RspDeltaAccumulator += 8;
     }
 
     public static void Pop(ref CodeBuffer code, VReg reg)
@@ -979,6 +994,7 @@ public unsafe struct X64Emitter : ICodeEmitter<X64Emitter>
         if ((byte)r >= 8)
             code.EmitByte((byte)(REX | REX_B));
         code.EmitByte((byte)(0x58 + ((byte)r & 7)));  // POP r64
+        if (RspDeltaTracking) RspDeltaAccumulator -= 8;
     }
 
     // === Argument/Local Access ===

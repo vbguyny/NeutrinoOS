@@ -684,7 +684,7 @@ public unsafe struct ILCompiler
     private int* _branchSources;    // IL offset where branch was emitted [MaxBranches]
     private int* _branchTargetIL;   // IL offset branch targets [MaxBranches]
     private int* _branchPatchOffset; // Code offset to patch [MaxBranches]
-    private byte* _branchTargetStackDepth; // Expected stack depth at target [MaxBranches]
+    private ushort* _branchTargetStackDepth; // Expected target state [MaxBranches]: (bytes>>3)<<6 | depth
     private int _branchCount;
 
     // Label mapping: IL offset -> code offset (heap-allocated)
@@ -746,7 +746,7 @@ public unsafe struct ILCompiler
     // Finally call tracking: each entry is 2 ints (patchOffset, ehClauseIndex)
     private const int MaxFinallyCalls = 16;
     // Buffer layout: each label array is 4096 bytes (1024 ints) to support MaxLabels=1024
-    private const int HeapBufferSize = (MaxStackDepth * EvalStackEntrySize) + 256 + 256 + 256 + 64 + 4096 + 4096 + 384 + 512 + 64 + 32 + 128 + 64 + (MaxFinallyCalls * 8) + 32 + 64 + 256 + 64; // 11008 bytes
+    private const int HeapBufferSize = (MaxStackDepth * EvalStackEntrySize) + 256 + 256 + 256 + 128 + 4096 + 4096 + 384 + 512 + 64 + 32 + 128 + 64 + (MaxFinallyCalls * 8) + 32 + 64 + 256 + 64; // 11072 bytes
 
     /// <summary>
     /// Create an IL compiler with GC reference tracking.
@@ -822,6 +822,11 @@ public unsafe struct ILCompiler
         compiler._localOffset = null;
         compiler._finallyCallPatches = null;
         compiler._finallyCallCount = 0;
+        // Diagnostic: physical stack accounting state (struct fields must be
+        // explicitly initialized - definite assignment requires all fields).
+        compiler._physReports = 0;
+        compiler._physPrevIL = -1;
+        compiler._physPrevOpcode = -1;
 
         // Allocate heap buffer for all arrays (reduces stack usage during nested JIT)
         compiler._heapBuffers = (byte*)HeapAllocator.AllocZeroed(HeapBufferSize);
@@ -834,20 +839,20 @@ public unsafe struct ILCompiler
             compiler._branchSources = (int*)(p + 256);         // offset 256, 256 bytes
             compiler._branchTargetIL = (int*)(p + 512);        // offset 512, 256 bytes
             compiler._branchPatchOffset = (int*)(p + 768);     // offset 768, 256 bytes
-            compiler._branchTargetStackDepth = p + 1024;       // offset 1024, 64 bytes
-            compiler._labelILOffset = (int*)(p + 1088);        // offset 1088, 4096 bytes (1024 ints)
-            compiler._labelCodeOffset = (int*)(p + 5184);      // offset 5184, 4096 bytes (1024 ints)
-            compiler._ehClauseData = (int*)(p + 9280);         // offset 9280, 384 bytes (16 * 6 * 4)
-            compiler._funcletInfo = (int*)(p + 9664);          // offset 9664, 512 bytes (32 funclets * 4 ints * 4 bytes)
-            compiler._localIsValueType = (bool*)(p + 10176);   // offset 10176, 64 bytes
-            compiler._argIsValueType = (bool*)(p + 10240);     // offset 10240, 32 bytes
-            compiler._localTypeSize = (ushort*)(p + 10272);    // offset 10272, 128 bytes
-            compiler._argTypeSize = (ushort*)(p + 10400);      // offset 10400, 64 bytes (MaxArgs * 2)
-            compiler._finallyCallPatches = (int*)(p + 10464);  // offset 10464, 128 bytes (MaxFinallyCalls * 8)
-            compiler._argFloatKind = (byte*)(p + 10592);       // offset 10592, 32 bytes (MaxArgs * 1)
-            compiler._localFloatKind = (byte*)(p + 10624);     // offset 10624, 64 bytes (MaxLocals * 1)
-            compiler._localOffset = (int*)(p + 10688);         // offset 10688, 256 bytes (MaxLocals * 4)
-            compiler._localSignedKind = (byte*)(p + 10944);    // offset 10944, 64 bytes (MaxLocals * 1)
+            compiler._branchTargetStackDepth = (ushort*)(p + 1024);  // offset 1024, 128 bytes (64 ushorts: packed bytes/depth)
+            compiler._labelILOffset = (int*)(p + 1152);        // offset 1152, 4096 bytes (1024 ints)
+            compiler._labelCodeOffset = (int*)(p + 5248);      // offset 5248, 4096 bytes (1024 ints)
+            compiler._ehClauseData = (int*)(p + 9344);         // offset 9344, 384 bytes (16 * 6 * 4)
+            compiler._funcletInfo = (int*)(p + 9728);          // offset 9728, 512 bytes (32 funclets * 4 ints * 4 bytes)
+            compiler._localIsValueType = (bool*)(p + 10240);   // offset 10240, 64 bytes
+            compiler._argIsValueType = (bool*)(p + 10304);     // offset 10304, 32 bytes
+            compiler._localTypeSize = (ushort*)(p + 10336);    // offset 10336, 128 bytes
+            compiler._argTypeSize = (ushort*)(p + 10464);      // offset 10464, 64 bytes (MaxArgs * 2)
+            compiler._finallyCallPatches = (int*)(p + 10528);  // offset 10528, 128 bytes (MaxFinallyCalls * 8)
+            compiler._argFloatKind = (byte*)(p + 10656);       // offset 10656, 32 bytes (MaxArgs * 1)
+            compiler._localFloatKind = (byte*)(p + 10688);     // offset 10688, 64 bytes (MaxLocals * 1)
+            compiler._localOffset = (int*)(p + 10752);         // offset 10752, 256 bytes (MaxLocals * 4)
+            compiler._localSignedKind = (byte*)(p + 11008);    // offset 11008, 64 bytes (MaxLocals * 1)
         }
 
         // Create code buffer sized based on IL length
@@ -1343,6 +1348,16 @@ public unsafe struct ILCompiler
             X64Emitter.HomeArgumentsWithFloats(ref _code, physicalArgCount, physicalFloatKinds);
         }
 
+        // Diagnostic: re-base the physical stack counter so emitter-measured RSP
+        // deltas over the method body validate the tracked eval-stack byte size
+        // at each opcode boundary (see CheckPhysStack).
+        int physSaved = X64Emitter.RspDeltaAccumulator;
+        X64Emitter.RspDeltaAccumulator = 0;
+        X64Emitter.RspDeltaTracking = true;
+        _physReports = 0;
+        _physPrevIL = -1;
+        _physPrevOpcode = -1;
+
         // Process IL
         while (_ilOffset < _ilLength)
         {
@@ -1356,9 +1371,24 @@ public unsafe struct ILCompiler
             if (branchDepth >= 0)
             {
                 _evalStackDepth = branchDepth;
+                // Restore the byte size RECORDED at the branch source: the
+                // linear-walk entry list may hold the other arm's shape, so
+                // re-deriving the size from the list would corrupt the
+                // RSP-parity pads of the following call sites. (Recalc remains
+                // the fallback when no byte size was recorded.)
+                int branchBytes = FindBranchTargetByteSize(_ilOffset);
+                if (branchBytes >= 0)
+                    _evalStackByteSize = branchBytes;
+                else
+                    RecalcEvalStackByteSize();
             }
 
+            // Diagnostic: validate emitter-measured RSP deltas against the model.
+            CheckPhysStack();
+            _physPrevIL = _ilOffset;
+
             byte opcode = _il[_ilOffset++];
+            _physPrevOpcode = opcode;
 
             // if (IsDebugBoolBugMethod())
             // {
@@ -1382,6 +1412,7 @@ public unsafe struct ILCompiler
                 DebugConsole.Write(" tok=0x");
                 DebugConsole.WriteHex(_debugMethodToken);
                 DebugConsole.WriteLine();
+                X64Emitter.RspDeltaAccumulator = physSaved;
                 return null;
             }
         }
@@ -1399,9 +1430,11 @@ public unsafe struct ILCompiler
             DebugConsole.Write(" Used=");
             DebugConsole.WriteDecimal((uint)_code.Position);
             DebugConsole.WriteLine();
+            X64Emitter.RspDeltaAccumulator = physSaved;
             return null;
         }
 
+        X64Emitter.RspDeltaAccumulator = physSaved;
         return _code.GetFunctionPointer();
     }
 
@@ -1432,8 +1465,12 @@ public unsafe struct ILCompiler
             _branchSources[_branchCount] = ilOffset;
             _branchTargetIL[_branchCount] = targetIL;
             _branchPatchOffset[_branchCount] = patchOffset;
-            // Record expected stack depth at the branch target
-            _branchTargetStackDepth[_branchCount] = (byte)_evalStackDepth;
+            // Record the expected target state: stack depth (6 bits) plus the
+            // eval-stack byte size (in 8-byte units). Restoring BOTH at the
+            // merge keeps the RSP-parity pads of call sites after the merge
+            // exact even when the linear-walk entry list holds the other
+            // arm's shape (a bare depth restore would mis-derive the bytes).
+            _branchTargetStackDepth[_branchCount] = (ushort)((((uint)_evalStackByteSize >> 3) << 6) | ((uint)_evalStackDepth & 0x3F));
             _branchCount++;
         }
     }
@@ -1447,7 +1484,22 @@ public unsafe struct ILCompiler
         for (int i = 0; i < _branchCount; i++)
         {
             if (_branchTargetIL[i] == ilOffset)
-                return _branchTargetStackDepth[i];
+                return _branchTargetStackDepth[i] & 0x3F;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Find the expected eval-stack byte size at a branch target (-1 if this
+    /// IL offset is not a branch target). Recorded at the branch source; see
+    /// RecordBranch.
+    /// </summary>
+    private int FindBranchTargetByteSize(int ilOffset)
+    {
+        for (int i = 0; i < _branchCount; i++)
+        {
+            if (_branchTargetIL[i] == ilOffset)
+                return (_branchTargetStackDepth[i] >> 6) << 3;
         }
         return -1;
     }
@@ -2889,6 +2941,68 @@ public unsafe struct ILCompiler
     /// Get the total byte size of all entries on the eval stack.
     /// </summary>
     private int GetEvalStackByteSize() => _evalStackByteSize;
+
+    /// <summary>
+    /// Re-derive _evalStackByteSize from the live entry list.
+    /// PushEntry/PopEntry keep the accumulator up to date along a linear walk,
+    /// but at branch merge points the walk only models ONE path: the depth is
+    /// re-synced from the recorded branch state while the byte size would still
+    /// reflect the other path's pushes/pops. Any mismatch corrupts RSP-parity
+    /// arithmetic (call-site alignment pads computed from _evalStackByteSize).
+    /// </summary>
+    private void RecalcEvalStackByteSize()
+    {
+        int total = 0;
+        if (_evalStack != null)
+        {
+            int n = _evalStackDepth;
+            if (n > MaxStackDepth) n = MaxStackDepth;
+            for (int i = 0; i < n; i++)
+            {
+                total += _evalStack[i].ByteSize;
+            }
+            // Entries pushed past the tracked-array capacity were never stored;
+            // account for them with the standard 8-byte slot size.
+            if (_evalStackDepth > MaxStackDepth)
+                total += (_evalStackDepth - MaxStackDepth) * 8;
+        }
+        else
+        {
+            total = _evalStackDepth * 8;
+        }
+        _evalStackByteSize = total;
+    }
+
+    /// <summary>
+    /// Diagnostic: compare the physical RSP bytes the emitter has produced since
+    /// the last re-base (X64Emitter.RspDeltaAccumulator) against the tracked
+    /// eval-stack byte size. Call at every opcode boundary; on divergence, report
+    /// the previous opcode - its handler emitted stack moves that disagree with
+    /// its PushEntry/PopEntry calls, which poisons the RSP-parity pads computed
+    /// from _evalStackByteSize.
+    /// </summary>
+    private void CheckPhysStack()
+    {
+        if (!X64Emitter.RspDeltaTracking) return;
+        if (X64Emitter.RspDeltaAccumulator == _evalStackByteSize) return;
+        if (_physReports >= 24) return;
+        _physReports++;
+        DebugConsole.Write("[PHYS] il=0x");
+        DebugConsole.WriteHex((uint)_ilOffset);
+        DebugConsole.Write(" prevOp=0x");
+        DebugConsole.WriteHex((uint)_physPrevOpcode);
+        DebugConsole.Write(" prevIL=0x");
+        DebugConsole.WriteHex((uint)_physPrevIL);
+        DebugConsole.Write(" phys=");
+        DebugConsole.WriteDecimal((uint)(X64Emitter.RspDeltaAccumulator & 0x7FFF));
+        DebugConsole.Write(" model=");
+        DebugConsole.WriteDecimal((uint)(_evalStackByteSize & 0x7FFF));
+        DebugConsole.Write(" asm=");
+        DebugConsole.WriteDecimal(_debugAssemblyId);
+        DebugConsole.Write(" tok=0x");
+        DebugConsole.WriteHex(_debugMethodToken);
+        DebugConsole.WriteLine();
+    }
 
     /// <summary>
     /// Get the byte offset from RSP to a specific entry (0 = top of stack).
@@ -5496,6 +5610,9 @@ public unsafe struct ILCompiler
         // alone does not guarantee the parity - the pad is computed from
         // _evalStackByteSize at allocation time and reused at cleanup time.
         int stackArgAlignmentPad = 0;
+        // ABI parity pad for the raw 0-4 arg call frame (set when allocating
+        // the 32-byte shadow space; folded into the matching cleanup).
+        int loadArgAlignmentPad = 0;
 
         // Pop arguments from eval stack into registers or temp storage
         // IL stack has args in order: arg0 at bottom, argN-1 at top
@@ -5573,23 +5690,7 @@ public unsafe struct ILCompiler
             else
             {
                 // Single slot: pop to RCX
-                int popStart = _code.Position;
                 X64Emitter.Pop(ref _code, VReg.R1);
-                int popEnd = _code.Position;
-
-                // Debug: dump POP RCX bytes for TestDictForeach
-                if (isDebugDFMoveNext)
-                {
-                    DebugConsole.Write("[DF-POP] bytes: ");
-                    byte* codePtr = _code.Code;
-                    for (int i = popStart; i < popEnd; i++)
-                    {
-                        DebugConsole.WriteHex((ulong)codePtr[i]);
-                        DebugConsole.Write(" ");
-                    }
-                    DebugConsole.WriteLine();
-                }
-
                 PopEntry();
             }
         }
@@ -6028,8 +6129,10 @@ public unsafe struct ILCompiler
                     X64Emitter.MovRM(ref _code, VReg.R4, VReg.SP, argEvalOffsets[2]);  // R9 = arg2
             }
 
-            // Set RCX = buffer address (after shadow + stack args)
-            int bufferOffset = 32 + physicalExtraStackSpace;
+            // Set RCX = buffer address (after shadow + stack args + pad).
+            // The parity pad must sit below the buffer so the cleanup (which
+            // includes it) still leaves the buffer at [RSP] afterwards.
+            int bufferOffset = 32 + physicalExtraStackSpace + stackArgAlignmentPad;
             X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, bufferOffset);
 
             for (int i = 0; i < totalArgs; i++) PopEntry();
@@ -6038,9 +6141,10 @@ public unsafe struct ILCompiler
             // Override stackArgs to prevent the default >4 args cleanup path
             stackArgs = 0;
 
-            // Track cleanup: shadow + physical stack args only (NOT eval stack bytes!)
-            // Buffer is at [RSP + 32 + physicalExtraStackSpace]
-            // To leave buffer at RSP after cleanup, we clean up exactly 32 + physicalExtraStackSpace
+            // Track cleanup: shadow + physical stack args + parity pad (NOT
+            // eval stack bytes!).  Buffer is at
+            // [RSP + 32 + physicalExtraStackSpace + pad]; cleaning up exactly
+            // 32 + physicalExtraStackSpace + pad leaves it at [RSP].
             // The eval stack args above the buffer are orphaned and will be overwritten by future ops
             fourArgsHiddenBufferCleanup = 32 + physicalExtraStackSpace + stackArgAlignmentPad;
         }
@@ -6062,7 +6166,14 @@ public unsafe struct ILCompiler
             }
             else
             {
-                X64Emitter.SubRI(ref _code, VReg.SP, 32);
+                // ABI parity pad: the tracked eval byte size is now
+                // trustworthy (branch merges re-derive it and leave resets
+                // it), so size the raw call frame such that the callee enters
+                // with RSP % 16 == 8. Needed for JIT->JIT calls (not shimmed:
+                // the shim frame would break managed exception unwinding) and
+                // for sites that cannot use the shim.
+                loadArgAlignmentPad = (16 - (_evalStackByteSize & 15)) & 15;
+                X64Emitter.SubRI(ref _code, VReg.SP, 32 + loadArgAlignmentPad);
 
                 // If we deferred setting up RCX for a large struct pointer, do it now
                 // The struct data is at [RSP + 32] (just after shadow space)
@@ -6230,13 +6341,14 @@ public unsafe struct ILCompiler
                 // Only deallocate shadow space - keep the buffer on the stack!
                 // RAX points to the buffer which is now at RSP after this cleanup.
                 // The buffer will be tracked as part of evalStackDepth.
-                X64Emitter.AddRI(ref _code, VReg.SP, 32 + largeStructArgBytes);
+                X64Emitter.AddRI(ref _code, VReg.SP, 32 + loadArgAlignmentPad + largeStructArgBytes);
             }
             else
             {
                 // Deallocate the 32-byte shadow space we allocated for 0-4 args
+                // (plus the ABI parity pad, when one was emitted)
                 // Plus any large struct args that were passed by pointer
-                X64Emitter.AddRI(ref _code, VReg.SP, 32 + largeStructArgBytes);
+                X64Emitter.AddRI(ref _code, VReg.SP, 32 + loadArgAlignmentPad + largeStructArgBytes);
             }
         }
         else if (stackArgs > 0)
@@ -7085,6 +7197,11 @@ public unsafe struct ILCompiler
         // Track if we handled shadow+buffer allocation for special cases
         bool handledAllocation = false;
         int cleanupAmount = 0;
+        // ABI parity pad for the 0-4 arg raw call frame (set when allocating
+        // the 32-byte shadow space; folded into the matching cleanup). The
+        // internal interface/vtable stub calls go through parity-agnostic
+        // alignment shims, so one pad suffices for the final raw call.
+        int callvirtAlignPad = 0;
 
         if (!needsHiddenBuffer)
         {
@@ -7141,11 +7258,28 @@ public unsafe struct ILCompiler
                     X64Emitter.MovMR(ref _code, VReg.SP, dstOffset, VReg.R5);
                 }
 
+                // ABI parity pad (see stackArgAlignmentPad): with the layout
+                //   S = frameBase - evalBytes + rspAdjust - 32
+                // the callee must enter with S % 16 == 0, hence
+                //   pad = (32 - rspAdjust + evalBytes) mod 16.
+                // The pad is folded into rspAdjust so the stack args still land
+                // at [S+32+i*8], and subtracted from the cleanup (see below).
                 int rspAdjust = totalArgs * 8 - extraStackSpace;
-                if (rspAdjust > 0)
-                    X64Emitter.AddRI(ref _code, VReg.SP, rspAdjust);
-                else if (rspAdjust < 0)
-                    X64Emitter.SubRI(ref _code, VReg.SP, -rspAdjust);
+                int viAlignPad = 0;
+                int rspAdjustPadded = rspAdjust + viAlignPad;
+
+                for (int i = 0; i < stackArgs; i++)
+                {
+                    int srcOffset = (stackArgs - 1 - i) * 8;
+                    int dstOffset = rspAdjustPadded + i * 8;
+                    X64Emitter.MovRM(ref _code, VReg.R5, VReg.SP, srcOffset);
+                    X64Emitter.MovMR(ref _code, VReg.SP, dstOffset, VReg.R5);
+                }
+
+                if (rspAdjustPadded > 0)
+                    X64Emitter.AddRI(ref _code, VReg.SP, rspAdjustPadded);
+                else if (rspAdjustPadded < 0)
+                    X64Emitter.SubRI(ref _code, VReg.SP, -rspAdjustPadded);
 
                 for (int i = 0; i < totalArgs; i++) PopEntry();
 
@@ -7154,9 +7288,9 @@ public unsafe struct ILCompiler
                 X64Emitter.SubRI(ref _code, VReg.SP, 32);  // Shadow space
 
                 // Mark that we handled allocation and set proper cleanup amount
-                // Cleanup needs: shadow (32) + extraStackSpace (remaining stack args space)
+                // Cleanup = shadow + stack-arg slots + eval args, minus the pad.
                 handledAllocation = true;
-                cleanupAmount = 32 + extraStackSpace;
+                cleanupAmount = 32 + extraStackSpace - viAlignPad;
                 needsShadowSpace = false;
             }
         }
@@ -7310,7 +7444,16 @@ public unsafe struct ILCompiler
         // Allocate shadow space if not already done
         if (needsShadowSpace)
         {
-            X64Emitter.SubRI(ref _code, VReg.SP, 32);
+            // ABI parity pad (see stackArgAlignmentPad): the args are already
+            // popped, so the call-site RSP is frameBase - evalBytes - 32; the
+            // callee must enter with RSP % 16 == 8, so the site needs parity.
+            // _evalStackByteSize is now trustworthy (branch merges re-derive
+            // it from the entry list and leave resets it), so the pad is
+            // exact. The internal helper calls route through alignment shims
+            // and net to zero pushes, so this single pad also fixes the final
+            // call to the resolved method.
+            callvirtAlignPad = (16 - (_evalStackByteSize & 15)) & 15;
+            X64Emitter.SubRI(ref _code, VReg.SP, 32 + callvirtAlignPad);
         }
 
         // Load target address and call
@@ -7480,7 +7623,8 @@ public unsafe struct ILCompiler
         else if (needsShadowSpace)
         {
             // Simple case: just deallocate the 32-byte shadow space
-            X64Emitter.AddRI(ref _code, VReg.SP, 32);
+            // (plus the ABI parity pad, when one was emitted)
+            X64Emitter.AddRI(ref _code, VReg.SP, 32 + callvirtAlignPad);
         }
         else if (stackArgs > 0 && !needsHiddenBuffer)
         {
@@ -7783,6 +7927,10 @@ public unsafe struct ILCompiler
         // x64 ABI ALWAYS requires 32 bytes shadow space, even for >4 args
         bool needsShadowSpace = true;
 
+        // ABI parity pad folded into the shadow/call frame (see
+        // stackArgAlignmentPad); set in the >4-arg path or the shadow block.
+        int calliPadding = 0;
+
         // Now pop arguments and set up the call (same logic as CompileCall)
         if (argCount == 0)
         {
@@ -7838,6 +7986,14 @@ public unsafe struct ILCompiler
             X64Emitter.MovRM(ref _code, VReg.R3, VReg.SP, (argCount - 3) * 8);   // arg2
             X64Emitter.MovRM(ref _code, VReg.R4, VReg.SP, (argCount - 4) * 8);   // arg3
 
+            // ABI parity pad (see stackArgAlignmentPad): S = frameBase
+            // - evalBytes + rspAdjustPadded - 32 must be 16-aligned, and the
+            // pad folds into rspAdjust so stack args still land at [S+32+i*8].
+            int rspAdjust = argCount * 8 - extraStackSpace;
+            int calliAlignPad = 0;
+            int rspAdjustPadded = rspAdjust + calliAlignPad;
+            calliPadding = calliAlignPad;
+
             // Copy stack args to their final locations (relative to current RSP)
             // Note: shadow space (32 bytes) is allocated AFTER rspAdjust, so positions are
             // calculated relative to the pre-shadow RSP. After shadow space allocation,
@@ -7845,21 +8001,20 @@ public unsafe struct ILCompiler
             for (int i = 0; i < stackArgs; i++)
             {
                 int srcOffset = (stackArgs - 1 - i) * 8;
-                int dstOffset = argCount * 8 - extraStackSpace + i * 8;
+                int dstOffset = rspAdjustPadded + i * 8;
                 X64Emitter.MovRM(ref _code, VReg.R5, VReg.SP, srcOffset);
                 X64Emitter.MovMR(ref _code, VReg.SP, dstOffset, VReg.R5);
             }
 
             // Now adjust RSP to point to the call frame
-            // Final RSP = current RSP + argCount*8 - extraStackSpace
-            int rspAdjust = argCount * 8 - extraStackSpace;
-            if (rspAdjust > 0)
+            // Final RSP = current RSP + argCount*8 - extraStackSpace (+ pad)
+            if (rspAdjustPadded > 0)
             {
-                X64Emitter.AddRI(ref _code, VReg.SP, rspAdjust);
+                X64Emitter.AddRI(ref _code, VReg.SP, rspAdjustPadded);
             }
-            else if (rspAdjust < 0)
+            else if (rspAdjustPadded < 0)
             {
-                X64Emitter.SubRI(ref _code, VReg.SP, -rspAdjust);
+                X64Emitter.SubRI(ref _code, VReg.SP, -rspAdjustPadded);
             }
 
             for (int i = 0; i < argCount; i++) PopEntry();
@@ -7869,7 +8024,16 @@ public unsafe struct ILCompiler
         // x64 ABI requires 32 bytes for the callee to home register arguments
         if (needsShadowSpace)
         {
-            X64Emitter.SubRI(ref _code, VReg.SP, 32);
+            // ABI parity pad (see stackArgAlignmentPad); for the >4-arg path
+            // the pad was already folded into rspAdjustPadded (calliPadding),
+            // so only the <=4-arg path pads the shadow allocation itself.
+            int shadowPad = 0;
+            if (stackArgs == 0)
+            {
+                calliPadding = 0;
+                shadowPad = calliPadding;
+            }
+            X64Emitter.SubRI(ref _code, VReg.SP, 32 + shadowPad);
         }
 
         // Call through the function pointer in R11
@@ -7882,13 +8046,15 @@ public unsafe struct ILCompiler
         if (needsShadowSpace)
         {
             // Deallocate the 32-byte shadow space we allocated for 0-4 args
-            X64Emitter.AddRI(ref _code, VReg.SP, 32);
+            // (plus the ABI parity pad, when one was emitted)
+            X64Emitter.AddRI(ref _code, VReg.SP, 32 + calliPadding);
         }
         else if (stackArgs > 0)
         {
             // Deallocate the full call frame (shadow space + extra stack args space)
+            // minus the parity pad already reclaimed by the boosted rspAdjust
             int extraStackSpace = ((stackArgs * 8) + 15) & ~15;
-            int callFrameSize = 32 + extraStackSpace;
+            int callFrameSize = 32 + extraStackSpace - calliPadding;
             X64Emitter.AddRI(ref _code, VReg.SP, callFrameSize);
         }
 
@@ -8340,6 +8506,7 @@ public unsafe struct ILCompiler
         // We don't need to emit pops since we're jumping away and the
         // target IL expects an empty stack
         _evalStackDepth = 0;
+        _evalStackByteSize = 0;
 
         if (_compilingFunclet)
         {
@@ -12950,6 +13117,13 @@ public unsafe struct ILCompiler
     private int* _finallyCallPatches;  // [MaxFinallyCalls * 2]
     private int _finallyCallCount;
 
+    // Diagnostic: physical stack accounting (see CheckPhysStack). Reports the
+    // first opcodes whose emitter-measured RSP movement diverges from the
+    // tracked eval-stack byte size, with the previous opcode that caused it.
+    private int _physReports;
+    private int _physPrevIL;
+    private int _physPrevOpcode;
+
     /// <summary>
     /// Set EH clauses for funclet compilation.
     /// Must be called before CompileWithFunclets().
@@ -13073,6 +13247,14 @@ public unsafe struct ILCompiler
         if (_argCount > 0)
             X64Emitter.HomeArguments(ref _code, _argCount);
 
+        // Diagnostic: re-base the physical stack counter (see Compile()).
+        int physSaved = X64Emitter.RspDeltaAccumulator;
+        X64Emitter.RspDeltaAccumulator = 0;
+        X64Emitter.RspDeltaTracking = true;
+        _physReports = 0;
+        _physPrevIL = -1;
+        _physPrevOpcode = -1;
+
         // Process IL, skipping handler regions
         while (_ilOffset < _ilLength)
         {
@@ -13088,8 +13270,31 @@ public unsafe struct ILCompiler
                 continue;
             }
 
+            // Branch-target merge: restore the stack depth recorded at the branch
+            // source and re-derive the byte-size accumulator, exactly like Compile()
+            // does for non-EH methods. This pass IS the emitted main body for EH
+            // methods, so without the resync the call-site RSP-parity pads are
+            // computed from a path-linear eval-stack state that does not match what
+            // the runtime actually has pending when it arrives at the merge point.
+            int branchDepth = FindBranchTargetDepth(_ilOffset);
+            if (branchDepth >= 0)
+            {
+                _evalStackDepth = branchDepth;
+                // Restore the byte size RECORDED at the branch source (see RecordBranch).
+                int branchBytes = FindBranchTargetByteSize(_ilOffset);
+                if (branchBytes >= 0)
+                    _evalStackByteSize = branchBytes;
+                else
+                    RecalcEvalStackByteSize();
+            }
+
+            // Diagnostic: validate emitter-measured RSP deltas against the model.
+            CheckPhysStack();
+            _physPrevIL = _ilOffset;
+
             RecordLabel(_ilOffset, _code.Position);
             byte opcode = _il[_ilOffset++];
+            _physPrevOpcode = opcode;
 
             if (!CompileOpcode(opcode))
             {
@@ -13098,6 +13303,7 @@ public unsafe struct ILCompiler
                 DebugConsole.Write(" at IL offset ");
                 DebugConsole.WriteDecimal((uint)(_ilOffset - 1));
                 DebugConsole.WriteLine();
+                X64Emitter.RspDeltaAccumulator = physSaved;
                 return null;
             }
         }
@@ -13160,6 +13366,7 @@ public unsafe struct ILCompiler
                     _branchCount = 0;
                     _evalStackDepth = 1;        // Exception is on the stack
                     _evalStackByteSize = 8;     // 8 bytes (object reference)
+                    X64Emitter.RspDeltaAccumulator = 8;  // re-anchor: prolog pushed the exception
 
                     // DO NOT set _funcletCatchHandlerEntry for filter expressions!
                     // The exception is now on the real stack, not just in RCX
@@ -13169,8 +13376,13 @@ public unsafe struct ILCompiler
                     _ilOffset = filterStart;
                     while (_ilOffset < filterEnd)
                     {
+                        // Diagnostic: validate emitter-measured RSP deltas against the model.
+                        CheckPhysStack();
+                        _physPrevIL = _ilOffset;
+
                         RecordLabel(_ilOffset, _code.Position);
                         byte opcode = _il[_ilOffset++];
+                        _physPrevOpcode = opcode;
 
                         if (!CompileOpcode(opcode))
                         {
@@ -13231,6 +13443,7 @@ public unsafe struct ILCompiler
                 // Reset eval stack for funclet compilation
                 _evalStackDepth = 0;
                 _evalStackByteSize = 0;
+                X64Emitter.RspDeltaAccumulator = 0;  // re-anchor to the funclet frame base
 
                 // For catch handlers (Exception=0 or Filter=1), the exception object is passed in RCX.
                 // Push it onto the stack so IL can use it (callvirt on exception, or pop to discard).
@@ -13244,6 +13457,7 @@ public unsafe struct ILCompiler
                     // Track exception on eval stack as an object reference
                     _evalStackDepth = 1;
                     _evalStackByteSize = 8;
+                    X64Emitter.RspDeltaAccumulator = 8;  // re-anchor: prolog pushed rcx
                     if (_evalStack != null)
                     {
                         _evalStack[0] = EvalStackEntry.ObjRef;
@@ -13254,8 +13468,13 @@ public unsafe struct ILCompiler
                 _ilOffset = handlerStart;
                 while (_ilOffset < handlerEnd)
                 {
+                    // Diagnostic: validate emitter-measured RSP deltas against the model.
+                    CheckPhysStack();
+                    _physPrevIL = _ilOffset;
+
                     RecordLabel(_ilOffset, _code.Position);
                     byte opcode = _il[_ilOffset++];
+                    _physPrevOpcode = opcode;
 
                     if (!CompileOpcode(opcode))
                     {
@@ -13362,6 +13581,7 @@ public unsafe struct ILCompiler
 
         // ========== Build results ==========
         void* code = _code.GetFunctionPointer();
+        X64Emitter.RspDeltaAccumulator = physSaved;
         if (code == null) return null;
 
         ulong codeBase = (ulong)code;
@@ -13514,6 +13734,7 @@ public unsafe struct ILCompiler
             }
         }
 
+        X64Emitter.RspDeltaAccumulator = physSaved;
         return code;
     }
 

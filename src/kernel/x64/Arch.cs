@@ -415,6 +415,11 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
             RawDiag(" rip=0x", frame->Rip);
             RawDiag(" err=0x", (ulong)frame->ErrorCode);
             RawDiag(" rsp=0x", frame->Rsp);
+            // Page faults: CR2 is the faulting linear address - it tells an
+            // unmapped page inside the active stack region apart from a
+            // runaway probe target outside it.
+            if (vector == 14)
+                RawDiag(" cr2=0x", CPU.ReadCr2());
             RawDiagCrlf();
 
             // Crash triage: dump the first 24 stack words. Return addresses

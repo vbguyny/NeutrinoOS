@@ -633,6 +633,37 @@ jit_new_array_shim_addr:
     lea rax, [rel jit_new_array_shim]
     ret
 
+;; ==================== Big-stack runner ====================
+;; int run_on_big_stack(void* stackTop, int (*fn)(void*), void* arg)
+;; Switches RSP to stackTop (kept 16-byte aligned) for the duration of
+;; fn(arg), then restores the caller's stack and returns fn's result (EAX).
+;; Used to run the JIT compilation and execution of `run` assemblies on a
+;; large dedicated stack: the shell runs on the firmware boot stack (tens of
+;; KB), which standard .NET app compiles/execution overflow.
+global run_on_big_stack
+run_on_big_stack:
+    push rbp
+    mov rbp, rsp
+    push rbx
+    push r12
+    mov rbx, rdx            ; rbx = fn
+    mov r12, rsp            ; r12 = caller's rsp (restore point)
+    mov rsp, rcx            ; switch to the new stack
+    and rsp, -16            ; 16-byte align
+    sub rsp, 32             ; shadow space for the callee
+    mov rcx, r8             ; arg
+    call rbx
+    mov rsp, r12            ; back to the caller's stack
+    pop r12
+    pop rbx
+    pop rbp
+    ret
+
+global run_on_big_stack_addr
+run_on_big_stack_addr:
+    lea rax, [rel run_on_big_stack]
+    ret
+
 ;; ==================== Generic JIT call alignment shim ====================
 ;; JIT-emitted method calls load the callee address into R11 and this shim's
 ;; address into RAX, then call the shim.  It re-aligns RSP to the 16-byte ABI
@@ -807,30 +838,29 @@ load_context:
     ret
 
 ; RhpStackProbe - Stack probe for large stack allocations
-; Windows x64 ABI: probe size in rax
-; Must touch each page to avoid guard page violations
+; ILC/bflat convention: the CALLER loads R11 with the target stack pointer
+; (prologue: lea r11,[rsp-N]; call RhpStackProbe; mov rsp,r11) and this
+; helper touches one byte per page from rsp down to R11.
+;
+; RAX is NOT an input. The previous rax-count implementation ("Windows x64
+; ABI") read whatever the caller left in rax as a length and walked
+; rax/4096 pages of stack - entering with e.g. a pointer or the old rsp
+; walked megabytes down and #PF'd on unmapped memory (observed as RAWV
+; v=0xE with CR2 near page 0).
 global RhpStackProbe
 RhpStackProbe:
-    ; rax contains the number of bytes to allocate
-    ; We need to touch each page from rsp down to rsp-rax
-    ; On Windows, page size is 4096 (0x1000)
-
-    ; Preserve rax for the caller (will be subtracted from rsp by caller)
-    push rax
     push rcx
-
-    ; Start probing from current rsp
     mov rcx, rsp
-    sub rcx, 8              ; Account for pushed rax
-
+    sub rcx, 8              ; Account for the pushed rcx
+    cmp rcx, r11
+    jbe .probe_done         ; Target at/above current rsp - nothing to touch
 .probe_loop:
     sub rcx, 0x1000         ; Move down one page
-    test [rcx], eax         ; Touch the page (reading is enough)
-    sub rax, 0x1000
-    ja .probe_loop          ; Continue if more pages to probe
-
+    test byte [rcx], 0      ; Touch the page (reading is enough)
+    cmp rcx, r11
+    ja .probe_loop          ; Continue until the target is reached
+.probe_done:
     pop rcx
-    pop rax
     ret
 
 ;; ==================== PAL Context Restore ====================
@@ -2006,6 +2036,7 @@ RhpInitialDynamicInterfaceDispatch:
     ; address), and the 6 pushes above add 0 mod 16, so RSP % 16 == 8 here.
     ; The x64 ABI requires RSP % 16 == 0 at the call site, so reserve
     ; 32 bytes of shadow space plus 8 bytes of padding.
+    ; BISECT: normalization reverted (post-CAL-T8 stall on run.img).
     sub rsp, 40             ; shadow space (32) + padding (8) for alignment
     call RhpResolveInterfaceMethod
     add rsp, 40
@@ -2022,7 +2053,10 @@ RhpInitialDynamicInterfaceDispatch:
     pop rdx
     pop rcx
 
-    ; Tail-call to the resolved method
+    ; Tail-call to the resolved method. NOTE: rsp here equals the stub's
+    ; entry rsp; the callee's required entry parity is inherited from the
+    ; JIT call site that entered this stub (the JIT emits parity pads at
+    ; callvirt sites).
     jmp r11
 
 ;; ==================== SYSCALL/SYSRET Entry Point ====================
