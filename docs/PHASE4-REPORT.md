@@ -48,6 +48,15 @@ blocked, and what remains.
 - `run /apps/hello.dll` / `run /apps/p4hello.dll`: assembly load, JIT
   compile of `Main`, console output through the JIT console bridge,
   `[run] exited with code ...` reporting, `run /nope.dll` graceful error.
+- `run /apps/p4linq.dll`: all 34 checks pass (`[linq] PASS`, exit 0) -
+  collections (List/Dictionary/HashSet/Queue/Stack) and the korlib LINQ
+  operators (Where/Select/SelectMany/OrderBy/ThenBy/GroupBy/Join/...).
+  This closes the "generic `newobj` resolution" blocker; the en route
+  JIT fixes (array type-argument signatures, GenParamCount skip,
+  MemberRef-backed MethodSpec recompilation, vtable-slot registration
+  for implicit interface implementations, `constrained.`/`unbox`
+  reference-type semantics, interface-dispatch fallbacks) are documented
+  in PHASE4-JIT-COMPAT.md.
 - `run /apps/p4async.dll`: `Task.Run(...).Result` and `Task.Run(...).Wait()`
   checks pass (partial file; see blockers).
 
@@ -60,14 +69,14 @@ blocked, and what remains.
    Root cause confirmed with a GDB capture: the caller chain enters the
    stub misaligned (entry RSP % 16 == 0 instead of 8). Deterministic:
    blocks the file I/O acceptance item.
-2. **Unresolved `newobj` token** for generic BCL constructors
-   (`[JIT newobj] FAIL: unresolved token 0x0A000032`, the first
-   `new List<int>()` in `p4linq`). Blocks the LINQ acceptance item.
-3. **`async` deep-await hang**: `p4async` completes its first two checks,
+2. **`async` deep-await hang**: `p4async` completes its first two checks,
    then stops responding; suspected await-continuation path in the
    synchronous Task builder.
-4. **`p4cs14` produced no captured output** - needs a re-run with serial
+3. **`p4cs14` produced no captured output** - needs a re-run with serial
    capture to separate build-time issues from runtime failures.
+4. **`p4fileio` "two lines" check**: line 2 written does not read back;
+   data-level issue in the write/read round trip (separate from the JIT
+   vtable work).
 
 ## Deviations and limitations (documented, by design or discovery)
 
@@ -102,10 +111,12 @@ blocked, and what remains.
 ## Next steps (recommended order)
 
 1. Fix the callvirt/interface open JIT issue (1) - unlock file I/O.
-2. Fix generic `newobj` MemberRef resolution (2) - unlock LINQ.
-3. Re-run `p4cs14`, `p4inter`, `p4multi`, `p4net` with serial capture and
+2. Re-run `p4cs14`, `p4inter`, `p4multi`, `p4net` with serial capture and
    close out their acceptance items.
-4. Debug the async hang (3).
-5. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
-6. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
+3. Debug the async hang (2).
+4. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
+5. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
    full checklist.
+
+Note: item 2 of the earlier list ("unresolved generic `newobj` token")
+was fixed - `p4linq` now passes 34/34 checks; see "Verified working".

@@ -99,12 +99,85 @@ finding that four independent bugs stacked together:
     vtables carry no entries for those slots (UTF8Encoding `vtable[5]` is
     empty), which previously halted in `EnsureVtableSlotCompiled`.
 
+### LINQ unlock (generic MemberRef + vtable slot registration)
+
+12. **Array type arguments in signatures**
+    (`AssemblyLoader.ParseTypeFromSignature`): `ELEMENT_TYPE_SZARRAY`
+    (0x1D) and `ELEMENT_TYPE_ARRAY` (0x14) now parse to the array
+    MethodTable of the element type. Previously arrays as type arguments
+    hit the primitive lookup and returned null, aborting
+    generic-instantiation resolution (`[JIT newobj] FAIL: unresolved
+    token 0x0A000032` on the first `new List<int>()` in `p4linq`).
+13. **GenParamCount skip for generic signatures** (three parsers in
+    `MetadataIntegration`): method signatures with the GENERIC flag
+    (0x10) carry a compressed GenParamCount *before* ParamCount. Reading
+    ParamCount first mis-sized e.g. `IOrderedEnumerable<T>.
+    CreateOrderedEnumerable<TKey>` as 1 arg, and the call emitter set up
+    the wrong argument registers.
+14. **MemberRef-backed MethodSpec recompilation guard**
+    (`MetadataIntegration.CompleteMethodResolution`): when a resolved
+    generic method entry was compiled for a different instantiation
+    (TypeArgHash mismatch), it is invalidated and recompiled under the
+    current method type args instead of reusing stale code (e.g. `[int]`
+    code executed for `[string]`).
+15. **Exact explicit-slot protection during vtable registration**
+    (`AssemblyLoader.RegisterNewVirtualMethodsForLazyJit`): the previous
+    per-interface bitmask ("interfaces with any explicit implementation")
+    excluded whole interfaces, so an implicit `IEnumerator.MoveNext`
+    registered at a bogus sequential slot instead of interface slot 5
+    (explicit `IEnumerator.get_Current` was the only protected method).
+    Result before the fix: an int-flavored `MoveNext` compiled for
+    `List<int>.Enumerator` was resolved for `List<string>.Enumerator`
+    (4-byte element stride) and corrupted the `OrderBy` sort buffer. The
+    mask is replaced by an exact list of claimed slots.
+16. **Instantiation-aware vtable slot propagation**
+    (`AssemblyLoader.PropagateVtableSlotToInstantiations`): when
+    propagating compiled code into cached instantiations' empty slots,
+    entries whose type arguments differ from the compiling context are
+    skipped, so instantiation-specific code never leaks across
+    instantiations.
+17. **Lowest-registered-slot preference** (`Tier0JIT.PopulateVtableSlot`):
+    token lookups can return an entry without a slot (a compiled flavor);
+    the lowest slot-registered entry for the token is preferred so
+    interface implementations always land in their registered slot. The
+    vtable-slot hint is also cleared unconditionally after a compile
+    attempt (a cache-hit compile never consumed it, leaving a stale hint
+    that could corrupt a later unrelated compile).
+18. **Interface-dispatch fallbacks** (`MethodTable.TypeHelpers` +
+    `JitStubs.ResolveInterfaceMethodByName`): arrays (which carry no
+    interface map) map `IEnumerable<T>.GetEnumerator` to a new korlib
+    `SZGenericArrayEnumerator<T>` factory and `ICollection<T>.get_Count`
+    to the array length; other types with incomplete maps resolve the
+    implementation by name (exact or explicit `Prefix.Name`) down the
+    class hierarchy and compile it with the instantiation's type-argument
+    context.
+19. **`constrained.` with reference types and arguments**
+    (`ILCompiler` constrained-callvirt branch): the eval stack holds
+    `[managed_ptr, arg0..argN]` with the args *above* the pointer; the
+    code now saves the argument registers before dereferencing the
+    pointer (previously it dereferenced the last argument; with no
+    arguments the bug was invisible, which is why simple constrained
+    calls worked).
+20. **`unbox`/`unbox.any` on reference types are no-ops** (`ILCompiler`):
+    the old code applied value-type width handling, so unboxing a string
+    produced a 16-bit load from the object's field area (`string`'s
+    ComponentSize is 2). Reference-type targets now leave the object
+    reference on the eval stack unchanged.
+21. **korlib LINQ semantics fixes** (`System.Linq.Enumerable`,
+    `System.Collections.Generic.Comparer`): `CompareKeyChain` compared the
+    level list outermost-first, making `ThenBy` the primary key; it now
+    walks from the root `OrderBy` level outwards. `ObjectComparer<T>`
+    gained ordinal string comparison (matching `Comparer<string>.Default`)
+    and now uses the static `object.Equals` for equality - instance
+    `x.Equals(y)` returns false for equal boxed ints in this runtime,
+    which made equal sort keys compare unequal. `p4linq` passes 34/34
+    checks after these fixes.
+
 ## Known open JIT issues (blocking the Phase 4 acceptance items)
 
 | Issue | Symptom | Where |
 |-------|---------|-------|
 | JIT-type vtable registration gaps beyond the resolved Encoding case | `[JitStubs] FATAL: VTable slot N has no registered method for MT 0x33Fxxx` (e.g. slot 20/MT `0x33F248`, asm=1 type `0x020000C9`) during `p4fileio`'s later checks (instance disposal / writer flushes). Ancestor/interface resolution succeeds for neighbouring slots (4, 17, 21) but not this one. | `CompiledMethodRegistry` registration coverage for inherited virtuals on JIT-created types; extend the ancestor/interface fallback in `JitStubs.EnsureVtableSlotCompiled` or the per-type slot registration. |
-| Unresolved `newobj` token in generic contexts | `[JIT newobj] FAIL: unresolved token 0x0A000032` aborts `p4linq` at the first `new List<int>()` | `ILCompiler.CompileNewobj` MemberRef resolution for BCL generic ctors. |
 | `async` state machine hang | `p4async` completes the first two checks, then stops responding | Suspected await continuation path (`AsyncTaskMethodBuilder`/`TaskAwaiter` interaction with the synchronous Task); under investigation. |
 | `p4fileio` "two lines" check | `[fileio] ok: line 1` then `[fileio] FAIL: line 2` - the second line written does not read back | Data-level issue in the write/read round trip (see `tests/phase4/FileIo/Program.cs`); separate from the vtable/alignment work. |
 | `p4cs14` produced no serial output | needs a dedicated re-run with serial capture | re-run and fix. |

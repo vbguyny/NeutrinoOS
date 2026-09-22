@@ -64,12 +64,35 @@ the JIT's virtual/interface call sites with stack arguments are not yet
 parity-corrected, which misaligns the interface-dispatch chain in the FAT
 driver (details in PHASE4-JIT-COMPAT.md). Reads work.
 
-## 6. Collections + LINQ test - **BLOCKED**
+## 6. Collections + LINQ test - **PASS**
 
-`run /apps/p4linq.dll` aborts with
-`[JIT newobj] FAIL: unresolved token 0x0A000032` at the first generic
-collection allocation. korlib's LINQ itself is implemented (see
-PHASE4-BCL.md); the blocker is JIT-side generic newobj resolution.
+```bash
+bash /mnt/d/Projects/Code/NeutrinoOS/build/p4-build-linq.sh   # build p4linq
+bash /mnt/d/Projects/Code/NeutrinoOS/build/run-linq-check.sh # deploy + run + capture
+# expect: all 34 [linq] checks ok, "[linq] PASS", "[run] exited with code 0"
+```
+
+Covers `List<T>`, `Dictionary<K,V>`, `HashSet<T>`, `Queue/Stack`, the
+korlib LINQ operators (Where/Select/SelectMany/OrderBy/ThenBy/GroupBy/
+Join/Distinct/Take/Skip/Concat/Aggregates) and the `string.Join`/`Split`
+helpers. Two real korlib bugs found along the way were fixed (ThenBy key
+priority in `CompareKeyChain`; string ordering + boxed-int equality in
+`ObjectComparer<T>` - see PHASE4-JIT-COMPAT.md), and three stale test
+expectations were corrected to match real .NET 10 semantics (verified
+against a net10.0 ground-truth run).
+
+### Root causes fixed for this item (summary)
+
+- Generic `newobj` MemberRef resolution: array type arguments
+  (`ELEMENT_TYPE_SZARRAY`/`ELEMENT_TYPE_ARRAY`) were rejected by the
+  TypeSpec parser, and the GenParamCount byte was not skipped for generic
+  method signatures; MemberRef-backed generic methods could also reuse
+  code compiled for another instantiation.
+- `List<T>.Enumerator` vtable registration: explicit-interface
+  protection previously masked a whole interface, misregistering
+  `MoveNext`/`Reset` at sequential slots instead of interface slots and
+  leading to an int-flavored `MoveNext` being executed for
+  `List<string>.Enumerator` (buffer corruption during `OrderBy`).
 
 ## 7. Async/await test - **PARTIAL**
 

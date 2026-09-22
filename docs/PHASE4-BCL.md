@@ -33,6 +33,12 @@ Not implemented (deferred): indexed overloads (`Func<T,int,...>`),
 predicated variants beyond the listed set, `System.Linq.AsyncEnumerable`
 (pending - see PHASE4-REPORT.md).
 
+**Verified end-to-end:** `tests/phase4/Linq` (app `p4linq`) passes all 34
+checks on QEMU (exit 0), and its checks were cross-checked against a
+net10.0 ground-truth run of the same operations. Keying/sort semantics
+match .NET (`OrderBy` primary key, `ThenBy` secondary; ordinal string
+comparison; groups in first-seen key order; `Join` in outer order).
+
 ## New in Phase 4: `System.IO`
 
 All paths address the boot (FAT32) volume through the kernel file bridge
