@@ -1004,13 +1004,31 @@ public unsafe class FatFileSystem : IFileSystem
                             Memory.FreePages(bufferPhys, pageCount);
                             return FileResult.NotFound;
                         }
+
+                        // entryIndex must be the GLOBAL 32-byte slot index within
+                        // this directory's cluster chain: UpdateDirectoryEntryPartial
+                        // and DeleteDirectoryEntry select the slot as
+                        // (entryIndex / entriesPerCluster, entryIndex % entriesPerCluster).
+                        // CreateEntryInDirectory assigns slot indexes the same way.
+                        // Count EVERY slot - including deleted, volume-label and LFN
+                        // slots - or an update after appends lands on the wrong entry
+                        // (the appended size never becomes visible).
                         if (dirEntry[i].Name[0] == 0xE5) // Deleted
+                        {
+                            index++;
                             continue;
+                        }
                         if ((dirEntry[i].Attr & (byte)FatAttr.VolumeId) != 0 &&
                             (dirEntry[i].Attr & (byte)FatAttr.LongName) != (byte)FatAttr.LongName)
+                        {
+                            index++;
                             continue;
+                        }
                         if ((dirEntry[i].Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
+                        {
+                            index++;
                             continue;
+                        }
 
                         string name = GetShortName(&dirEntry[i]);
                         if (EqualsIgnoreCase(name, part))

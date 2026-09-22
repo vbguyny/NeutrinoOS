@@ -57,26 +57,23 @@ blocked, and what remains.
   for implicit interface implementations, `constrained.`/`unbox`
   reference-type semantics, interface-dispatch fallbacks) are documented
   in PHASE4-JIT-COMPAT.md.
+- `run /apps/p4fileio.dll`: all 16 checks pass (`[fileio] PASS`, exit 0,
+  no `RAWV`/`FATAL` lines) - text/byte round trips, append (multi-line
+  read-back), `FileStream` + `StreamWriter`/`StreamReader`, `Path`
+  helpers, `/apps` enumeration and delete. This closes the file I/O
+  blocker (three root causes: FAT directory entry index, vtable slot
+  registration numbering, interface-dispatch stub alignment; see
+  PHASE4-JIT-COMPAT.md items 22-25 and PHASE4-ACCEPTANCE.md item 5).
 - `run /apps/p4async.dll`: `Task.Run(...).Result` and `Task.Run(...).Wait()`
   checks pass (partial file; see blockers).
 
 ## Blockers (open JIT issues, in priority order)
 
-1. **Virtual/interface call sites with stack args are not parity-corrected**
-   (`ILCompiler` callvirt emission). Symptom: `#GP` in
-   `MethodTable.GetInterfaceMethodSlot` (`movaps`) via the interface
-   dispatch stub, reached from the FAT driver during the file-write path.
-   Root cause confirmed with a GDB capture: the caller chain enters the
-   stub misaligned (entry RSP % 16 == 0 instead of 8). Deterministic:
-   blocks the file I/O acceptance item.
-2. **`async` deep-await hang**: `p4async` completes its first two checks,
+1. **`async` deep-await hang**: `p4async` completes its first two checks,
    then stops responding; suspected await-continuation path in the
    synchronous Task builder.
-3. **`p4cs14` produced no captured output** - needs a re-run with serial
+2. **`p4cs14` produced no captured output** - needs a re-run with serial
    capture to separate build-time issues from runtime failures.
-4. **`p4fileio` "two lines" check**: line 2 written does not read back;
-   data-level issue in the write/read round trip (separate from the JIT
-   vtable work).
 
 ## Deviations and limitations (documented, by design or discovery)
 
@@ -110,12 +107,11 @@ blocked, and what remains.
 
 ## Next steps (recommended order)
 
-1. Fix the callvirt/interface open JIT issue (1) - unlock file I/O.
+1. Debug the async hang (blocker 1).
 2. Re-run `p4cs14`, `p4inter`, `p4multi`, `p4net` with serial capture and
    close out their acceptance items.
-3. Debug the async hang (2).
-4. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
-5. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
+3. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
+4. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
    full checklist.
 
 Note: item 2 of the earlier list ("unresolved generic `newobj` token")

@@ -2329,7 +2329,28 @@ public static unsafe class Tier0JIT
             }
         }
 
-        // For other overrides, fall back to counting virtuals in this type
+        // For other methods, use the same numbering as the override-slot
+        // registration (AssemblyLoader.FindVtableSlotInBaseClass /
+        // FindVirtualMethodSlotByName): base class slots plus the index among
+        // this type's own new-slot virtuals. The plain 0-based count used to be
+        // returned here, which disagrees with the registered override slots:
+        // a callvirt through an abstract method token (e.g. Stream.Flush)
+        // dispatched to the counted slot (6) instead of the registered slot
+        // (9) and invoked a completely different method (FileStream.get_Length),
+        // so FileStream.Close never flushed and the file never appeared.
+        byte* methodNameFallback = MetadataReader.GetString(
+            ref assembly->Metadata,
+            MetadataReader.GetMethodDefName(ref assembly->Tables, ref assembly->Sizes, targetMethodRid));
+        if (methodNameFallback != null)
+        {
+            short registeredSlot = AssemblyLoader.FindVirtualMethodSlotByName(assembly, typeRow, methodNameFallback);
+            if (registeredSlot < 0)
+                registeredSlot = AssemblyLoader.FindVtableSlotInBaseClass(assembly, typeRow, methodNameFallback);
+            if (registeredSlot >= 0)
+                return registeredSlot;
+        }
+
+        // Fall back to counting virtuals in this type
         // (This isn't correct for deep hierarchies but handles simple cases)
         uint methodStart = MetadataReader.GetTypeDefMethodList(ref assembly->Tables, ref assembly->Sizes, typeRow);
         uint methodEnd;

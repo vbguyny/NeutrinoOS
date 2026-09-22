@@ -172,21 +172,65 @@ finding that four independent bugs stacked together:
     `x.Equals(y)` returns false for equal boxed ints in this runtime,
     which made equal sort keys compare unequal. `p4linq` passes 34/34
     checks after these fixes.
+22. **Override slot registration aligns to the base method's registered
+    slot** (`AssemblyLoader.FindVirtualMethodSlotByName`): derived
+    overrides previously took the sequentially counted base slot, which
+    disagrees with the registered slot whenever interface slots are
+    interleaved with a type's new-slot virtuals. `TextWriter`'s
+    `IDisposable` occupies slot 3, so its `Close` is registered at slot
+    20, while `StreamWriter.Close` was registered at the counted 19 and
+    `StreamWriter.Dispose` at 20. `StreamWriter.Dispose`'s
+    `callvirt TextWriter.Close` therefore re-entered `Dispose` (infinite
+    self-recursion, `RAWV` at the dispatch return site / `FATAL: VTable
+    slot 20`). The lookup now prefers the base method's registry entry
+    slot; it is used both for the LazyJIT override registrations and by
+    `Tier0JIT.ComputeVtableSlot` (item 23).
+23. **Abstract-method entries use the override-registration numbering**
+    (`Tier0JIT.ComputeVtableSlot`): the fall-through count was 0-based
+    within the declaring type, so an abstract-method entry could land on
+    an unrelated slot (`Stream.Flush` counted 6 = `FileStream.get_Length`
+    in the registration numbering). `FileStream.Close`'s
+    `callvirt Stream.Flush` then compiled and invoked `get_Length`
+    instead of `Flush`, so the file was never flushed and
+    `File.OpenRead` later threw `FileNotFoundException`. The fall-through
+    now uses `AssemblyLoader.FindVirtualMethodSlotByName` /
+    `FindVtableSlotInBaseClass` (base slots + new-slot index), matching
+    the derived override registrations.
+24. **Interface dispatch stub aligns the resolver call**
+    (`RhpInitialDynamicInterfaceDispatch` in `native.asm`): the stub
+    tail-calls the resolved method with the caller's entry parity (by
+    design) and called `RhpResolveInterfaceMethod` with a fixed 40-byte
+    frame, which is only correct when the entry parity is the ABI's.
+    A caller with the opposite parity misaligned the resolver chain and
+    `#GP`'d inside `MethodTable.GetInterfaceMethodSlot`'s aligned SSE
+    frame stores (`movaps [rsp+x]`). The resolver call now forces 16-byte
+    alignment (`push rbp; mov rbp,rsp; and rsp,-16; sub rsp,32; call;
+    mov rsp,rbp; pop rbp`), which is safe for either entry parity.
+25. **FAT directory entry index is the global 32-byte slot**
+    (`src/drivers/shared/storage/fat/FatFileSystem.cs`): `FindEntry`'s
+    cluster-chain branch counted only live entries (deleted, volume-label
+    and LFN slots were skipped without incrementing the index), while
+    `UpdateDirectoryEntryPartial`, `DeleteDirectoryEntry` and
+    `CreateEntryInDirectory` treat the index as the global slot in the
+    directory's cluster chain. Appending to a file whose directory slot
+    sits after an LFN entry therefore flushed the new file size into the
+    wrong slot and the appended data never became visible (the
+    `p4fileio` "two lines" failure). The lookup now counts every slot.
 
 ## Known open JIT issues (blocking the Phase 4 acceptance items)
 
 | Issue | Symptom | Where |
 |-------|---------|-------|
-| JIT-type vtable registration gaps beyond the resolved Encoding case | `[JitStubs] FATAL: VTable slot N has no registered method for MT 0x33Fxxx` (e.g. slot 20/MT `0x33F248`, asm=1 type `0x020000C9`) during `p4fileio`'s later checks (instance disposal / writer flushes). Ancestor/interface resolution succeeds for neighbouring slots (4, 17, 21) but not this one. | `CompiledMethodRegistry` registration coverage for inherited virtuals on JIT-created types; extend the ancestor/interface fallback in `JitStubs.EnsureVtableSlotCompiled` or the per-type slot registration. |
 | `async` state machine hang | `p4async` completes the first two checks, then stops responding | Suspected await continuation path (`AsyncTaskMethodBuilder`/`TaskAwaiter` interaction with the synchronous Task); under investigation. |
-| `p4fileio` "two lines" check | `[fileio] ok: line 1` then `[fileio] FAIL: line 2` - the second line written does not read back | Data-level issue in the write/read round trip (see `tests/phase4/FileIo/Program.cs`); separate from the vtable/alignment work. |
 | `p4cs14` produced no serial output | needs a dedicated re-run with serial capture | re-run and fix. |
 
 ## Fixed since the initial audit (kept for history)
 
 | Former issue | Status |
 |--------------|--------|
-| Virtual/interface call sites not parity-corrected (`movaps` `#GP` inside `MethodTable.GetInterfaceMethodSlot` via the dispatch stub, file I/O write path) | FIXED - root causes were the `RhpStackProbe` ABI mismatch (item 5), the dispatch-stub RSP restore anchor (item 6), merge-point byte-size accounting (item 7) and the resulting wrong/absent parity pads (items 3, 8). `run /apps/p4fileio.dll` now executes the write path and completes several further checks. |
+| Virtual/interface call sites not parity-corrected (`movaps` `#GP` inside `MethodTable.GetInterfaceMethodSlot` via the dispatch stub, file I/O write path) | FIXED - root causes were the `RhpStackProbe` ABI mismatch (item 5), the dispatch-stub RSP restore anchor (item 6), merge-point byte-size accounting (item 7), the resulting wrong/absent parity pads (items 3, 8), and the dispatch stub's fixed-frame resolver call, now alignment-normalized (item 24). |
+| `[JitStubs] FATAL: VTable slot N has no registered method` during `p4fileio`'s disposal path | FIXED - derived override registrations and abstract entries used different slot numbering than the base-class registrations (items 22, 23). |
+| `p4fileio` "two lines" check (`FAIL: line 2`) | FIXED - FAT driver entry-index semantics (item 25). `p4fileio` now passes 16/16 checks with exit code 0. |
 
 ## Guidance for application authors (current state)
 
@@ -194,9 +238,9 @@ finding that four independent bugs stacked together:
 - Prefer `Task.Run(...).Result`/`.Wait()` style over deep await chains.
 - Avoid `Span<T>`/`ReadOnlySpan<T>` in application code for now.
 - Keep assembly names FAT-short (<= 8 chars).
-- `System.IO` file path: the write path is functional; the "two lines"
-  round-trip check still fails on its second line (see the open issues
-  table).
+- `System.IO`: file create/append/read/delete, `FileStream`,
+  `StreamWriter`/`StreamReader` and `Directory` enumeration all pass the
+  `p4fileio` acceptance suite.
 
 These constraints shrink as the JIT issues above are fixed; the test
 suite (`tests/run-phase4-tests.ps1`) is the guard for that work.

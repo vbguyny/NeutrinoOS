@@ -57,12 +57,42 @@ exit                   -> [interactive] bye   (exit code 0)
 
 Builds and deploys; the interactive session still needs a manual pass.
 
-## 5. File I/O test - **BLOCKED**
+## 5. File I/O test - **PASS**
 
-`run /apps/p4fileio.dll` currently faults (`#GP`) on the first write:
-the JIT's virtual/interface call sites with stack arguments are not yet
-parity-corrected, which misaligns the interface-dispatch chain in the FAT
-driver (details in PHASE4-JIT-COMPAT.md). Reads work.
+```bash
+bash /mnt/d/Projects/Code/NeutrinoOS/build/p4-deploy.sh      # refresh image + apps
+bash /mnt/d/Projects/Code/NeutrinoOS/build/run-fileio.sh    # boot + run + capture
+# expect: 16 [fileio] ok lines, "[fileio] PASS", "[run] exited with code 0"
+```
+
+Covers `File.WriteAllText/AppendAllText/ReadAllText/ReadAllLines/
+WriteAllBytes/ReadAllBytes/Exists/Delete`, the `FileStream` +
+`StreamWriter`/`StreamReader` layer, `Path` helpers and `Directory`
+enumeration of `/apps`.
+
+### Root causes fixed for this item (summary)
+
+- **FAT driver entry index** (`FatFileSystem.FindEntry`): the cluster-chain
+  branch counted only live directory entries, while the update/delete/
+  create paths treat the index as the global 32-byte slot across the
+  directory chain. Files whose directory slot follows an LFN entry flushed
+  their size updates into the wrong slot, so appended data never became
+  visible ("two lines" failure).
+- **Vtable slot registration numbering** (`AssemblyLoader`,
+  `Tier0JIT`): derived override registrations used a counted base slot
+  that disagreed with the base class's registered slot when interface
+  slots interleave (`StreamWriter.Dispose` was registered at
+  `TextWriter.Close`'s slot and re-entered itself), and abstract-method
+  entries used a 0-based count that collided with unrelated overrides
+  (`Stream.Flush` resolved to `FileStream.get_Length`, so files were never
+  flushed -> `FileNotFoundException`).
+- **Interface dispatch stub alignment** (`native.asm`
+  `RhpInitialDynamicInterfaceDispatch`): a caller with the opposite entry
+  parity misaligned the resolver chain and `#GP`'d inside
+  `MethodTable.GetInterfaceMethodSlot`'s aligned SSE frame stores; the
+  resolver call now forces 16-byte alignment.
+
+Details in PHASE4-JIT-COMPAT.md items 22-25.
 
 ## 6. Collections + LINQ test - **PASS**
 

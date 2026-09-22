@@ -2032,14 +2032,19 @@ RhpInitialDynamicInterfaceDispatch:
     mov rdx, r11
 
     ; Call resolver: void* RhpResolveInterfaceMethod(void* obj, InterfaceDispatchCell* pCell)
-    ; Stack alignment: at stub entry RSP % 16 == 8 (call pushed the return
-    ; address), and the 6 pushes above add 0 mod 16, so RSP % 16 == 8 here.
-    ; The x64 ABI requires RSP % 16 == 0 at the call site, so reserve
-    ; 32 bytes of shadow space plus 8 bytes of padding.
-    ; BISECT: normalization reverted (post-CAL-T8 stall on run.img).
-    sub rsp, 40             ; shadow space (32) + padding (8) for alignment
+    ; The stub entry parity depends on the caller (JIT call sites are not
+    ; guaranteed 16-byte aligned and the tail-call design intentionally
+    ; inherits it). RhpResolveInterfaceMethod is AOT code with aligned SSE
+    ; frame stores (movaps [rsp+x] in MethodTable.GetInterfaceMethodSlot),
+    ; which #GP on a misaligned stack, so force the ABI alignment around the
+    ; resolver call instead of padding by a fixed amount.
+    push rbp
+    mov rbp, rsp
+    and rsp, -16            ; 16-byte align regardless of entry parity
+    sub rsp, 32             ; shadow space
     call RhpResolveInterfaceMethod
-    add rsp, 40
+    mov rsp, rbp
+    pop rbp
 
     ; RAX now contains the function pointer to call
     ; Save it temporarily

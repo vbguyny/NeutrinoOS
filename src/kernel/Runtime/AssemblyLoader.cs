@@ -3211,7 +3211,7 @@ public static unsafe class AssemblyLoader
     /// Find the vtable slot for an overridden method by searching the base class hierarchy.
     /// Returns -1 if not found.
     /// </summary>
-    private static short FindVtableSlotInBaseClass(LoadedAssembly* asm, uint typeDefRow, byte* methodName)
+    internal static short FindVtableSlotInBaseClass(LoadedAssembly* asm, uint typeDefRow, byte* methodName)
     {
         // Get the base type for this TypeDef
         CodedIndex extendsIdx = MetadataReader.GetTypeDefExtends(ref asm->Tables, ref asm->Sizes, typeDefRow);
@@ -3320,9 +3320,10 @@ public static unsafe class AssemblyLoader
 
     /// <summary>
     /// Find a virtual method's slot in a TypeDef by name.
-    /// Returns the slot index (3+) for newslot virtuals, or -1 if not found.
+    /// Returns the slot index (base slots + index among the type's own new-slot
+    /// virtuals) or -1 if not found.
     /// </summary>
-    private static short FindVirtualMethodSlotByName(LoadedAssembly* asm, uint typeDefRow, byte* methodName)
+    internal static short FindVirtualMethodSlotByName(LoadedAssembly* asm, uint typeDefRow, byte* methodName)
     {
         // First count inherited slots from base class
         CodedIndex extendsIdx = MetadataReader.GetTypeDefExtends(ref asm->Tables, ref asm->Sizes, typeDefRow);
@@ -3384,7 +3385,26 @@ public static unsafe class AssemblyLoader
                 byte* name = MetadataReader.GetString(ref asm->Metadata, nameIdx);
 
                 if (NameEquals(name, methodName))
+                {
+                    // Prefer the slot this base method was actually registered with.
+                    // The sequentially counted slot disagrees with the registered
+                    // slot when interface slots are interleaved with the type's new
+                    // virtual methods: RegisterNewVirtualMethodsForLazyJit starts the
+                    // sequential slots after the interface slots (e.g. TextWriter's
+                    // IDisposable occupies slot 3, so TextWriter.Close is registered
+                    // at slot 20, not the counted 16). A derived override MUST land
+                    // on the same slot as the base registration, or a callvirt issued
+                    // through the base method token dispatches into the wrong method
+                    // (StreamWriter.Dispose was registered at Close's slot 20, so
+                    // StreamWriter.Dispose calling Close() re-entered itself).
+                    uint matchedToken = 0x06000000 | methodRow;
+                    JIT.CompiledMethodInfo* registered =
+                        JIT.CompiledMethodRegistry.Lookup(matchedToken, asm->AssemblyId);
+                    if (registered != null && registered->VtableSlot >= 0)
+                        return registered->VtableSlot;
+
                     return currentSlot;
+                }
 
                 currentSlot++;
             }
