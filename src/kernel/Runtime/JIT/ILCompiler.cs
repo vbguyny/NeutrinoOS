@@ -7033,12 +7033,33 @@ public unsafe struct ILCompiler
                 else
                 {
                     // Reference type with constrained prefix
-                    // Stack has: managed pointer to a reference (not the reference itself)
-                    // We need to dereference it to get the actual object reference
-                    //
-                    // Example: ldflda StringField; constrained. string; callvirt ToString
-                    // Stack has: &(this.StringField) which is a pointer to a string reference
-                    // We need: the string reference itself
+                    // Stack has: [managed_ptr_to_ref, arg0, arg1, ...] where the
+                    // managed pointer is at position numArgs from the TOP (the
+                    // args sit ABOVE it on the stack!). We must save the args
+                    // aside first, then dereference the managed pointer to get
+                    // the actual object reference. (Previously this popped the
+                    // top entry blindly, which for methods WITH arguments
+                    // dereferenced the LAST ARG and left 'this' as an address.)
+                    int refNumArgs = 0;
+                    if (ResolveMethod(token, out ResolvedMethod refTempMethod))
+                        refNumArgs = refTempMethod.ArgCount;
+
+                    // Save args (up to 3) in caller-saved scratch registers
+                    if (refNumArgs >= 3)
+                    {
+                        X64Emitter.Pop(ref _code, VReg.R7);
+                        PopEntry();
+                    }
+                    if (refNumArgs >= 2)
+                    {
+                        X64Emitter.Pop(ref _code, VReg.R6);
+                        PopEntry();
+                    }
+                    if (refNumArgs >= 1)
+                    {
+                        X64Emitter.Pop(ref _code, VReg.R5);
+                        PopEntry();
+                    }
 
                     // Pop managed pointer to RAX
                     X64Emitter.Pop(ref _code, VReg.R0);
@@ -7049,7 +7070,24 @@ public unsafe struct ILCompiler
 
                     // Push the actual object reference back on stack
                     X64Emitter.Push(ref _code, VReg.R0);
-                    PushEntry(EvalStackEntry.NativeInt);
+                    PushEntry(EvalStackEntry.ObjRef);
+
+                    // Restore the saved args (in reverse pop order)
+                    if (refNumArgs >= 1)
+                    {
+                        X64Emitter.Push(ref _code, VReg.R5);
+                        PushEntry(EvalStackEntry.NativeInt);
+                    }
+                    if (refNumArgs >= 2)
+                    {
+                        X64Emitter.Push(ref _code, VReg.R6);
+                        PushEntry(EvalStackEntry.NativeInt);
+                    }
+                    if (refNumArgs >= 3)
+                    {
+                        X64Emitter.Push(ref _code, VReg.R7);
+                        PushEntry(EvalStackEntry.NativeInt);
+                    }
 
                     // Now fall through to callvirt handling with the reference on stack
                 }
@@ -7065,6 +7103,28 @@ public unsafe struct ILCompiler
                 //    when the constraint cannot be resolved at JIT time
                 DebugConsole.WriteLine(" [FALLBACK] assuming ref type");
 
+                // The managed pointer sits at position numArgs from the top
+                // (args are ABOVE it on the stack). Save args aside first.
+                int fbNumArgs = 0;
+                if (ResolveMethod(token, out ResolvedMethod fbMethod))
+                    fbNumArgs = fbMethod.ArgCount;
+
+                if (fbNumArgs >= 3)
+                {
+                    X64Emitter.Pop(ref _code, VReg.R7);
+                    PopEntry();
+                }
+                if (fbNumArgs >= 2)
+                {
+                    X64Emitter.Pop(ref _code, VReg.R6);
+                    PopEntry();
+                }
+                if (fbNumArgs >= 1)
+                {
+                    X64Emitter.Pop(ref _code, VReg.R5);
+                    PopEntry();
+                }
+
                 // Pop managed pointer to RAX
                 X64Emitter.Pop(ref _code, VReg.R0);
                 PopEntry();
@@ -7074,7 +7134,24 @@ public unsafe struct ILCompiler
 
                 // Push the actual object reference back on stack
                 X64Emitter.Push(ref _code, VReg.R0);
-                PushEntry(EvalStackEntry.NativeInt);
+                PushEntry(EvalStackEntry.ObjRef);
+
+                // Restore the saved args (in reverse pop order)
+                if (fbNumArgs >= 1)
+                {
+                    X64Emitter.Push(ref _code, VReg.R5);
+                    PushEntry(EvalStackEntry.NativeInt);
+                }
+                if (fbNumArgs >= 2)
+                {
+                    X64Emitter.Push(ref _code, VReg.R6);
+                    PushEntry(EvalStackEntry.NativeInt);
+                }
+                if (fbNumArgs >= 3)
+                {
+                    X64Emitter.Push(ref _code, VReg.R7);
+                    PushEntry(EvalStackEntry.NativeInt);
+                }
             }
         }
 
@@ -11550,6 +11627,17 @@ public unsafe struct ILCompiler
             if (_typeResolver(token, out resolved) && resolved != null)
             {
                 expectedMT = (ulong)resolved;
+
+                // unbox on a REFERENCE type is equivalent to castclass: the
+                // object reference itself is the result (no +8 adjustment!).
+                // Without this, string's ComponentSize (2, UTF-16) or other
+                // ref-type metadata would be misinterpreted by consumers.
+                MethodTable* mt = (MethodTable*)resolved;
+                if (!mt->IsValueType)
+                {
+                    // No-op: leave the object reference on the eval stack as-is.
+                    return true;
+                }
             }
         }
 
@@ -11605,6 +11693,17 @@ public unsafe struct ILCompiler
             {
                 expectedMT = (ulong)resolved;
                 MethodTable* mt = (MethodTable*)resolved;
+
+                // unbox.any on a REFERENCE type is equivalent to castclass:
+                // the object reference itself is the result (NOT a value read
+                // from +8!). Without this, string's ComponentSize (2, UTF-16)
+                // would be treated as the value size and the JIT would emit a
+                // 16-bit load from the object's field area (garbage).
+                if (!mt->IsValueType)
+                {
+                    // No-op: leave the object reference on the eval stack as-is.
+                    return true;
+                }
 
                 // Check if this is a signed primitive type for sign extension
                 isSigned = MetadataIntegration.IsSignedPrimitiveType(mt);

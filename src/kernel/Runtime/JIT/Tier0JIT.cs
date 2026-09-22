@@ -2387,6 +2387,23 @@ public static unsafe class Tier0JIT
         // First check if this method was pre-registered with a known vtable slot
         // (e.g., by RegisterOverrideMethodsForLazyJit)
         CompiledMethodInfo* existingEntry = CompiledMethodRegistry.Lookup(methodToken, assemblyId);
+        if (existingEntry == null || existingEntry->VtableSlot < 0)
+        {
+            // The token lookup may return an entry without a slot (e.g., a compiled
+            // flavor or an entry created by CompleteCompilation) even though the
+            // method was pre-registered with an authoritative vtable slot at MT
+            // build time. Prefer the lowest slot-registered entry for this token
+            // so interface implementations always land in their registered slot.
+            CompiledMethodInfo* slotEntry = CompiledMethodRegistry.LookupLowestSlotByToken(methodToken, assemblyId, mt);
+            if (slotEntry == null)
+            {
+                MethodTable* defMTForReg = AssemblyLoader.GetGenericDefinitionMT(mt);
+                if (defMTForReg != null)
+                    slotEntry = CompiledMethodRegistry.LookupLowestSlotByToken(methodToken, assemblyId, defMTForReg);
+            }
+            if (slotEntry != null && slotEntry->VtableSlot >= 0)
+                existingEntry = slotEntry;
+        }
         if (existingEntry != null && existingEntry->VtableSlot >= 0)
         {
             // Use the pre-registered slot

@@ -469,6 +469,13 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string?[]?, string>)&StringHelpers.ConcatArray,
             1, ReturnKind.IntPtr, false, false);
 
+        // String.Join(string separator, string?[] values) (static method)
+        // 2 parameters: separator + array of values.
+        Register(
+            "System.String", "Join",
+            (nint)(delegate*<string?, string?[]?, string>)&StringHelpers.Join2,
+            2, ReturnKind.IntPtr, false, false);
+
         // String.get_Chars (indexer getter) - 1 int parameter, HasThis=true
         Register(
             "System.String", "get_Chars",
@@ -619,6 +626,15 @@ public static unsafe class AotMethodRegistry
             "System.String", "Substring",
             (nint)(delegate*<string, int, string>)&StringHelpers.SubstringFrom,
             1, ReturnKind.IntPtr, true, false);
+
+        // String.Split(char separator, StringSplitOptions options) - instance
+        // method, 2 parameters, returns string[]. Roslyn binds "s.Split(',')"
+        // to this overload (the optional-options overload wins overload
+        // resolution over the params char[] expanded form).
+        Register(
+            "System.String", "Split",
+            (nint)(delegate*<string, char, int, string[]>)&StringHelpers.Split2,
+            2, ReturnKind.IntPtr, true, false);
     }
 
     /// <summary>
@@ -2944,6 +2960,26 @@ public static unsafe class StringHelpers
     }
 
     /// <summary>
+    /// Wrapper for String.Join(string separator, string?[] values).
+    /// Implemented via Concat since korlib's String has no Join.
+    /// </summary>
+    public static string Join2(string? separator, string?[]? values)
+    {
+        if (values == null || values.Length == 0)
+            return string.Empty;
+        if (separator == null)
+            separator = string.Empty;
+
+        string result = values[0] ?? string.Empty;
+        for (int i = 1; i < values.Length; i++)
+        {
+            result = string.Concat(result, separator);
+            result = string.Concat(result, values[i] ?? string.Empty);
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Wrapper for String indexer (get_Chars).
     /// </summary>
     public static char GetChars(string s, int index)
@@ -3370,6 +3406,49 @@ public static unsafe class StringHelpers
 
         int length = s.Length - startIndex;
         return Substring(s, startIndex, length);
+    }
+
+    /// <summary>
+    /// Wrapper for String.Split(char separator, StringSplitOptions options).
+    /// Supports None (0) and RemoveEmptyEntries (1); TrimEntries is ignored.
+    /// </summary>
+    public static string[] Split2(string s, char separator, int options)
+    {
+        if (s == null)
+            return new string[0];
+
+        bool removeEmpty = (options & 1) != 0;
+
+        // An n-separator string yields at most n+1 segments
+        int segCount = 1;
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == separator)
+                segCount++;
+        }
+
+        string[] parts = new string[segCount];
+        int partIdx = 0;
+        int start = 0;
+        for (int i = 0; i <= s.Length; i++)
+        {
+            if (i == s.Length || s[i] == separator)
+            {
+                int len = i - start;
+                if (!removeEmpty || len != 0)
+                    parts[partIdx++] = len == 0 ? "" : Substring(s, start, len);
+                start = i + 1;
+            }
+        }
+
+        if (partIdx == segCount)
+            return parts;
+
+        // RemoveEmptyEntries dropped some segments - return a compacted array
+        string[] compact = new string[partIdx];
+        for (int i = 0; i < partIdx; i++)
+            compact[i] = parts[i];
+        return compact;
     }
 }
 
@@ -5312,6 +5391,106 @@ public static unsafe class ArrayHelpers
     public static void Clear1(Array array)
     {
         System.Array.Clear(array);
+    }
+
+    /// <summary>
+    /// Create a SZGenericArrayEnumerator&lt;T&gt; for a T[] object.
+    /// Used by the interface resolver when a T[] is dispatched through
+    /// IEnumerable&lt;T&gt;.GetEnumerator() - array MethodTables carry no
+    /// interface map. Called with the array as 'this' (RCX); returns the
+    /// enumerator object (or null on failure).
+    /// </summary>
+    public static object? GetGenericArrayEnumerator(object? arrayObject)
+    {
+        if (arrayObject == null)
+            return null;
+
+        // Read the array's MethodTable (first field of the object).
+        byte* objPtr = *(byte**)System.Runtime.CompilerServices.Unsafe.AsPointer(ref arrayObject);
+        if (objPtr == null)
+            return null;
+
+        MethodTable* arrayMT = *(MethodTable**)objPtr;
+        if (arrayMT == null || !arrayMT->IsArray)
+            return null;
+
+        MethodTable* elementMT = arrayMT->_relatedType;
+        if (elementMT == null)
+            return null;
+
+        LoadedAssembly* coreLib = AssemblyLoader.GetCoreLib();
+        if (coreLib == null)
+            return null;
+
+        // Locate "System.SZGenericArrayEnumerator`1" in korlib.
+        byte* typeName = stackalloc byte[27];
+        string nameLiteral = "SZGenericArrayEnumerator`1";
+        for (int i = 0; i < nameLiteral.Length; i++)
+            typeName[i] = (byte)nameLiteral[i];
+        typeName[nameLiteral.Length] = 0;
+
+        byte* typeNs = stackalloc byte[7];
+        string nsLiteral = "System";
+        for (int i = 0; i < nsLiteral.Length; i++)
+            typeNs[i] = (byte)nsLiteral[i];
+        typeNs[nsLiteral.Length] = 0;
+
+        uint defToken = AssemblyLoader.FindCoreLibTypeDef(typeName, typeNs);
+        if (defToken == 0)
+            return null;
+
+        // Instantiate SZGenericArrayEnumerator<T> with T = element type.
+        // NOTE: use MakeNormalizedToken (asmId + 2 in the tag byte) - NOT
+        // (asmId << 24) - otherwise the token is misread as a raw 0x01
+        // TypeRef and definition resolution silently degrades to a minimal MT.
+        uint normalizedDefToken = AssemblyLoader.MakeNormalizedToken(coreLib->AssemblyId, defToken & 0x00FFFFFF);
+        MethodTable** typeArgs = stackalloc MethodTable*[1];
+        typeArgs[0] = elementMT;
+        MethodTable* enumMT = AssemblyLoader.GetOrCreateGenericInstMethodTable(normalizedDefToken, typeArgs, 1, false);
+        if (enumMT == null)
+            return null;
+
+        // Compile the (T[] array) constructor with the type argument context set.
+        int savedCount = MetadataIntegration.GetTypeTypeArgCount();
+        MethodTable** savedArgs = stackalloc MethodTable*[savedCount > 0 ? savedCount : 1];
+        for (int i = 0; i < savedCount; i++)
+            savedArgs[i] = MetadataIntegration.GetTypeTypeArgMethodTable(i);
+
+        MetadataIntegration.SetTypeTypeArgs(typeArgs, 1);
+
+        void* instance = null;
+        byte* ctorName = stackalloc byte[6];
+        ctorName[0] = (byte)'.'; ctorName[1] = (byte)'c'; ctorName[2] = (byte)'t';
+        ctorName[3] = (byte)'o'; ctorName[4] = (byte)'r'; ctorName[5] = 0;
+
+        uint ctorToken = MetadataIntegration.FindMethodByNameWithParamCount(
+            coreLib->AssemblyId, defToken, ctorName, 1);
+
+        if (ctorToken != 0)
+        {
+            JIT.JitResult ctorResult = JIT.Tier0JIT.CompileMethod(coreLib->AssemblyId, ctorToken);
+            if (ctorResult.Success && ctorResult.CodeAddress != null)
+            {
+                instance = RuntimeHelpers.RhpNewFast(enumMT);
+                if (instance != null)
+                {
+                    // Instance ctor: RCX = this, RDX = array
+                    ((delegate* unmanaged<void*, void*, void>)ctorResult.CodeAddress)(instance, objPtr);
+                }
+            }
+        }
+
+        // Restore the previous type context.
+        if (savedCount > 0)
+            MetadataIntegration.SetTypeTypeArgs(savedArgs, savedCount);
+        else
+            MetadataIntegration.ClearTypeTypeArgs();
+
+        if (instance == null)
+            return null;
+
+        nint raw = (nint)instance;
+        return System.Runtime.CompilerServices.Unsafe.As<nint, object?>(ref raw);
     }
 }
 

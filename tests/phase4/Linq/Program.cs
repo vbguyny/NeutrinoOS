@@ -34,7 +34,7 @@ public static class Program
         Check("List.Count", numbers.Count == 10);
 
         int whereSum = numbers.Where(n => n > 3).Sum();
-        Check("Where + Sum", whereSum == 42); // 5+9+7+8+4+6
+        Check("Where + Sum", whereSum == 39); // 5+9+7+8+4+6
 
         int[] sorted = numbers.OrderBy(n => n).ToArray();
         Check("OrderBy", sorted[0] == 1 && sorted[9] == 9 && sorted[4] == 4);
@@ -78,7 +78,7 @@ public static class Program
 
         List<string> byLengthThenAlpha = words.OrderBy(w => w.Length).ThenBy(w => w).ToList();
         Check("OrderBy + ThenBy", byLengthThenAlpha[0] == "alps" && byLengthThenAlpha[1] == "dome" &&
-                                  byLengthThenAlpha[2] == "alpha" && byLengthThenAlpha[5] == "delta");
+                                  byLengthThenAlpha[2] == "alpha" && byLengthThenAlpha[4] == "delta" && byLengthThenAlpha[5] == "charlie");
 
         // ==================== GroupBy ====================
         int groups = 0;
@@ -89,8 +89,8 @@ public static class Program
             if (group.Key == 5)
                 fiveLetterGroups = group.Count();
         }
-        Check("GroupBy (4 groups of 5,5,7,5 letters)", groups == 2 && fiveLetterGroups == 3);
-        Check("GroupBy key 4", words.GroupBy(w => w.Length).First().Key == 4);
+        Check("GroupBy (3 groups by length)", groups == 3 && fiveLetterGroups == 3);
+        Check("GroupBy first key", words.GroupBy(w => w.Length).First().Key == 5);
 
         // ==================== Join ====================
         List<string> keys = new List<string>();
@@ -99,7 +99,7 @@ public static class Program
         keys.Add("missing");
 
         var joined = words.Join(keys, w => w, k => k, (w, k) => w + ":" + k).ToList();
-        Check("Join", joined.Count == 2 && joined[0] == "alpha:alpha" && joined[1] == "delta:delta");
+        Check("Join", joined.Count == 2 && joined[0] == "delta:delta" && joined[1] == "alpha:alpha");
 
         // ==================== Dictionary<K,V> ====================
         Dictionary<string, int> counts = new Dictionary<string, int>();

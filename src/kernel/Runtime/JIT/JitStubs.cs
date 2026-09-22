@@ -821,4 +821,169 @@ public static unsafe class JitStubs
 
         return 0;
     }
+
+    /// <summary>
+    /// Resolve an interface method by NAME against the object's class hierarchy.
+    /// Fallback for JIT-created types whose MethodTable lacks a usable interface
+    /// map (e.g. freshly instantiated generics created outside a compile):
+    /// finds the implementation with a matching simple name (exact, or an
+    /// explicit-interface implementation with a "&lt;prefix&gt;." suffix) and
+    /// parameter count, compiles it with the instantiation's type-argument
+    /// context, and returns its code address.
+    ///
+    /// Invoked from the runtime interface resolver
+    /// (TypeHelpers.GetInterfaceMethod) when the map lookup fails.
+    /// Returns 0 if no implementation was found.
+    /// </summary>
+    public static nint ResolveInterfaceMethodByName(MethodTable* objMT, MethodTable* interfaceMT, int methodIndex)
+    {
+        if (objMT == null || interfaceMT == null)
+            return 0;
+
+        // Identify the interface method (name + parameter count) via metadata.
+        Reflection.ReflectionRuntime.LookupTypeInfo(interfaceMT, out uint ifaceAsmId, out uint ifaceToken);
+        if (ifaceAsmId == 0 || ifaceToken == 0)
+            return 0;
+
+        uint ifaceMethodToken = MetadataIntegration.GetInterfaceMethodToken(ifaceAsmId, ifaceToken, methodIndex);
+        if (ifaceMethodToken == 0)
+            return 0;
+
+        byte* methodName = MetadataIntegration.GetMethodName(ifaceAsmId, ifaceMethodToken);
+        if (methodName == null)
+            return 0;
+
+        int paramCount = MetadataIntegration.GetMethodParamCount(ifaceAsmId, ifaceMethodToken);
+        if (paramCount < 0)
+            paramCount = 0;
+
+        // Search the class and its ancestors for a matching implementation.
+        MethodTable* searchMT = objMT;
+        uint implToken = 0;
+        uint implAsmId = 0;
+        while (searchMT != null && implToken == 0)
+        {
+            Reflection.ReflectionRuntime.LookupTypeInfo(searchMT, out uint classAsmId, out uint classToken);
+            if (classAsmId != 0 && classToken != 0)
+            {
+                implToken = FindMethodByNameOrExplicit(classAsmId, classToken, methodName, paramCount);
+                if (implToken != 0)
+                    implAsmId = classAsmId;
+            }
+            searchMT = searchMT->GetParentType();
+        }
+
+        if (implToken == 0)
+            return 0;
+
+        // Fast path: already compiled.
+        CompiledMethodInfo* existing = CompiledMethodRegistry.Lookup(implToken, implAsmId);
+        if (existing != null && existing->IsCompiled && existing->NativeCode != null)
+            return (nint)existing->NativeCode;
+
+        // Type-argument context from the instantiation cache.
+        bool hasCtx = false;
+        MethodTable* genDefMT = AssemblyLoader.GetGenericDefinitionMT(objMT);
+        if (genDefMT != null)
+        {
+            MethodTable** typeArgs = stackalloc MethodTable*[4];
+            int typeArgCount;
+            if (AssemblyLoader.GetGenericInstTypeArgs(objMT, typeArgs, out typeArgCount) && typeArgCount > 0)
+            {
+                MetadataIntegration.SetTypeTypeArgs(typeArgs, typeArgCount);
+                hasCtx = true;
+            }
+            else if (objMT->GetFirstTypeArgument() != null)
+            {
+                typeArgs[0] = objMT->GetFirstTypeArgument();
+                MetadataIntegration.SetTypeTypeArgs(typeArgs, 1);
+                hasCtx = true;
+            }
+        }
+
+        var result = Tier0JIT.CompileMethod(implAsmId, implToken);
+
+        if (hasCtx)
+            MetadataIntegration.ClearTypeTypeArgs();
+
+        if (result.Success && result.CodeAddress != null)
+        {
+            return (nint)result.CodeAddress;
+        }
+
+        DebugConsole.WriteLine("[JitStubs] ByName: compilation failed");
+        return 0;
+    }
+
+    /// <summary>
+    /// Find a method in a type by simple name and parameter count.
+    /// Matches either an exact name or an explicit-interface implementation
+    /// whose metadata name ends with "." + the simple name.
+    /// </summary>
+    private static uint FindMethodByNameOrExplicit(uint assemblyId, uint typeToken, byte* simpleName, int paramCount)
+    {
+        var asm = AssemblyLoader.GetAssembly(assemblyId);
+        if (asm == null)
+            return 0;
+
+        uint typeRid = typeToken & 0x00FFFFFF;
+        uint methodListStart = MetadataReader.GetTypeDefMethodList(ref asm->Tables, ref asm->Sizes, typeRid);
+        uint typeDefCount = asm->Tables.RowCounts[(int)MetadataTableId.TypeDef];
+        uint totalMethodCount = asm->Tables.RowCounts[(int)MetadataTableId.MethodDef];
+        uint nextMethodList = (typeRid < typeDefCount)
+            ? MetadataReader.GetTypeDefMethodList(ref asm->Tables, ref asm->Sizes, typeRid + 1)
+            : totalMethodCount + 1;
+
+        int simpleLen = 0;
+        while (simpleName[simpleLen] != 0)
+            simpleLen++;
+
+        for (uint methodRid = methodListStart; methodRid < nextMethodList; methodRid++)
+        {
+            uint nameIdx = MetadataReader.GetMethodDefName(ref asm->Tables, ref asm->Sizes, methodRid);
+            byte* name = MetadataReader.GetString(ref asm->Metadata, nameIdx);
+            if (name == null)
+                continue;
+
+            bool match = MetadataReader.StringEquals(name, simpleName);
+            if (!match)
+            {
+                // Explicit interface impl: "<prefix>.<simpleName>"
+                int len = 0;
+                while (name[len] != 0)
+                    len++;
+                if (len > simpleLen + 1 && name[len - simpleLen - 1] == '.')
+                {
+                    match = true;
+                    for (int i = 0; i < simpleLen; i++)
+                    {
+                        if (name[len - simpleLen + i] != simpleName[i])
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!match)
+                continue;
+
+            // Must have a body (skip abstract declarations).
+            uint rva = MetadataReader.GetMethodDefRva(ref asm->Tables, ref asm->Sizes, methodRid);
+            if (rva == 0)
+                continue;
+
+            if (paramCount >= 0)
+            {
+                uint methodToken = 0x06000000 | methodRid;
+                int actual = MetadataIntegration.GetMethodParamCount(assemblyId, methodToken);
+                if (actual != paramCount)
+                    continue;
+            }
+
+            return 0x06000000 | methodRid;
+        }
+
+        return 0;
+    }
 }

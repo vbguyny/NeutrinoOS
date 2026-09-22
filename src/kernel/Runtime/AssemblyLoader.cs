@@ -1794,6 +1794,37 @@ public static unsafe class AssemblyLoader
             return genericMt != null ? genericMt : GetPrimitiveMethodTable(0x1C);
         }
 
+        // ELEMENT_TYPE_SZARRAY = 0x1D - zero-based single-dimension array.
+        // Arrays appear as type arguments (e.g. List<int[]>, or int[] as a
+        // MemberRef parent type argument) and resolve to the array MT of the
+        // element type. Previously this fell through to the primitive lookup
+        // and returned null, which aborted generic-instantiation resolution
+        // (the p4linq "unresolved token 0x0A000032" newobj failure).
+        if (elementType == 0x1D)
+        {
+            MethodTable* szElemMt = ParseTypeFromSignature(asm, sig, ref pos, sigLen);
+            if (szElemMt == null)
+                szElemMt = GetPrimitiveMethodTable(0x1C);  // Object element fallback
+            return GetOrCreateArrayMethodTable(szElemMt);
+        }
+
+        // ELEMENT_TYPE_ARRAY = 0x14 - general array with rank/bounds metadata:
+        // Type Rank NumSizes Size* NumLoBounds LoBound*
+        if (elementType == 0x14)
+        {
+            MethodTable* arrElemMt = ParseTypeFromSignature(asm, sig, ref pos, sigLen);
+            if (arrElemMt == null)
+                arrElemMt = GetPrimitiveMethodTable(0x1C);
+            ReadCompressedUInt(sig, ref pos, sigLen);  // rank
+            uint numSizes = ReadCompressedUInt(sig, ref pos, sigLen);
+            for (uint i = 0; i < numSizes; i++)
+                ReadCompressedUInt(sig, ref pos, sigLen);
+            uint numLoBounds = ReadCompressedUInt(sig, ref pos, sigLen);
+            for (uint i = 0; i < numLoBounds; i++)
+                SkipCompressedInt(sig, ref pos, sigLen);
+            return GetOrCreateArrayMethodTable(arrElemMt);
+        }
+
         // Primitive types - get AOT MethodTables from registry
         MethodTable* primMt = GetPrimitiveMethodTable(elementType);
         if (primMt == null)
@@ -2898,7 +2929,7 @@ public static unsafe class AssemblyLoader
     /// (ICollection.Count, IReadOnlyCollection.Count, etc.) and needs to be registered at all of them.
     /// Returns the number of interface slots registered.
     /// </summary>
-    private static int RegisterAtAllImplicitInterfaceSlots(LoadedAssembly* asm, uint typeDefRow, uint methodRow, MethodTable* mt, uint methodToken, ulong explicitInterfaceMask)
+    private static int RegisterAtAllImplicitInterfaceSlots(LoadedAssembly* asm, uint typeDefRow, uint methodRow, MethodTable* mt, uint methodToken, short* explicitSlots, int explicitSlotCount)
     {
         // Get the method name
         uint nameIdx = MetadataReader.GetMethodDefName(ref asm->Tables, ref asm->Sizes, methodRow);
@@ -2931,11 +2962,6 @@ public static unsafe class AssemblyLoader
 
         for (int i = 0; i < numInterfaces; i++)
         {
-            // Skip interfaces that have explicit implementations (from explicitInterfaceMask)
-            // This prevents implicit implementations from overwriting explicit ones
-            if (i < 64 && (explicitInterfaceMask & (1ul << i)) != 0)
-                continue;
-
             MethodTable* interfaceMT = map[i].InterfaceMT;
             if (interfaceMT == null)
                 continue;
@@ -2946,6 +2972,21 @@ public static unsafe class AssemblyLoader
             {
                 // Found a match - register at this interface slot
                 short interfaceSlot = (short)(map[i].StartSlot + methodIndex);
+
+                // Never overwrite a slot that an explicit implementation owns
+                // (only that exact slot is protected - not the whole interface)
+                bool slotIsExplicit = false;
+                for (int s = 0; s < explicitSlotCount; s++)
+                {
+                    if (explicitSlots[s] == interfaceSlot)
+                    {
+                        slotIsExplicit = true;
+                        break;
+                    }
+                }
+                if (slotIsExplicit)
+                    continue;
+
                 JIT.CompiledMethodRegistry.RegisterUncompiledOverride(
                     methodToken, asm->AssemblyId, mt, interfaceSlot);
                 registeredCount++;
@@ -2989,10 +3030,14 @@ public static unsafe class AssemblyLoader
                     currentSlot = endSlot;
             }
         }
-        // First pass: find which interfaces have explicit implementations
-        // Build a bitmask of interface indices with explicit implementations
-        // This prevents implicit implementations from overwriting explicit ones
-        ulong explicitInterfaceMask = 0;
+        // First pass: collect the specific vtable slots claimed by explicit interface
+        // implementations. Only those exact slots must be protected from implicit
+        // implementations; other methods of the same interface may still be implemented
+        // implicitly. Example: List<T>.Enumerator implements IEnumerator.get_Current
+        // explicitly, but IEnumerator.MoveNext/Reset implicitly - excluding the whole
+        // interface would misregister MoveNext/Reset at bogus sequential slots.
+        short* explicitSlots = stackalloc short[64];
+        int explicitSlotCount = 0;
         for (uint methodRow = methodStart; methodRow < methodEnd; methodRow++)
         {
             ushort methodFlags = MetadataReader.GetMethodDefFlags(ref asm->Tables, ref asm->Sizes, methodRow);
@@ -3004,22 +3049,9 @@ public static unsafe class AssemblyLoader
             if (isVirtual && isNewSlot && !isStatic && !isAbstract)
             {
                 short interfaceSlot = FindExplicitInterfaceSlot(asm, typeDefRow, methodRow, mt);
-                if (interfaceSlot >= 0)
+                if (interfaceSlot >= 0 && explicitSlotCount < 64)
                 {
-                    // Find which interface index this slot belongs to
-                    for (int i = 0; i < numInterfaces && i < 64; i++)
-                    {
-                        if (map[i].InterfaceMT != null)
-                        {
-                            int methodCount2 = map[i].InterfaceMT->_usNumVtableSlots;
-                            if (methodCount2 == 0) methodCount2 = 1;
-                            if (interfaceSlot >= map[i].StartSlot && interfaceSlot < map[i].StartSlot + methodCount2)
-                            {
-                                explicitInterfaceMask |= (1ul << i);
-                                break;
-                            }
-                        }
-                    }
+                    explicitSlots[explicitSlotCount++] = interfaceSlot;
                 }
             }
         }
@@ -3054,8 +3086,9 @@ public static unsafe class AssemblyLoader
                     // Not an explicit implementation - check for implicit interface implementation
                     // A single method may implement multiple interface methods (e.g., List.Count
                     // implements ICollection.Count, IReadOnlyCollection.Count, etc.)
-                    // Pass explicitInterfaceMask to skip interfaces with explicit implementations
-                    int implicitCount = RegisterAtAllImplicitInterfaceSlots(asm, typeDefRow, methodRow, mt, methodToken, explicitInterfaceMask);
+                    // Pass the explicit slot list so implicit implementations never
+                    // overwrite the exact slots owned by explicit implementations
+                    int implicitCount = RegisterAtAllImplicitInterfaceSlots(asm, typeDefRow, methodRow, mt, methodToken, explicitSlots, explicitSlotCount);
                     if (implicitCount == 0)
                     {
                         // Not an interface implementation - register at sequential slot
@@ -6043,6 +6076,31 @@ public static unsafe class AssemblyLoader
                 return &_assemblies[i];
         }
         return null;
+    }
+
+    /// <summary>
+    /// Find a TypeDef token (0x02xxxxxx) in the CoreLib (korlib) by type name
+    /// and namespace. Print-free version of FindTypeDefByName, suitable for use
+    /// on runtime dispatch paths. Returns 0 if not found.
+    /// </summary>
+    public static uint FindCoreLibTypeDef(byte* typeName, byte* typeNs)
+    {
+        LoadedAssembly* asm = GetCoreLib();
+        if (asm == null || typeName == null)
+            return 0;
+
+        uint count = asm->Tables.RowCounts[(int)MetadataTableId.TypeDef];
+        for (uint row = 1; row <= count; row++)
+        {
+            uint nameIdx = MetadataReader.GetTypeDefName(ref asm->Tables, ref asm->Sizes, row);
+            uint nsIdx = MetadataReader.GetTypeDefNamespace(ref asm->Tables, ref asm->Sizes, row);
+            byte* name = MetadataReader.GetString(ref asm->Metadata, nameIdx);
+            byte* ns = MetadataReader.GetString(ref asm->Metadata, nsIdx);
+
+            if (NameEquals(name, typeName) && (typeNs == null || NameEquals(ns, typeNs)))
+                return 0x02000000 | row;
+        }
+        return 0;
     }
 
     /// <summary>
@@ -9756,6 +9814,12 @@ public static unsafe class AssemblyLoader
 
                             // JIT compile the method
                             JIT.JitResult jitResult = JIT.Tier0JIT.CompileMethod(info->AssemblyId, info->Token);
+
+                            // Clear the hint unconditionally: if the compile returned early
+                            // (e.g., cache hit) PopulateVtableSlot never consumed it, and a
+                            // stale hint would corrupt a LATER unrelated compile's slot.
+                            JIT.Tier0JIT.SetVtableSlotHint(-1);
+
                             if (jitResult.Success && jitResult.CodeAddress != null)
                             {
                                 dstVtable[i] = (nint)jitResult.CodeAddress;
@@ -10111,6 +10175,29 @@ public static unsafe class AssemblyLoader
             // Match either normalized format or TypeSpec format (for generic types in same assembly)
             if (cachedToken == normalizedGenDefToken || cachedToken == typeSpecToken)
             {
+                // If the compiled code is instantiation-specific (type context active),
+                // only propagate to MTs with IDENTICAL type arguments. Code compiled for
+                // e.g. List<int>.Enumerator (4-byte element stride) must never be written
+                // into List<string>.Enumerator's empty slots.
+                int ctxCount = JIT.MetadataIntegration.GetTypeTypeArgCount();
+                if (ctxCount > 0)
+                {
+                    if (_genericInstCacheTypeArgCounts[i] != ctxCount)
+                        continue;
+                    int baseIdx = i * MaxTypeArgsPerInst;
+                    bool argsMatch = true;
+                    for (int j = 0; j < ctxCount; j++)
+                    {
+                        if (_genericInstCacheTypeArgs[baseIdx + j] != JIT.MetadataIntegration.GetTypeTypeArgMethodTable(j))
+                        {
+                            argsMatch = false;
+                            break;
+                        }
+                    }
+                    if (!argsMatch)
+                        continue;
+                }
+
                 MethodTable* instMT = _genericInstCacheInstMTs[i];
                 if (instMT != null && vtableSlot < instMT->_usNumVtableSlots)
                 {

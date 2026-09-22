@@ -1425,7 +1425,18 @@ public static unsafe class TypeHelpers
 
         if (slot < 0)
         {
-            return null;
+            // Array fallback: SZARRAY MethodTables carry no interface map (see
+            // GetOrCreateArrayMethodTable), so resolve the standard
+            // array-interface methods directly to kernel helpers.
+            void* arrayMethod = TryGetArrayInterfaceMethod(objectMT, interfaceMT, methodIndex);
+            if (arrayMethod != null)
+                return arrayMethod;
+
+            // Generic fallback: JIT-created instantiations may have incomplete
+            // interface maps; resolve the implementation by name from the
+            // class hierarchy instead.
+            nint byName = JitStubs.ResolveInterfaceMethodByName(objectMT, interfaceMT, methodIndex);
+            return (void*)byName;
         }
 
         // Ensure the vtable slot is compiled (may be lazy-compiled)
@@ -1433,6 +1444,55 @@ public static unsafe class TypeHelpers
         nint methodCode = JitStubs.EnsureVtableSlotCompiled((nint)obj, (short)slot);
 
         return (void*)methodCode;
+    }
+
+    /// <summary>
+    /// Array fallback for interface dispatch: T[] has no materialized interface
+    /// map, so map the handful of standard array-interface methods to kernel
+    /// helpers. Print-free (runs on the interface-dispatch path).
+    /// </summary>
+    private static void* TryGetArrayInterfaceMethod(MethodTable* objectMT, MethodTable* interfaceMT, int methodIndex)
+    {
+        if (objectMT == null || interfaceMT == null || !objectMT->IsArray)
+            return null;
+
+        // Identify the requested interface method by name via metadata.
+        uint ifaceAsmId;
+        uint ifaceToken;
+        Reflection.ReflectionRuntime.LookupTypeInfo(interfaceMT, out ifaceAsmId, out ifaceToken);
+        if (ifaceAsmId == 0 || ifaceToken == 0)
+            return null;
+
+        uint methodToken = MetadataIntegration.GetInterfaceMethodToken(ifaceAsmId, ifaceToken, methodIndex);
+        if (methodToken == 0)
+            return null;
+
+        byte* name = MetadataIntegration.GetMethodName(ifaceAsmId, methodToken);
+        if (name == null)
+            return null;
+
+        // IEnumerable<T>.GetEnumerator -> create a SZGenericArrayEnumerator<T>
+        if (NameIs(name, "GetEnumerator"))
+            return (void*)(delegate*<object?, object?>)&ArrayHelpers.GetGenericArrayEnumerator;
+
+        // ICollection<T>.get_Count -> the array length
+        if (NameIs(name, "get_Count"))
+            return (void*)(delegate*<System.Array, int>)&ArrayHelpers.GetLength;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Compare a null-terminated metadata name against a literal string.
+    /// </summary>
+    private static bool NameIs(byte* name, string literal)
+    {
+        for (int i = 0; i < literal.Length; i++)
+        {
+            if (name[i] != (byte)literal[i])
+                return false;
+        }
+        return name[literal.Length] == 0;
     }
 
     /// <summary>

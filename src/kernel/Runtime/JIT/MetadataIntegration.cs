@@ -3547,6 +3547,19 @@ public static unsafe class MetadataIntegration
                     byte callConv = sigBlob[sigPos++];
                     bool hasThis = (callConv & 0x20) != 0;
 
+                    // Generic methods (GENERIC flag 0x10) put a compressed
+                    // GenParamCount before the ParamCount.
+                    if ((callConv & 0x10) != 0 && sigPos < (int)sigLen)
+                    {
+                        byte g = sigBlob[sigPos];
+                        if ((g & 0x80) == 0)
+                            sigPos += 1;
+                        else if ((g & 0xC0) == 0x80)
+                            sigPos += 2;
+                        else
+                            sigPos += 4;
+                    }
+
                     // Decode compressed unsigned integer (parameter count)
                     uint paramCount = 0;
                     byte b = sigBlob[sigPos++];
@@ -4791,6 +4804,49 @@ public static unsafe class MetadataIntegration
         // Now resolve the underlying method with type args in context
         // The signature parsing functions will use GetMethodTypeArgSize() for MVAR types
         bool success = ResolveMethod(underlyingToken, out result);
+
+        // Generic methods: verify the resolved code was compiled for THIS
+        // instantiation's method type args. The tag==0 pre-check above only
+        // covers MethodDef-backed specs; MemberRef-backed specs (e.g.
+        // Enumerable.ToList<T> referenced from another assembly) bypass it
+        // entirely, so stale code compiled for a different instantiation
+        // (e.g. [int]) would otherwise be reused for [string].
+        if (success && _methodTypeArgCount > 0 && result.NativeCode != null && result.RegistryEntry != null)
+        {
+            CompiledMethodInfo* entry = (CompiledMethodInfo*)result.RegistryEntry;
+            ulong instantiationHash = GetMethodTypeArgHash();
+            if (entry->TypeArgHash != instantiationHash)
+            {
+                // Force recompilation under the current type args.
+                entry->IsCompiled = false;
+                entry->TypeArgHash = instantiationHash;
+
+                JitResult recompile = Tier0JIT.CompileMethod(entry->AssemblyId, entry->Token);
+                if (recompile.Success && recompile.CodeAddress != null)
+                {
+                    CompiledMethodInfo* refreshed = CompiledMethodRegistry.Lookup(entry->Token, entry->AssemblyId);
+                    if (refreshed != null)
+                    {
+                        result.NativeCode = refreshed->NativeCode;
+                        result.ArgCount = refreshed->ArgCount;
+                        result.ReturnKind = refreshed->ReturnKind;
+                        result.ReturnStructSize = refreshed->ReturnStructSize;
+                        result.HasThis = refreshed->HasThis;
+                        result.IsVirtual = refreshed->IsVirtual;
+                        result.VtableSlot = refreshed->VtableSlot;
+                        result.MethodTable = refreshed->MethodTable;
+                        result.IsInterfaceMethod = refreshed->IsInterfaceMethod;
+                        result.InterfaceMT = refreshed->InterfaceMT;
+                        result.InterfaceMethodSlot = refreshed->InterfaceMethodSlot;
+                        result.RegistryEntry = refreshed;
+                    }
+                    else
+                    {
+                        result.NativeCode = recompile.CodeAddress;
+                    }
+                }
+            }
+        }
 
         // For generic methods, ensure the TypeArgHash is updated after compilation
         // to reflect the method type args used for this instantiation
@@ -6436,6 +6492,22 @@ public static unsafe class MetadataIntegration
         byte callConv = sig[sigPos++];
         result.HasThis = (callConv & 0x20) != 0;
 
+        // Generic methods (GENERIC flag 0x10) put a compressed GenParamCount
+        // BEFORE the ParamCount. For example IOrderedEnumerable<T>.
+        // CreateOrderedEnumerable<TKey>(keySelector, comparer, descending) has
+        // GenParamCount=1, ParamCount=3. Reading ParamCount first would yield 1
+        // and the call emitter would set up the wrong argument registers.
+        if ((callConv & 0x10) != 0 && sigPos < sigLen)
+        {
+            byte g = sig[sigPos];
+            if ((g & 0x80) == 0)
+                sigPos += 1;
+            else if ((g & 0xC0) == 0x80)
+                sigPos += 2;
+            else
+                sigPos += 4;
+        }
+
         // Decode compressed parameter count
         byte b = sig[sigPos++];
         uint paramCount = 0;
@@ -6551,6 +6623,19 @@ public static unsafe class MetadataIntegration
 
         // Check for VARARG calling convention (0x05)
         result.IsVarargMethod = (callConv & 0x0F) == 0x05;
+
+        // Generic methods (GENERIC flag 0x10) put a compressed GenParamCount
+        // before the ParamCount (same as MemberRef signatures).
+        if ((callConv & 0x10) != 0 && sigPos < sigLen)
+        {
+            byte g = sig[sigPos];
+            if ((g & 0x80) == 0)
+                sigPos += 1;
+            else if ((g & 0xC0) == 0x80)
+                sigPos += 2;
+            else
+                sigPos += 4;
+        }
 
         // Decode compressed parameter count
         byte b = sig[sigPos++];

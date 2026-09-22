@@ -1134,7 +1134,10 @@ public static class Enumerable
 
         private static int CompareKeyChain(List<OrderedEnumerable<T>> levels, T x, T y)
         {
-            for (int i = 0; i < levels.Count; i++)
+            // levels is ordered outermost-first (the most recent ThenBy at [0],
+            // the original OrderBy last). The OrderBy key is the primary key, so
+            // walk from the root back towards the outermost level.
+            for (int i = levels.Count - 1; i >= 0; i--)
             {
                 OrderedEnumerable<T> lvl = levels[i];
                 int c = lvl._comparer.Compare(lvl._keySelector(x), lvl._keySelector(y));

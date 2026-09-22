@@ -66,10 +66,28 @@ internal sealed class ObjectComparer<T> : Comparer<T>
         if (x == null) return -1;
         if (y == null) return 1;
 
-        // Fallback: use object.Equals for equality and GetHashCode for ordering
-        // This avoids interface dispatch which has AOT/JIT compatibility issues.
-        // For proper sorting, GetHashCode comparison maintains a consistent order.
-        if (x.Equals(y)) return 0;
+        // Special case for strings: ordinal (lexicographic) comparison, matching
+        // the official Comparer<string>.Default. Cast to object first to avoid
+        // JIT issues with pattern matching on T (same pattern as
+        // ObjectEqualityComparer<T>).
+        object? ox = x;
+        object? oy = y;
+        if (ox is string sx && oy is string sy)
+        {
+            int len = sx.Length < sy.Length ? sx.Length : sy.Length;
+            for (int i = 0; i < len; i++)
+            {
+                int d = sx[i] - sy[i];
+                if (d != 0) return d;
+            }
+            return sx.Length - sy.Length;
+        }
+
+        // Fallback: use the static Object.Equals (handled by the kernel with
+        // boxed byte comparison) and GetHashCode for ordering. Do NOT use the
+        // instance x.Equals(y) - virtual dispatch on boxed value types does not
+        // work here and returns false for equal ints, which corrupts the sort.
+        if (object.Equals(x, y)) return 0;
 
         // Use GetHashCode for ordering - not ideal but avoids interface dispatch
         int xHash = x.GetHashCode();
