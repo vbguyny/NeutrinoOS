@@ -2983,6 +2983,12 @@ public unsafe struct ILCompiler
     /// </summary>
     private void CheckPhysStack()
     {
+        // Phase 5: the per-instruction report is bring-up tooling only -
+        // it floods the serial console (24 lines per compiled method) and
+        // slows first-run compiles down on slow consoles. The tracking
+        // itself stays enabled so RSP-parity anomalies still surface as
+        // compile-time behavior differences.
+        if (true) return;
         if (!X64Emitter.RspDeltaTracking) return;
         if (X64Emitter.RspDeltaAccumulator == _evalStackByteSize) return;
         if (_physReports >= 24) return;
@@ -6655,24 +6661,12 @@ public unsafe struct ILCompiler
         // - The constrained token tells us the type to box
         if (constrainedToken != 0 && _typeResolver != null)
         {
-            DebugConsole.Write("[constrained] token=0x");
-            DebugConsole.WriteHex(constrainedToken);
-
             // Resolve the constraint type to get its MethodTable
             void* resolvedPtr;
             bool resolveResult = _typeResolver(constrainedToken, out resolvedPtr);
-            DebugConsole.Write(" res=");
-            DebugConsole.Write(resolveResult ? "T" : "F");
-            DebugConsole.Write(" ptr=0x");
-            DebugConsole.WriteHex((ulong)resolvedPtr);
             if (resolveResult && resolvedPtr != null)
             {
                 MethodTable* constraintMT = (MethodTable*)resolvedPtr;
-                DebugConsole.Write(" mt=0x");
-                DebugConsole.WriteHex((ulong)constraintMT);
-                DebugConsole.Write(" isVT=");
-                DebugConsole.Write(constraintMT->IsValueType ? "Y" : "N");
-                DebugConsole.WriteLine();
 
                 if (constraintMT->IsValueType)
                 {

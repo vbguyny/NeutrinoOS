@@ -87,6 +87,55 @@ public static unsafe class LineDiscipline
     private static bool _keyReadActive;
     private static bool _keyReadEcho;
 
+    // Phase 5: idle hook (called from PollTimeouts in thread context while
+    // the shell waits for input; used by JobManager to run background jobs)
+    // and deferred tab completion (completion must not run in the UART ISR -
+    // it reads the FAT volume - so TAB sets a flag processed here).
+    private static delegate* unmanaged<void> _idleHook;
+    private static delegate* unmanaged<char*, int, int> _tabCompleter;
+    private static bool _tabPending;
+    private static ulong _tabTick;
+
+    /// <summary>
+    /// Phase 5: hook called from the blocking read loops (thread context)
+    /// while console input is pending. The shell installs its background
+    /// job pump here. Keep it short-running when no work is queued.
+    /// </summary>
+    public static delegate* unmanaged<void> IdleHook
+    {
+        get => _idleHook;
+        set => _idleHook = value;
+    }
+
+    /// <summary>
+    /// Phase 5: installs the tab-completion callback. It receives the
+    /// current edit buffer (chars, not NUL-terminated) and its length, and
+    /// returns the new length after completion, -1 for no change, or -2
+    /// when it printed a candidate list and the caller should redraw the
+    /// prompt + line. Deferred: TAB only sets a flag; the callback runs in
+    /// thread context from PollTimeouts (see file header).
+    /// </summary>
+    public static delegate* unmanaged<char*, int, int> TabCompleter
+    {
+        get => _tabCompleter;
+        set => _tabCompleter = value;
+    }
+
+    /// <summary>
+    /// Phase 5: echoes one completion candidate line (chars + CRLF) from
+    /// thread context (used by the tab completer's candidate listing).
+    /// </summary>
+    public static void EchoCompletionLine(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            EchoAscii(c < 256 ? (byte)c : (byte)'?');
+        }
+        EchoAscii(0x0D);
+        EchoAscii(0x0A);
+    }
+
     // ANSI escape parser state
     // 0 = normal, 1 = saw ESC, 2 = inside CSI, 3 = saw ESC O (SS3)
     private static int _escState;
@@ -96,13 +145,20 @@ public static unsafe class LineDiscipline
     private static ulong _escTick;          // tick when the escape started
 
     /// <summary>
-    /// Processes escape-parser timeouts. A lone ESC becomes the Escape
+    /// Processes deferred work from the blocking read loops: tab
+    /// completion (not safe in the UART ISR), the idle hook (background
+    /// jobs) and escape-parser timeouts. A lone ESC becomes the Escape
     /// key after 20 ms; incomplete CSI/SS3 sequences are discarded after
     /// 200 ms (they only occur on line noise). Called from the blocking
     /// read loops, which wake on timer ticks via CPU.Halt().
     /// </summary>
     public static void PollTimeouts()
     {
+        ProcessTabCompletion();
+
+        if (_idleHook != null && !_tabPending)
+            _idleHook();
+
         if (_escState == 0)
             return;
 
@@ -344,8 +400,16 @@ public static unsafe class LineDiscipline
                 _historyPos = -1;
                 return;
 
-            case 0x09:      // Tab - deliver as a key, do not append
-                DeliverKey('\t', ConsoleKey.Tab, ConsoleModifiers.None);
+            case 0x09:      // Tab - Phase 5: request deferred completion
+                if (_tabCompleter != null && !_keyReadActive)
+                {
+                    _tabPending = true;
+                    _tabTick = ProtonOS.X64.APIC.TickCount;
+                }
+                else
+                {
+                    DeliverKey('\t', ConsoleKey.Tab, ConsoleModifiers.None);
+                }
                 return;
         }
 
@@ -554,6 +618,11 @@ public static unsafe class LineDiscipline
 
     private static void CompleteLine(LineType type)
     {
+        // Drop any completion that has not run yet: the line is going to
+        // the consumer now, and a late completion would otherwise fire on
+        // the next (empty) edit buffer.
+        _tabPending = false;
+
         int next = (_lineTail + 1) & (LineQueueCapacity - 1);
         if (next == _lineHead)
             return;     // queue full: drop
@@ -735,6 +804,137 @@ public static unsafe class LineDiscipline
                 _edit[i] = (char)b;
             }
             _editLength = len;
+        }
+    }
+
+    // ==================== Phase 5 history API ====================
+
+    /// <summary>Number of history entries currently stored (oldest first).</summary>
+    public static int GetHistoryCount() => _historyCount;
+
+    /// <summary>
+    /// Copies history entry <paramref name="index"/> (0 = oldest) into
+    /// <paramref name="destination"/>; returns the entry length.
+    /// </summary>
+    public static int GetHistoryEntry(int index, char[] destination)
+    {
+        if (index < 0 || index >= _historyCount)
+            return 0;
+        fixed (HistoryStore* h = &_historyStore)
+        {
+            int len = h->Lengths[index];
+            if (len > destination.Length)
+                len = destination.Length;
+            for (int i = 0; i < len; i++)
+                destination[i] = (char)h->Data[index * LineCapacity + i];
+            return len;
+        }
+    }
+
+    /// <summary>
+    /// Appends a line to the history (used to preload the persistent
+    /// history file at shell startup; the edit path uses PushHistory).
+    /// Consecutive duplicates are skipped; the oldest entry is dropped
+    /// when the 32-entry store is full.
+    /// </summary>
+    public static void AddHistoryEntry(string line)
+    {
+        if (string.IsNullOrEmpty(line))
+            return;
+
+        fixed (HistoryStore* h = &_historyStore)
+        {
+            if (_historyCount > 0)
+            {
+                int last = _historyCount - 1;
+                int lastLen = h->Lengths[last];
+                bool same = lastLen == line.Length;
+                if (same)
+                {
+                    for (int i = 0; i < lastLen; i++)
+                    {
+                        if (h->Data[last * LineCapacity + i] != (byte)line[i])
+                        {
+                            same = false;
+                            break;
+                        }
+                    }
+                }
+                if (same)
+                    return;
+            }
+
+            if (_historyCount >= HistoryCapacity)
+            {
+                for (int i = 1; i < HistoryCapacity; i++)
+                {
+                    for (int k = 0; k < LineCapacity; k++)
+                        h->Data[(i - 1) * LineCapacity + k] = h->Data[i * LineCapacity + k];
+                    h->Lengths[i - 1] = h->Lengths[i];
+                }
+                _historyCount = HistoryCapacity - 1;
+            }
+
+            int slot = _historyCount;
+            int len = line.Length > LineCapacity ? LineCapacity : line.Length;
+            for (int i = 0; i < len; i++)
+                h->Data[slot * LineCapacity + i] = line[i] < 256 ? (byte)line[i] : (byte)'?';
+            h->Lengths[slot] = (byte)len;
+            _historyCount++;
+        }
+    }
+
+    /// <summary>
+    /// Runs the tab completer (thread context, after a 20 ms quiet period
+    /// so a burst of TABs coalesces). The completer edits the line buffer
+    /// in place; appended characters are echoed here. Return -2 means the
+    /// completer printed a candidate list and the line is redrawn.
+    /// </summary>
+    private static void ProcessTabCompletion()
+    {
+        if (!_tabPending)
+            return;
+
+        // Debounce: wait until the line has been quiet briefly.
+        if (ProtonOS.X64.APIC.TickCount - _tabTick < 20)
+            return;
+
+        _tabPending = false;
+        if (_rawMode || _keyReadActive || _tabCompleter == null)
+            return;
+
+        int newLen;
+        fixed (char* p = _edit)
+        {
+            newLen = _tabCompleter(p, _editLength);
+        }
+
+        if (newLen < 0)
+        {
+            if (newLen == -2)
+            {
+                // Candidate list was printed; redraw prompt + current line.
+                RedrawBegin();
+                for (int i = 0; i < _editLength; i++)
+                    EchoAsciiChar(_edit[i]);
+            }
+            return;
+        }
+
+        if (newLen > _editLength)
+        {
+            for (int i = _editLength; i < newLen; i++)
+                EchoAsciiChar(_edit[i]);
+            _editLength = newLen;
+            _historyPos = -1;
+        }
+        else if (newLen < _editLength)
+        {
+            // Defensive: completer shortened the line; redraw it.
+            _editLength = newLen;
+            RedrawBegin();
+            for (int i = 0; i < _editLength; i++)
+                EchoAsciiChar(_edit[i]);
         }
     }
 

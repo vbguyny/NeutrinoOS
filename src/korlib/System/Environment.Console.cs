@@ -60,23 +60,20 @@ public static partial class Environment
 
     /// <summary>
     /// Gets the fully qualified path of the current working directory.
-    /// Returns "/" when no VFS working directory has been set (Phase 2).
+    /// Phase 5: backed by korlib's Directory current-directory state,
+    /// which the shell's cd built-in drives and all relative-path
+    /// resolution consults.
     /// </summary>
     public static string CurrentDirectory
     {
         get
         {
-            unsafe
-            {
-                const int Cap = 260;
-                char* buffer = stackalloc char[Cap];
-                int len = EnvGetCurrentDirectory(buffer, Cap);
-                if (len <= 0)
-                    return "/";
-                if (len > Cap - 1)
-                    len = Cap - 1;
-                return new string(buffer, 0, len);
-            }
+            string cwd = global::System.IO.Directory.GetCurrentDirectory();
+            return string.IsNullOrEmpty(cwd) ? "/" : cwd;
+        }
+        set
+        {
+            global::System.IO.Directory.SetCurrentDirectory(value);
         }
     }
 }

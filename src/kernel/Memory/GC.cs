@@ -21,6 +21,7 @@ using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 using ProtonOS.Threading;
 using ProtonOS.Runtime;
+using ProtonOS.Runtime.JIT;
 using ProtonOS.X64;
 
 namespace ProtonOS.Memory;
@@ -660,8 +661,22 @@ public static unsafe class GC
             }
             else
             {
-                // Other thread - use saved context from scheduler
-                MarkThreadStackRoots(thread);
+                // Phase 5: walk only saved contexts the unwinder can
+                // actually reason about. JIT-compiled frames carry GC info;
+                // AOT kernel frames yield no roots (the walker reports
+                // 0 frames for them) and saved idle-worker contexts
+                // (PS/2, CAL) can trip the frame unwinder - observed as a
+                // hang of the shell's gc command. The filter below is the
+                // same lookup StackRoots.EnumerateStackRoots uses to find
+                // JIT GC info, so no walkable frame is skipped.
+                byte* jitGCInfo;
+                int jitGCSize;
+                uint jitCodeOffset;
+                if (JITMethodRegistry.FindGCInfoForIP(thread->Context.Rip,
+                        out jitGCInfo, out jitGCSize, out jitCodeOffset))
+                {
+                    MarkThreadStackRoots(thread);
+                }
             }
         }
 
@@ -771,6 +786,78 @@ public static unsafe class GC
     }
 
     /// <summary>
+    /// Phase 5: diagnostic collection used by the shell's gc built-in.
+    /// Runs the full mark phase (stop-the-world, clear marks, mark roots,
+    /// transitively mark) but deliberately SKIPS sweep and compaction:
+    ///
+    ///   - The kernel GC's stack walker can only recover roots from
+    ///     JIT-compiled frames (AOT kernel frames carry no GC info - the
+    ///     walker reports 0 frames for them). A sweep from shell context
+    ///     could therefore free objects that are only reachable through
+    ///     the shell's own stack frame, and a compaction could move them
+    ///     out from under it.
+    ///   - Sweeps remain allocation-driven internal steps; this entry
+    ///     point only measures reachability, prints statistics and leaves
+    ///     the heap unchanged (safe by construction).
+    ///
+    /// The mark expansion is bounded (<see cref="MarkObjectLimit" />);
+    /// exceeding the bound aborts the mark early (still safe).
+    /// Returns the number of marked objects, or -1 when unavailable.
+    /// </summary>
+    public static int CollectMarkOnly()
+    {
+        if (!_initialized || !GCHeap.IsInitialized)
+        {
+            DebugConsole.WriteLine("[GC] Not initialized!");
+            return -1;
+        }
+        if (_gcInProgress)
+        {
+            DebugConsole.WriteLine("[GC] Collection already in progress!");
+            return -1;
+        }
+
+        _gcInProgress = true;
+        _collectionsPerformed++;
+        DebugConsole.WriteLine("[GC] Starting mark-only collection...");
+
+        StopTheWorld();
+        ClearAllMarks();
+        ClearAllMarksLOH();
+
+        _markStackTop = 0;
+        _objectsMarked = 0;
+        _rootsFound = 0;
+        _markOverflow = false;
+
+        MarkRoots();
+        ProcessMarkStack();
+
+        int marked = (int)_objectsMarked;
+        if (_markOverflow)
+        {
+            DebugConsole.WriteLine("[GC] Mark limit reached - mark phase aborted (heap unchanged)");
+        }
+        else
+        {
+            DebugConsole.WriteLine("[GC] Mark phase complete (sweep deferred: diagnostic mode)");
+        }
+
+        ResumeTheWorld();
+        _gcInProgress = false;
+        return marked;
+    }
+
+    /// <summary>
+    /// Upper bound on objects marked in one diagnostic collection (Phase 5
+    /// safety valve; ~10x the current heap population). Exceeding it aborts
+    /// the mark phase early and the heap is left unchanged.
+    /// </summary>
+    public const int MarkObjectLimit = 200000;
+
+    private static bool _markOverflow;
+
+    /// <summary>
     /// Process the mark stack until empty.
     /// For each object, traverse its reference fields and mark reachable objects.
     /// </summary>
@@ -778,6 +865,14 @@ public static unsafe class GC
     {
         while (_markStackTop > 0)
         {
+            // Phase 5 safety valve: a corrupted/interior reference can make
+            // the mark expansion unbounded (each 'object' looks unmarked).
+            if (_objectsMarked > MarkObjectLimit)
+            {
+                _markOverflow = true;
+                return;
+            }
+
             // Pop an object
             void* obj = _markStack[--_markStackTop];
 

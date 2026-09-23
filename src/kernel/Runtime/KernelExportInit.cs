@@ -50,7 +50,58 @@ public static unsafe class KernelExportInit
         // Register Syscall Handler exports (for DDK filesystem operations)
         RegisterSyscallHandlerExports();
 
+        // Register system information exports (Phase 5 shell utilities)
+        RegisterSystemInfoExports();
+
         KernelExportRegistry.DebugPrint();
+    }
+
+    /// <summary>
+    /// Registers a named export: copies <paramref name="name"/> into
+    /// <paramref name="buf"/> (NUL-terminated ASCII) and calls the
+    /// registry (same byte-name idiom as the other registrations in
+    /// this file).
+    /// </summary>
+    private static void Reg(byte* buf, string name, void* fn)
+    {
+        for (int i = 0; i < name.Length; i++)
+            buf[i] = (byte)name[i];
+        buf[name.Length] = 0;
+        KernelExportRegistry.Register(buf, fn);
+    }
+
+    /// <summary>
+    /// Phase 5: registers the system-information exports consumed by the
+    /// ProtonOS.DDK SysInfo wrappers (env, date, uname, ps, kill).
+    /// </summary>
+    private static void RegisterSystemInfoExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_GetEnvironmentVariableCount",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.SystemInfoExports.GetEnvironmentVariableCount);
+        Reg(n, "Kernel_GetEnvironmentVariableAt",
+            (void*)(delegate* unmanaged<int, char*, int, int*, char*, int, int>)&Exports.DDK.SystemInfoExports.GetEnvironmentVariableAt);
+        Reg(n, "Kernel_GetWallClock",
+            (void*)(delegate* unmanaged<int*, int*, int*, int*, int*, int*, void>)&Exports.DDK.SystemInfoExports.GetWallClock);
+        Reg(n, "Kernel_GetNeutrinoVersion",
+            (void*)(delegate* unmanaged<char*, int, int>)&Exports.DDK.SystemInfoExports.GetNeutrinoVersion);
+        Reg(n, "Kernel_GetShellJobCount",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.SystemInfoExports.GetShellJobCount);
+        Reg(n, "Kernel_GetShellJobAt",
+            (void*)(delegate* unmanaged<int, int*, int*, int*, int*, char*, int, int>)&Exports.DDK.SystemInfoExports.GetShellJobAt);
+        Reg(n, "Kernel_KillShellJob",
+            (void*)(delegate* unmanaged<int, int>)&Exports.DDK.SystemInfoExports.KillShellJob);
+        Reg(n, "Kernel_GetThreadInfoAt",
+            (void*)(delegate* unmanaged<int, uint*, int*, ulong*, int>)&Exports.DDK.SystemInfoExports.GetThreadInfoAt);
+        Reg(n, "Kernel_GetBootVolumeStats",
+            (void*)(delegate* unmanaged<char*, int, ulong*, ulong*, int>)&Exports.DDK.SystemInfoExports.GetBootVolumeStats);
+        Reg(n, "Kernel_NetPresent",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.NetworkExports.NetPresent);
+        Reg(n, "Kernel_NetTransmit",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.NetworkExports.NetTransmit);
+        Reg(n, "Kernel_NetReceive",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.NetworkExports.NetReceive);
     }
 
     private static void RegisterPortIOExports()

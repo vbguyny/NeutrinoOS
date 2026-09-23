@@ -210,8 +210,9 @@ public static unsafe class Tier0JIT
             return JitResult.Fail();
         }
 
-        // Debug: trace JITTest methods
-        if (assemblyId >= 13 && (methodToken == 0x06000052 || methodToken == 0x0600001B || methodToken == 0x06000054))
+        // Debug: trace JITTest methods (assembly 13 only - a >= test
+        // used to match shell utilities that happen to share tokens).
+        if (assemblyId == 13 && (methodToken == 0x06000052 || methodToken == 0x0600001B || methodToken == 0x06000054))
         {
             DebugConsole.Write("[JIT-DBG] Method 0x");
             DebugConsole.WriteHex(methodToken);

@@ -105,14 +105,28 @@ public static class Console
 
     // ==================== Stream properties ====================
 
-    private static readonly ConsoleTextWriter _outWriter = new ConsoleTextWriter();
-    private static readonly ConsoleTextWriter _errorWriter = new ConsoleTextWriter();
-    private static readonly ConsoleTextReader _inReader = new ConsoleTextReader();
+    // Phase 5: the default writers/reader are swappable so the shell can
+    // implement pipes (<cmd> | <cmd>) and redirection (>, >>, <, 2>) in
+    // process. All Console.Write/WriteLine/ReadLine calls funnel through
+    // the _outWriter/_errorWriter/_inReader fields below, so swapping the
+    // field is all that is needed - JIT-compiled applications resolve
+    // their Console calls to these same AOT methods and are redirected
+    // transparently.
+    private static readonly ConsoleTextWriter _defaultOut = new ConsoleTextWriter();
+    private static readonly ConsoleTextWriter _defaultError = new ConsoleTextWriter();
+    private static readonly ConsoleTextReader _defaultIn = new ConsoleTextReader();
+
+    private static TextWriter _outWriter = _defaultOut;
+    private static TextWriter _errorWriter = _defaultError;
+    private static TextReader _inReader = _defaultIn;
+
     private static readonly object _syncObject = new object();
 
     /// <summary>
     /// Gets the standard output writer (line-buffered, 512 characters,
     /// flushed on newline, on Flush, or after 50 ms of pending output).
+    /// Returns the current redirection target when one is installed
+    /// (<see cref="SetOut"/>).
     /// </summary>
     public static TextWriter Out => _outWriter;
 
@@ -125,8 +139,40 @@ public static class Console
 
     /// <summary>
     /// Gets the standard input reader (delegates to the line discipline).
+    /// Returns the current redirection source when one is installed
+    /// (<see cref="SetIn"/>).
     /// </summary>
     public static TextReader In => _inReader;
+
+    /// <summary>
+    /// NeutrinoOS Phase 5 extension: redirects standard output to
+    /// <paramref name="writer"/> (pass null to restore the console).
+    /// The shell uses this to implement pipes and output redirection;
+    /// the change is visible to JIT-compiled applications because their
+    /// Console calls resolve to this same implementation.
+    /// </summary>
+    public static void SetOut(TextWriter? writer) => _outWriter = writer ?? _defaultOut;
+
+    /// <summary>
+    /// NeutrinoOS Phase 5 extension: redirects standard error to
+    /// <paramref name="writer"/> (pass null to restore the console).
+    /// </summary>
+    public static void SetError(TextWriter? writer) => _errorWriter = writer ?? _defaultError;
+
+    /// <summary>
+    /// NeutrinoOS Phase 5 extension: redirects standard input to
+    /// <paramref name="reader"/> (pass null to restore the console).
+    /// </summary>
+    public static void SetIn(TextReader? reader) => _inReader = reader ?? _defaultIn;
+
+    /// <summary>
+    /// NeutrinoOS Phase 5 extension: true when output/error or input has
+    /// been redirected with <see cref="SetOut"/>/<see cref="SetIn"/>.
+    /// </summary>
+    public static bool IsRedirected =>
+        !ReferenceEquals(_outWriter, _defaultOut) ||
+        !ReferenceEquals(_errorWriter, _defaultError) ||
+        !ReferenceEquals(_inReader, _defaultIn);
 
     /// <summary>Gets an object that can be used to synchronize console I/O.</summary>
     public static object SyncRoot => _syncObject;
@@ -276,10 +322,14 @@ public static class Console
 
     /// <summary>
     /// Reads the next character from the console input, or -1 at end of
-    /// input. Uses the raw byte stream (not the line editor).
+    /// input. Uses the raw byte stream (not the line editor). Honors
+    /// <see cref="SetIn"/> redirection.
     /// </summary>
     public static int Read()
     {
+        if (!ReferenceEquals(_inReader, (TextReader)_defaultIn))
+            return _inReader.Read();
+
         Flush();
         return ConsoleReadChar();
     }
@@ -290,10 +340,19 @@ public static class Console
     /// check <see cref="LastReadLineCanceled"/> to distinguish the two
     /// (NeutrinoOS Phase 2 behavior - the full BCL throws
     /// OperationCanceledException from console pipelines that support it,
-    /// which is not safe in the AOT kernel context).
+    /// which is not safe in the AOT kernel context). Honors
+    /// <see cref="SetIn"/> redirection.
     /// </summary>
     public static string? ReadLine()
     {
+        // Phase 5: redirected input (pipe / '<' file) bypasses the line
+        // discipline entirely.
+        if (!ReferenceEquals(_inReader, (TextReader)_defaultIn))
+        {
+            LastReadLineCanceled = false;
+            return _inReader.ReadLine();
+        }
+
         // Make sure any pending prompt is on the wire before waiting
         Flush();
 
@@ -343,10 +402,25 @@ public static class Console
     /// Obtains the next key pressed by the user. The pressed key is
     /// displayed/echoed if <paramref name="intercept"/> is false (the
     /// line discipline echoes by default while reading a line; this method
-    /// intercepts at the key-queue level).
+    /// intercepts at the key-queue level). When input is redirected
+    /// (<see cref="SetIn"/>), reads a character from the reader instead.
     /// </summary>
     public static ConsoleKeyInfo ReadKey(bool intercept = false)
     {
+        if (!ReferenceEquals(_inReader, (TextReader)_defaultIn))
+        {
+            int ch = _inReader.Read();
+            if (ch < 0)
+                return new ConsoleKeyInfo('\0', 0, false, false, false);
+            char c = (char)ch;
+            ConsoleKey key = ConsoleKey.Enter;
+            if (c >= 'a' && c <= 'z') key = (ConsoleKey)('A' + (c - 'a'));
+            else if (c >= 'A' && c <= 'Z') key = (ConsoleKey)c;
+            else if (c >= '0' && c <= '9') key = (ConsoleKey)c;
+            else if (c != '\r' && c != '\n') key = 0;
+            return new ConsoleKeyInfo(c, key, false, false, false);
+        }
+
         Flush();
         while (true)
         {
@@ -550,13 +624,16 @@ public static class Console
     public static Encoding InputEncoding { get; set; } = Encoding.UTF8;
 
     /// <summary>
-    /// Gets a value indicating whether input is redirected. Always false in
-    /// Phase 2 (the console is the serial device).
+    /// Gets a value indicating whether input is redirected. True when the
+    /// shell has installed a reader with <see cref="SetIn"/>; otherwise
+    /// false (the console is the serial device).
     /// </summary>
     public static bool IsInputRedirected
     {
         get
         {
+            if (!ReferenceEquals(_inReader, (TextReader)_defaultIn))
+                return true;
             unsafe
             {
                 int inr, outr;
@@ -567,13 +644,17 @@ public static class Console
     }
 
     /// <summary>
-    /// Gets a value indicating whether output is redirected. Always false in
-    /// Phase 2 (the console is the serial device).
+    /// Gets a value indicating whether output is redirected. True when the
+    /// shell has installed a writer with <see cref="SetOut"/>/<see cref="SetError"/>;
+    /// otherwise false (the console is the serial device).
     /// </summary>
     public static bool IsOutputRedirected
     {
         get
         {
+            if (!ReferenceEquals(_outWriter, (TextWriter)_defaultOut) ||
+                !ReferenceEquals(_errorWriter, (TextWriter)_defaultError))
+                return true;
             unsafe
             {
                 int inr, outr;

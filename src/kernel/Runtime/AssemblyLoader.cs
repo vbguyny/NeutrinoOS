@@ -593,7 +593,7 @@ public unsafe struct LoadedAssembly
 public static unsafe class AssemblyLoader
 {
     /// <summary>Maximum number of loaded assemblies.</summary>
-    public const int MaxAssemblies = 32;
+    public const int MaxAssemblies = 64;
 
     /// <summary>Special assembly IDs.</summary>
     public const uint InvalidAssemblyId = 0;
@@ -2214,22 +2214,6 @@ public static unsafe class AssemblyLoader
                             uint nameHash = ComputeInterfaceNameHash(typeNs, typeName);
                             ushort slotCount = aotMT->_usNumVtableSlots;
                             aotMT = RegisterCanonicalInterface(nameHash, slotCount, aotMT);
-
-                            DebugConsole.Write("[TypeUnify] Interface ");
-                            for (int i = 0; typeName != null && typeName[i] != 0 && i < 32; i++)
-                                DebugConsole.WriteChar((char)typeName[i]);
-                            DebugConsole.Write(" -> Canonical MT 0x");
-                            DebugConsole.WriteHex((ulong)aotMT);
-                            DebugConsole.WriteLine();
-                        }
-                        else
-                        {
-                            DebugConsole.Write("[TypeUnify] ");
-                            for (int i = 0; typeName != null && typeName[i] != 0 && i < 32; i++)
-                                DebugConsole.WriteChar((char)typeName[i]);
-                            DebugConsole.Write(" -> AOT MT 0x");
-                            DebugConsole.WriteHex((ulong)aotMT);
-                            DebugConsole.WriteLine();
                         }
 
                         // Register this AOT MT under the korlib TypeDef token for future lookups
@@ -6856,19 +6840,6 @@ public static unsafe class AssemblyLoader
                 ref sourceAsm->Tables, ref sourceAsm->Sizes, classRef.RowId);
             byte* typeSpecSig = MetadataReader.GetBlob(ref sourceAsm->Metadata, typeSpecIdx, out uint typeSpecLen);
 
-            // Debug: show blob index and blob heap info
-            DebugConsole.Write("[ResolveMemberRefField] TypeSpec row=");
-            DebugConsole.WriteDecimal(classRef.RowId);
-            DebugConsole.Write(" blobIdx=0x");
-            DebugConsole.WriteHex(typeSpecIdx);
-            DebugConsole.Write(" asm=");
-            DebugConsole.WriteDecimal(sourceAsm->AssemblyId);
-            DebugConsole.Write(" blobHeap=0x");
-            DebugConsole.WriteHex((ulong)sourceAsm->Metadata.BlobHeap);
-            DebugConsole.Write(" blobSize=");
-            DebugConsole.WriteDecimal(sourceAsm->Metadata.BlobHeapSize);
-            DebugConsole.WriteLine();
-
             if (typeSpecSig == null || typeSpecLen < 2)
             {
                 DebugConsole.Write("[ResolveMemberRefField] Invalid TypeSpec signature for row ");
@@ -6886,29 +6857,9 @@ public static unsafe class AssemblyLoader
                 // Parse the TypeDefOrRef coded index using proper CLI compressed int format
                 uint codedIdx = DecodeCompressedUInt(typeSpecSig, typeSpecLen, ref pos);
 
-                DebugConsole.Write("[ResolveMemberRef] TypeSpec row=");
-                DebugConsole.WriteDecimal(classRef.RowId);
-                DebugConsole.Write(" len=");
-                DebugConsole.WriteDecimal(typeSpecLen);
-                DebugConsole.Write(" codedIdx=");
-                DebugConsole.WriteDecimal(codedIdx);
-                DebugConsole.Write(" sig=");
-                for (uint i = 0; i < typeSpecLen && i < 10; i++)
-                {
-                    DebugConsole.WriteHex(typeSpecSig[i]);
-                    DebugConsole.Write(" ");
-                }
-                DebugConsole.WriteLine();
-
                 // Decode TypeDefOrRef: low 2 bits = table, rest = row
                 uint table = codedIdx & 0x03;
                 uint row = codedIdx >> 2;
-
-                DebugConsole.Write("  -> table=");
-                DebugConsole.WriteDecimal(table);
-                DebugConsole.Write(" row=");
-                DebugConsole.WriteDecimal(row);
-                DebugConsole.WriteLine();
 
                 if (table == 0) // TypeDef
                 {
@@ -8752,6 +8703,9 @@ public static unsafe class AssemblyLoader
                 {
                     return 0x06000000 | methodRow;  // MethodDef token
                 }
+
+                // Name matched but the signature comparison rejected it
+                // (overload set): keep searching the remaining rows.
             }
         }
 

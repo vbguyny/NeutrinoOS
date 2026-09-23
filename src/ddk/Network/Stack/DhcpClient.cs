@@ -297,8 +297,8 @@ public unsafe class DhcpClient
             return false;
 
         // Accept ACK or NAK
-        if (response.MessageType == DHCP.MessageAck ||
-            response.MessageType == DHCP.MessageNak)
+        if ((int)response.MessageType == (int)DHCP.MessageAck ||
+            (int)response.MessageType == (int)DHCP.MessageNak)
         {
             ack = response;
             return true;
@@ -331,15 +331,13 @@ public unsafe class DhcpClient
                 // Process frame through stack (handles ARP, etc.)
                 _stack.ProcessFrame(rxBuffer, rxLen);
 
-                // Check for DHCP response in UDP queue
-                while (_stack.UdpAvailable() > 0)
+                // Consume DHCP server datagrams from the UDP queue. The
+                // matching happens inside NetworkStack (a comparison
+                // chain with out-parameter ports mis-compiled under the
+                // Tier-0 JIT - matching values, branch never taken).
+                int udpLen = _stack.ReceiveUdpMatching(67, 68, udpData, DHCP.MaxPacketSize);
+                if (udpLen > 0)
                 {
-                    uint srcIP;
-                    ushort srcPort, destPort;
-                    int udpLen = _stack.ReceiveUdp(out srcIP, out srcPort, out destPort,
-                                                    udpData, DHCP.MaxPacketSize);
-
-                    if (udpLen > 0 && srcPort == DHCP.ServerPort && destPort == DHCP.ClientPort)
                     {
                         Debug.Write("[DHCP] Received response: ");
                         Debug.WriteDecimal((uint)udpLen);
@@ -349,7 +347,8 @@ public unsafe class DhcpClient
                         if (DHCP.ParseResponse(udpData, udpLen, _xid, out parsed))
                         {
                             // If expectedType is 0, accept any type
-                            if (expectedType == 0 || parsed.MessageType == expectedType)
+                            if (expectedType == 0 ||
+                                (int)parsed.MessageType == (int)expectedType)
                             {
                                 response = parsed;
                                 return true;

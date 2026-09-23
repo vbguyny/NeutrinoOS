@@ -36,6 +36,7 @@ public static unsafe class FileExports
     private static void* _fnDeleteBootDir;
     private static void* _fnBootPathExists;
     private static void* _fnListBootDirEntry;
+    private static void* _fnGetBootVolumeStats;
     private static bool _ensureInProgress;
 
     /// <summary>
@@ -47,7 +48,7 @@ public static unsafe class FileExports
     /// </summary>
     private static bool EnsureDriverHelpers()
     {
-        if (_fnGetBootFileSize != null && _fnListBootDirEntry != null)
+        if (_fnGetBootFileSize != null && _fnListBootDirEntry != null && _fnGetBootVolumeStats != null)
             return true;
         if (_ensureInProgress)
             return false;
@@ -64,7 +65,7 @@ public static unsafe class FileExports
 
     private static bool EnsureDriverHelpersCore()
     {
-        if (_fnGetBootFileSize != null && _fnListBootDirEntry != null)
+        if (_fnGetBootFileSize != null && _fnListBootDirEntry != null && _fnGetBootVolumeStats != null)
             return true;
 
         uint asmId = Kernel.AhciDriverAssemblyId;
@@ -164,6 +165,17 @@ public static unsafe class FileExports
             _fnListBootDirEntry = r.CodeAddress;
         }
 
+        if (_fnGetBootVolumeStats == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(asmId, typeToken, "GetBootVolumeStats");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(asmId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnGetBootVolumeStats = r.CodeAddress;
+        }
+
         return true;
     }
 
@@ -180,6 +192,20 @@ public static unsafe class FileExports
             return -1;
         var getSize = (delegate*<char*, int, int>)_fnGetBootFileSize;
         return getSize(path, pathLen);
+    }
+
+    /// <summary>
+    /// Phase 5: boot-volume stats for the df utility (see
+    /// AhciEntry.GetBootVolumeStats). Returns the volume label length, or
+    /// a negative error code when the driver is not ready.
+    /// </summary>
+    public static int KernelBootVolumeStats(char* labelBuf, int labelCapacity,
+                                            ulong* totalBytes, ulong* freeBytes)
+    {
+        if (!EnsureDriverHelpers())
+            return -3;
+        var stats = (delegate*<char*, int, ulong*, ulong*, int>)_fnGetBootVolumeStats;
+        return stats(labelBuf, labelCapacity, totalBytes, freeBytes);
     }
 
     /// <summary>Kernel-callable file read (see FileBootRead export).</summary>

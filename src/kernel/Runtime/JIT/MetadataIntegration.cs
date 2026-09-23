@@ -3286,6 +3286,19 @@ public static unsafe class MetadataIntegration
         {
             DebugConsole.Write("[MetaInt] Failed to resolve MemberRef method 0x");
             DebugConsole.WriteHex(token);
+            DebugConsole.Write(" name=");
+            {
+                LoadedAssembly* dbgAsm = AssemblyLoader.GetAssembly(_currentAssemblyId);
+                if (dbgAsm != null)
+                {
+                    uint dbgRow = token & 0x00FFFFFF;
+                    uint dbgNameIdx = MetadataReader.GetMemberRefName(
+                        ref dbgAsm->Tables, ref dbgAsm->Sizes, dbgRow);
+                    byte* dbgName = MetadataReader.GetString(ref dbgAsm->Metadata, dbgNameIdx);
+                    for (int i = 0; dbgName != null && dbgName[i] != 0 && i < 48; i++)
+                        DebugConsole.WriteChar((char)dbgName[i]);
+                }
+            }
             DebugConsole.WriteLine();
             if (hasGenericContext)
             {

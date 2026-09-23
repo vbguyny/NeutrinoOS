@@ -627,6 +627,20 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string, int, string>)&StringHelpers.SubstringFrom,
             1, ReturnKind.IntPtr, true, false);
 
+        // String.ToLower() - 0 parameters, HasThis=true, returns string
+        // (Phase 5: the shell utilities case-fold patterns with ToLower;
+        // String methods are AOT-only, so the registration is required.)
+        Register(
+            "System.String", "ToLower",
+            (nint)(delegate*<string, string>)&StringHelpers.ToLowerString,
+            0, ReturnKind.IntPtr, true, false);
+
+        // String.ToUpper() - 0 parameters, HasThis=true, returns string
+        Register(
+            "System.String", "ToUpper",
+            (nint)(delegate*<string, string>)&StringHelpers.ToUpperString,
+            0, ReturnKind.IntPtr, true, false);
+
         // String.Split(char separator, StringSplitOptions options) - instance
         // method, 2 parameters, returns string[]. Roslyn binds "s.Split(',')"
         // to this overload (the optional-options overload wins overload
@@ -3017,22 +3031,10 @@ public static unsafe class StringHelpers
         if (ReferenceEquals(a, b)) return true;
         if (a is null || b is null) return false;
 
-        // Debug: check lengths
         int lenA = a.Length;
         int lenB = b.Length;
         if (lenA != lenB)
-        {
-            // Only log when looking for method names (short strings)
-            if (lenA < 20 && lenB < 20 && lenA > 0 && lenB > 0)
-            {
-                ProtonOS.Platform.DebugConsole.Write("[StrEq] len mismatch: ");
-                ProtonOS.Platform.DebugConsole.WriteDecimal((uint)lenA);
-                ProtonOS.Platform.DebugConsole.Write(" vs ");
-                ProtonOS.Platform.DebugConsole.WriteDecimal((uint)lenB);
-                ProtonOS.Platform.DebugConsole.WriteLine();
-            }
             return false;
-        }
 
         for (int i = 0; i < lenA; i++)
         {
@@ -3284,6 +3286,18 @@ public static unsafe class StringHelpers
     public static int IndexOfString(string s, string value)
     {
         return IndexOf(s, value, 0);
+    }
+
+    /// <summary>Wrapper for String.ToLower() (Phase 5).</summary>
+    public static string ToLowerString(string s)
+    {
+        return s == null ? null : s.ToLower();
+    }
+
+    /// <summary>Wrapper for String.ToUpper() (Phase 5).</summary>
+    public static string ToUpperString(string s)
+    {
+        return s == null ? null : s.ToUpper();
     }
 
     /// <summary>

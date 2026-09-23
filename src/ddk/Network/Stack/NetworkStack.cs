@@ -610,6 +610,61 @@ public unsafe class NetworkStack
     public int UdpAvailable() => _udpQueueCount;
 
     /// <summary>
+    /// Scans the UDP queue for the first datagram matching the given
+    /// source/destination ports, copies its payload into
+    /// <paramref name="buffer"/> and consumes it (non-matching
+    /// datagrams are consumed too). Returns the payload length, or 0
+    /// when no matching datagram was queued.
+    ///
+    /// Note: all comparisons happen on plain field reads inside this
+    /// method - a DHCP client that compared out-parameter ports across
+    /// call boundaries mis-compiled under the Tier-0 JIT (matching
+    /// values, branch not taken).
+    /// </summary>
+    public int ReceiveUdpMatching(ushort wantSrcPort, ushort wantDestPort,
+                                  byte* buffer, int bufferLen)
+    {
+        int wantSrc = wantSrcPort;
+        int wantDest = wantDestPort;
+
+        for (int guard = 0; guard < MaxUdpQueueSize; guard++)
+        {
+            int count = _udpQueueCount;
+            if (count == 0)
+                return 0;
+
+            int idx = _udpQueueHead;
+            if (!_udpQueue[idx].Valid)
+                return 0;
+
+            int src = _udpQueue[idx].SourcePort;
+            int dest = _udpQueue[idx].DestPort;
+            int len = _udpQueue[idx].Length;
+
+            bool match = src == wantSrc;
+            if (match)
+                match = dest == wantDest;
+
+            // Consume the entry.
+            _udpQueue[idx].Valid = false;
+            _udpQueueHead = (_udpQueueHead + 1) % MaxUdpQueueSize;
+            _udpQueueCount--;
+
+            if (match && len > 0)
+            {
+                int copyLen = len < bufferLen ? len : bufferLen;
+                fixed (byte* srcP = _udpQueue[idx].Data)
+                {
+                    for (int i = 0; i < copyLen; i++)
+                        buffer[i] = srcP[i];
+                }
+                return copyLen;
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>
     /// Receive a UDP datagram from the queue.
     /// </summary>
     /// <param name="srcIP">Receives source IP address.</param>

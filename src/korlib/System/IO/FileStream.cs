@@ -98,6 +98,9 @@ public class FileStream : Stream
         if (path == null)
             throw new ArgumentNullException("path");
 
+        // Phase 5: relative paths resolve against the current directory.
+        path = Path.GetFullPath(path);
+
         _path = path;
         _canRead = (access & FileAccess.Read) != 0;
         _canWrite = (access & FileAccess.Write) != 0;

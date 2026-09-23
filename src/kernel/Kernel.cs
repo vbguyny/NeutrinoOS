@@ -1895,6 +1895,19 @@ public static unsafe class Kernel
                 if (bindSuccess)
                 {
                     DebugConsole.WriteLine("[Drivers]   VirtioNet Bind successful");
+
+                    // Disable PCI INTx (command register bit 10). The
+                    // virtio-net driver polls its queues and never reads
+                    // the device ISR to deassert the interrupt line, so a
+                    // level-triggered INTx keeps re-firing as an
+                    // "Unhandled interrupt" - measured to slow every
+                    // later operation (and JIT compile) down ~20x.
+                    ushort pciCmd = Platform.PCI.ReadConfig16(
+                        device->Bus, device->Device, device->Function, 0x04);
+                    Platform.PCI.WriteConfig16(
+                        device->Bus, device->Device, device->Function, 0x04,
+                        (ushort)(pciCmd | 0x0400));
+
                     boundCount++;
                 }
                 else
@@ -1906,8 +1919,19 @@ public static unsafe class Kernel
 
         DebugConsole.WriteLine(string.Format("[Drivers] Bound {0} VirtioNet driver(s)", boundCount));
 
-        // Test network I/O if a driver was bound
+        // Capture the driver's frame pump for the shell's network
+        // utilities and materialize the network stack + interface (see
+        // Platform.NetworkBridge).
         if (boundCount > 0)
+            Platform.NetworkBridge.Register(_virtioNetDriverId, virtioNetEntryToken);
+
+        // Test network I/O if a driver was bound. The in-kernel network
+        // self-tests are gated with the skip-boot-tests marker: the
+        // Phase 5 NIC session validates the stack through the shell
+        // utilities, and the legacy tests JIT-saturate the runtime
+        // (thousands of methods) which slows later compiles down a lot.
+        if (boundCount > 0
+            && BootInfoAccess.FindFile("skip-boot-tests", out ulong _skipNetTestSize) == null)
         {
             TestVirtioNetIO(virtioNetEntryToken);
         }

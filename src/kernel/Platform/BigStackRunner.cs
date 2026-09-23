@@ -54,9 +54,8 @@ public static unsafe class BigStackRunner
         }
 
         ulong top = (stackBase + StackSize) & ~0xFul;
-        DebugConsole.Write("[BigStack] assembly compile+run on private stack top=0x");
-        DebugConsole.WriteHex(top);
-        DebugConsole.WriteLine();
+        // (No per-run banner: this runs for every external command and
+        // would interleave with the shell's own output.)
         return run_on_big_stack(top, (ulong)body, (ulong)arg);
     }
 }

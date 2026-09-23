@@ -6,6 +6,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using ProtonOS.Memory;
 using ProtonOS.Platform;
 
 namespace ProtonOS.Runtime;
@@ -80,12 +81,25 @@ public static unsafe class GCDescHelper
 
         nint seriesCount = GetSeriesCount(mt);
 
+        // Phase 5 robustness bounds: an object can never contain more
+        // reference slots than its allocation / 8, and the number of
+        // series is small. Corrupt descriptors (or interior pointers
+        // treated as objects) previously produced unbounded walks - the
+        // shell's gc command hung inside the callback loop (GDB-verified,
+        // see PHASE5-REPORT.md). Clamping keeps enumeration bounded and
+        // cannot lose real references.
+        nint budget = (nint)GCHeap.GetBlockSize(obj) / sizeof(nint);
+        if (budget <= 0)
+            return;
+        if (seriesCount > 64)
+            seriesCount = 64;
+
         if (seriesCount <= 0)
         {
             // Negative count indicates value-type array - handle separately
             if (seriesCount < 0)
             {
-                EnumerateValueTypeArrayReferences(obj, mt, -seriesCount, callback);
+                EnumerateValueTypeArrayReferences(obj, mt, -seriesCount, budget, callback);
             }
             return;
         }
@@ -99,6 +113,10 @@ public static unsafe class GCDescHelper
             nint offset = series[-i].StartOffset;
             nint size = series[-i].SeriesSize + baseSize;
             nint count = size / sizeof(nint);
+            if (count < 0)
+                count = 0;
+            if (count > budget)
+                count = budget;
 
             void** refPtr = (void**)((byte*)obj + offset);
 
@@ -106,20 +124,35 @@ public static unsafe class GCDescHelper
             {
                 callback(&refPtr[j]);
             }
+
+            budget -= count;
+            if (budget <= 0)
+                break;
         }
     }
 
     /// <summary>
     /// Enumerate references in a value-type array (array of structs containing refs).
+    /// <paramref name="budget"/> is the remaining reference-slot budget
+    /// derived from the object's block size (Phase 5 robustness bound).
     /// </summary>
     private static void EnumerateValueTypeArrayReferences(void* obj, MethodTable* mt, nint seriesCount,
-        delegate*<void**, void> callback)
+        nint budget, delegate*<void**, void> callback)
     {
         // For value-type arrays, we need the element count and element size
         int elementCount = *(int*)((byte*)obj + sizeof(nint)); // Length is after MethodTable*
         ushort componentSize = mt->_usComponentSize;
 
-        if (elementCount == 0 || componentSize == 0)
+        if (elementCount < 0 || componentSize == 0)
+            return;
+
+        // Bound the element count by the allocation (a value-type array
+        // cannot contain more elements than fit in its block).
+        uint blockSize = GCHeap.GetBlockSize(obj);
+        nint maxElements = (nint)(blockSize / componentSize);
+        if (elementCount > maxElements)
+            elementCount = (int)maxElements;
+        if (elementCount == 0)
             return;
 
         GCDescSeries* series = GetSeriesArray(mt);
@@ -138,6 +171,10 @@ public static unsafe class GCDescHelper
                 nint offset = series[-i].StartOffset;
                 nint size = series[-i].SeriesSize;
                 nint count = size / sizeof(nint);
+                if (count < 0)
+                    count = 0;
+                if (count > budget)
+                    count = budget;
 
                 void** refPtr = (void**)(element + offset);
 
@@ -145,6 +182,10 @@ public static unsafe class GCDescHelper
                 {
                     callback(&refPtr[j]);
                 }
+
+                budget -= count;
+                if (budget <= 0)
+                    return;
             }
         }
     }

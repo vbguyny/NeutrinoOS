@@ -537,6 +537,46 @@ public static unsafe class AhciEntry
     }
 
     /// <summary>
+    /// Phase 5: reads the boot (FAT32) volume's geometry and free space
+    /// for the df utility. Writes total/free bytes through the pointer
+    /// outputs and the volume label (UTF-16, truncated) into the caller's
+    /// buffer; returns the label length, or a negative error code. The
+    /// FAT volume is mounted on demand like the other boot helpers.
+    /// </summary>
+    public static unsafe int GetBootVolumeStats(char* labelBuf, int labelCapacity,
+                                                ulong* totalBytes, ulong* freeBytes)
+    {
+        var device = GetLastDevice();
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        *totalBytes = fat.TotalBytes;
+        *freeBytes = fat.FreeBytes;
+
+        string label = fat.VolumeLabel ?? "";
+        int len = label.Length;
+        if (len > labelCapacity)
+            len = labelCapacity;
+        for (int i = 0; i < len; i++)
+            labelBuf[i] = label[i];
+
+        fat.Unmount();
+        fat.Shutdown();
+        return len;
+    }
+
+    /// <summary>
     /// Read a file from the boot (FAT) volume into a caller-provided
     /// buffer. Returns the number of bytes read, or a negative error
     /// code. The FAT volume is mounted on demand: the runtime root

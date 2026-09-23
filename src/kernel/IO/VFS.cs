@@ -216,6 +216,56 @@ public static unsafe class VFS
     }
 
     /// <summary>
+    /// Phase 5: number of active mount points. The mount utility lists
+    /// them through the Kernel_GetMountCount/Kernel_GetMountAt exports.
+    /// </summary>
+    public static int MountCount
+    {
+        get
+        {
+            if (!_initialized)
+                return 0;
+            int count = 0;
+            for (int i = 0; i < MaxMounts; i++)
+            {
+                if (_mounts[i].InUse)
+                    count++;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>
+    /// Phase 5: copies mount point #index's path (stored as ASCII in the
+    /// mount table; widened to UTF-16 for the caller) into the caller's
+    /// buffer. Returns the length, or -1 for a bad index.
+    /// </summary>
+    public static unsafe int GetMountPath(int index, char* buffer, int capacity)
+    {
+        if (!_initialized || buffer == null || capacity <= 0)
+            return -1;
+
+        int seen = 0;
+        for (int i = 0; i < MaxMounts; i++)
+        {
+            if (!_mounts[i].InUse)
+                continue;
+
+            if (seen == index)
+            {
+                int len = _mounts[i].PathLength;
+                if (len > capacity)
+                    len = capacity;
+                for (int j = 0; j < len; j++)
+                    buffer[j] = (char)_mounts[i].Path[j];
+                return len;
+            }
+            seen++;
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// Open a file
     /// </summary>
     /// <param name="path">File path</param>

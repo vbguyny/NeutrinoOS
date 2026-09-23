@@ -254,13 +254,9 @@ public unsafe class FatFileSystem : IFileSystem
             else
                 _fatType = FatType.Fat32;
 
-            Debug.Write("[FAT] Mounted ");
-            Debug.Write(FilesystemName);
-            Debug.Write(" volume: ");
-            Debug.Write(_volumeLabel);
-            Debug.Write(", ");
-            Debug.WriteHex(_countOfClusters);
-            Debug.WriteLine(" clusters");
+            // (No mount banner: the boot volume is mounted on demand for
+            // every file operation, so a print here would flood the
+            // console and interleave with the shell's line editing.)
 
             // Load FAT into memory
             _fatStartSector = _reservedSectors;
@@ -433,9 +429,8 @@ public unsafe class FatFileSystem : IFileSystem
             cluster = ((uint)entry.FstClusHI << 16) | entry.FstClusLO;
         }
 
-        Debug.Write("[FAT OpenDir] cluster=");
-        Debug.WriteHex(cluster);
-        Debug.WriteLine();
+        // (No per-open debug print: directory opens happen for every
+        // shell path scan and would interleave with line editing.)
         handle = new FatDirectoryHandle(this, cluster, path);
         return FileResult.Success;
     }

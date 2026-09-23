@@ -92,34 +92,53 @@ public static unsafe class AssemblyRunner
         DebugConsole.Write(path);
         DebugConsole.WriteLine();
 
-        byte* data = LoadFile(path, out ulong size);
-        if (data == null)
-        {
-            DebugConsole.Write("[run] error: file not found: ");
-            DebugConsole.Write(path);
-            DebugConsole.WriteLine();
-            return -Errno.ENOENT;
-        }
+        // Phase 5: reuse an already-loaded assembly for the same path.
+        // Every AssemblyLoader.Load consumes a fixed table slot and keeps
+        // its file buffer for the session's lifetime; external commands
+        // resolve through the same paths repeatedly (`ls`, `ls /apps`, a
+        // pipe running `wc` twice, ...), so without this cache a long
+        // shell session exhausts the 64-slot assembly table. With the
+        // cache the slot count is bounded by the number of DISTINCT
+        // utilities executed (the Tier-0 JIT's compiled-method cache
+        // makes the re-run fast as well).
+        uint asmId = FindCachedAssembly(path);
+        LoadedAssembly* asm = null;
+        if (asmId != AssemblyLoader.InvalidAssemblyId)
+            asm = AssemblyLoader.GetAssembly(asmId);
 
-        // Sanity check: PE image
-        if (size < 2 || data[0] != 'M' || data[1] != 'Z')
-        {
-            DebugConsole.WriteLine("[run] error: not a PE image");
-            return -Errno.ENOEXEC;
-        }
-
-        uint asmId = AssemblyLoader.Load(data, size);
-        if (asmId == AssemblyLoader.InvalidAssemblyId)
-        {
-            DebugConsole.WriteLine("[run] error: assembly load failed");
-            return -Errno.ENOEXEC;
-        }
-
-        var asm = AssemblyLoader.GetAssembly(asmId);
         if (asm == null)
         {
-            DebugConsole.WriteLine("[run] error: assembly lookup failed");
-            return -Errno.ENOEXEC;
+            byte* data = LoadFile(path, out ulong size);
+            if (data == null)
+            {
+                DebugConsole.Write("[run] error: file not found: ");
+                DebugConsole.Write(path);
+                DebugConsole.WriteLine();
+                return -Errno.ENOENT;
+            }
+
+            // Sanity check: PE image
+            if (size < 2 || data[0] != 'M' || data[1] != 'Z')
+            {
+                DebugConsole.WriteLine("[run] error: not a PE image");
+                return -Errno.ENOEXEC;
+            }
+
+            asmId = AssemblyLoader.Load(data, size);
+            if (asmId == AssemblyLoader.InvalidAssemblyId)
+            {
+                DebugConsole.WriteLine("[run] error: assembly load failed");
+                return -Errno.ENOEXEC;
+            }
+
+            asm = AssemblyLoader.GetAssembly(asmId);
+            if (asm == null)
+            {
+                DebugConsole.WriteLine("[run] error: assembly lookup failed");
+                return -Errno.ENOEXEC;
+            }
+
+            CacheAssembly(path, asmId);
         }
 
         uint entryToken = NetExecutable.GetEntryPointToken(asm);
@@ -218,6 +237,35 @@ public static unsafe class AssemblyRunner
     // for the lifetime of the boot.
     private static void* _fnGetBootFileSize;
     private static void* _fnReadBootFile;
+
+    // ==================== Assembly path cache (Phase 5) ====================
+
+    private const int AssemblyCacheSize = 64;
+    private static readonly string?[] _cachePaths = new string?[AssemblyCacheSize];
+    private static readonly uint[] _cacheIds = new uint[AssemblyCacheSize];
+    private static int _cacheCount;
+
+    /// <summary>Returns the cached assembly id for <paramref name="path"/> or InvalidAssemblyId.</summary>
+    private static uint FindCachedAssembly(string path)
+    {
+        for (int i = 0; i < _cacheCount; i++)
+        {
+            string? cached = _cachePaths[i];
+            if (cached != null && cached == path)
+                return _cacheIds[i];
+        }
+        return AssemblyLoader.InvalidAssemblyId;
+    }
+
+    /// <summary>Remembers a successfully loaded assembly for future runs.</summary>
+    private static void CacheAssembly(string path, uint asmId)
+    {
+        if (_cacheCount >= AssemblyCacheSize)
+            return;
+        _cachePaths[_cacheCount] = path;
+        _cacheIds[_cacheCount] = asmId;
+        _cacheCount++;
+    }
 
     // JIT-compiled entry-point invocation helper
     // (TestSupport.ShellRunSupport.InvokeMain).

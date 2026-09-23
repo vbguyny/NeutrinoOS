@@ -125,15 +125,79 @@ public static class Path
     }
 
     /// <summary>
-    /// Returns the path unchanged: NeutrinoOS paths are already absolute
-    /// root-relative, so no normalization is required. (Deviation from
-    /// the official BCL, which resolves relative paths and "..".)
+    /// Resolves a path to an absolute root-relative path: relative paths
+    /// are combined with the current directory (Directory.GetCurrentDirectory,
+    /// set by the shell's cd built-in) and "."/".." segments are collapsed.
+    /// Phase 5: this is the single place where relative paths become
+    /// absolute; korlib's File/Directory/FileStream call it so relative
+    /// paths work for the shell and for JIT-compiled utilities alike.
     /// </summary>
     public static string GetFullPath(string path)
     {
         if (path == null)
             throw new ArgumentNullException("path");
-        return path;
+        if (path.Length > 0 && path[0] == '/')
+            return NormalizeAbsolute(path);
+
+        string cwd = Directory.GetCurrentDirectory();
+        if (string.IsNullOrEmpty(cwd))
+            cwd = "/";
+        if (cwd.Length > 1 && cwd[cwd.Length - 1] == '/')
+            cwd = cwd.Substring(0, cwd.Length - 1);
+        return NormalizeAbsolute(cwd + "/" + path);
+    }
+
+    /// <summary>
+    /// Collapses duplicate/trailing separators and "."/".." segments in
+    /// an absolute path. The result always starts with '/'.
+    /// </summary>
+    private static string NormalizeAbsolute(string path)
+    {
+        const int MaxDepth = 32;
+        int[] starts = new int[MaxDepth];
+        int[] lens = new int[MaxDepth];
+        int depth = 0;
+
+        int i = 0;
+        int n = path.Length;
+        while (i < n)
+        {
+            while (i < n && path[i] == '/')
+                i++;
+            int start = i;
+            while (i < n && path[i] != '/')
+                i++;
+            int len = i - start;
+            if (len == 0)
+                continue;
+            if (len == 1 && path[start] == '.')
+                continue;
+            if (len == 2 && path[start] == '.' && path[start + 1] == '.')
+            {
+                if (depth > 0)
+                    depth--;
+                continue;
+            }
+            if (depth < MaxDepth)
+            {
+                starts[depth] = start;
+                lens[depth] = len;
+                depth++;
+            }
+        }
+
+        if (depth == 0)
+            return "/";
+
+        var sb = new Text.StringBuilder();
+        sb.Append('/');
+        for (int d = 0; d < depth; d++)
+        {
+            if (d > 0)
+                sb.Append('/');
+            sb.Append(path, starts[d], lens[d]);
+        }
+        return sb.ToString();
     }
 
     /// <summary>Returns the root ("/") of the specified path.</summary>

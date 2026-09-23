@@ -323,10 +323,8 @@ public static unsafe class GCHeap
         _regionEnd = newRegion + InitialRegionSize;
         _allocPtr = newRegion + 8; // Skip region header
 
-        DebugConsole.Write("[GCHeap] New region: ");
-        DebugConsole.WriteHex((ulong)newRegion);
-        DebugConsole.WriteLine();
-
+        // (No region banner: heap growth happens during normal shell
+        // startup and would interleave with console output.)
         return true;
     }
 
@@ -743,12 +741,6 @@ public static unsafe class GCHeap
         _lohRegionStart = newRegion;
         _lohRegionEnd = newRegion + regionSize;
         _lohAllocPtr = newRegion + 8; // Skip region header
-
-        DebugConsole.Write("[GCHeap] New LOH region: ");
-        DebugConsole.WriteHex((ulong)newRegion);
-        DebugConsole.Write(" (");
-        DebugConsole.WriteDecimal((uint)(regionSize / 1024));
-        DebugConsole.WriteLine(" KB)");
 
         return true;
     }

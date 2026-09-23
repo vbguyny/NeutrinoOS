@@ -70,20 +70,26 @@ public static class File
 
     // ==================== Internal helpers ====================
 
+    // Phase 5: every path that reaches the bridge is resolved first, so
+    // relative paths follow the shell's current directory (cd).
+
     private static unsafe int BootSize(string path)
     {
+        path = Path.GetFullPath(path);
         fixed (char* p = path)
             return FileBootSize(p, path.Length);
     }
 
     private static unsafe int BootExistsRaw(string path)
     {
+        path = Path.GetFullPath(path);
         fixed (char* p = path)
             return FileBootExists(p, path.Length);
     }
 
     private static unsafe int BootRead(string path, byte[] buffer, int capacity)
     {
+        path = Path.GetFullPath(path);
         fixed (char* p = path)
         fixed (byte* b = buffer)
             return FileBootRead(p, path.Length, b, capacity);
@@ -91,6 +97,7 @@ public static class File
 
     private static unsafe int BootWrite(string path, byte[] data, int length, bool append)
     {
+        path = Path.GetFullPath(path);
         fixed (char* p = path)
         fixed (byte* b = data)
             return FileBootWrite(p, path.Length, b, length, append ? 1 : 0);
@@ -98,6 +105,7 @@ public static class File
 
     private static unsafe int BootDeleteRaw(string path)
     {
+        path = Path.GetFullPath(path);
         fixed (char* p = path)
             return FileBootDelete(p, path.Length);
     }
@@ -115,6 +123,19 @@ public static class File
         if (IsNullPath(path))
             return false;
         return BootExistsRaw(path!) == 1;
+    }
+
+    /// <summary>
+    /// NeutrinoOS Phase 5 extension: returns the size of the file in
+    /// bytes, or -1 when the file does not exist. The official BCL gets
+    /// this through FileInfo.Length (which is also implemented by korlib
+    /// and calls this method).
+    /// </summary>
+    public static int GetFileSize(string? path)
+    {
+        if (IsNullPath(path))
+            return -1;
+        return BootSize(path!);
     }
 
     // ==================== Deletion ====================
@@ -260,6 +281,19 @@ public static class File
         if (path == null)
             throw new ArgumentNullException("path");
         byte[] bytes = Text.Encoding.UTF8.GetBytes(contents ?? "");
+
+        // Create the file when missing (BCL behavior). The FAT append path
+        // requires an existing file, and throwing from kernel call paths
+        // must be avoided (Phase 5: the shell records history on the first
+        // command, when /.history does not exist yet).
+        if (!Exists(path))
+        {
+            int created = BootWrite(path, bytes, bytes.Length, false);
+            if (created != bytes.Length)
+                throw new IOException("Could not create file '" + path + "'");
+            return;
+        }
+
         int written = BootWrite(path, bytes, bytes.Length, true);
         if (written != bytes.Length)
             throw new IOException("Could not append to file '" + path + "'");
@@ -273,6 +307,15 @@ public static class File
         if (path == null)
             throw new ArgumentNullException("path");
         byte[] bytes = encoding.GetBytes(contents ?? "");
+
+        if (!Exists(path))
+        {
+            int created = BootWrite(path, bytes, bytes.Length, false);
+            if (created != bytes.Length)
+                throw new IOException("Could not create file '" + path + "'");
+            return;
+        }
+
         int written = BootWrite(path, bytes, bytes.Length, true);
         if (written != bytes.Length)
             throw new IOException("Could not append to file '" + path + "'");

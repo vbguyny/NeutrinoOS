@@ -68,17 +68,19 @@ public static class Directory
     }
 
     /// <summary>
-    /// Normalizes a path for the bridge: "" and "." mean the root "/";
-    /// the root is always reported as existing.
+    /// Normalizes a path for the bridge: relative paths are resolved
+    /// against the current directory ("."/".."/duplicate separators are
+    /// collapsed by Path.GetFullPath); "" and "." mean the current
+    /// directory; the root is always reported as existing.
     /// </summary>
     private static string NormalizeDirPath(string path)
     {
-        if (string.IsNullOrEmpty(path) || path == "." || path == "./")
-            return "/";
-        // Strip a trailing separator (except for the root itself).
-        if (path.Length > 1 && path[path.Length - 1] == '/')
-            return path.Substring(0, path.Length - 1);
-        return path;
+        if (string.IsNullOrEmpty(path))
+            return GetCurrentDirectory();
+        string resolved = Path.GetFullPath(path);
+        if (resolved.Length > 1 && resolved[resolved.Length - 1] == '/')
+            return resolved.Substring(0, resolved.Length - 1);
+        return resolved;
     }
 
     private static bool IsRoot(string path) => path == "/";
@@ -102,23 +104,27 @@ public static class Directory
     // ==================== Creation / deletion ====================
 
     /// <summary>
-    /// Creates the directory at the given path. A missing parent
+    /// Creates the directory at the given path and returns a
+    /// <see cref="DirectoryInfo"/> for it (the BCL signature; the return
+    /// type matters for JIT signature matching). A missing parent
     /// directory is reported as an error (NeutrinoOS creates a single
-    /// level; the official BCL creates intermediate directories - noted
-    /// deviation). A no-op when the directory already exists.
+    /// level; the official BCL also creates intermediate directories -
+    /// noted deviation). A no-op when the directory already exists.
     /// </summary>
-    public static unsafe void CreateDirectory(string path)
+    public static unsafe DirectoryInfo CreateDirectory(string path)
     {
         if (path == null)
             throw new ArgumentNullException("path");
         string normalized = NormalizeDirPath(path);
-        if (IsRoot(normalized) || BootDirExists(normalized))
-            return;
-        int result;
-        fixed (char* p = normalized)
-            result = DirBootCreate(p, normalized.Length);
-        if (result != 0)
-            throw new IOException("Could not create directory '" + path + "'");
+        if (!IsRoot(normalized) && !BootDirExists(normalized))
+        {
+            int result;
+            fixed (char* p = normalized)
+                result = DirBootCreate(p, normalized.Length);
+            if (result != 0)
+                throw new IOException("Could not create directory '" + path + "'");
+        }
+        return new DirectoryInfo(normalized);
     }
 
     /// <summary>
@@ -199,17 +205,25 @@ public static class Directory
 
     // ==================== Current directory ====================
 
-    /// <summary>
-    /// Returns the current directory. NeutrinoOS keeps no process
-    /// working directory; the root "/" is reported (all paths used by
-    /// the shell and applications are root-relative).
-    /// </summary>
-    public static string GetCurrentDirectory() => "/";
+    // Phase 5: the shell's cd built-in drives this value; korlib's file
+    // APIs resolve relative paths against it (see Path.GetFullPath).
+    // NOTE: no field initializer here on purpose - a string field
+    // initializer synthesizes a static constructor that trips the bflat
+    // TypePreinit pass (NullReferenceException in TrySetField); the root
+    // default is applied lazily instead.
+    private static string? _cwd;
 
     /// <summary>
-    /// Sets the current directory. NeutrinoOS keeps no process working
-    /// directory; only "/" (or an empty string) is accepted, any other
-    /// value throws IOException.
+    /// Returns the current directory. Defaults to "/" and is changed by
+    /// the shell's cd built-in (or Directory.SetCurrentDirectory).
+    /// </summary>
+    public static string GetCurrentDirectory() => _cwd ?? "/";
+
+    /// <summary>
+    /// Sets the current directory. The path must name an existing
+    /// directory on the boot volume (relative paths resolve against the
+    /// current directory). NeutrinoOS Phase 5: this now accepts any
+    /// existing directory, matching the shell's cd behavior.
     /// </summary>
     public static void SetCurrentDirectory(string path)
     {
@@ -218,7 +232,6 @@ public static class Directory
         string normalized = NormalizeDirPath(path);
         if (!IsRoot(normalized) && !BootDirExists(normalized))
             throw new DirectoryNotFoundException("Could not find directory '" + path + "'");
-        if (!IsRoot(normalized))
-            throw new IOException("NeutrinoOS has no process working directory; only '/' is supported");
+        _cwd = normalized;
     }
 }
