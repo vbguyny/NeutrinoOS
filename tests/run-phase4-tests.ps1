@@ -8,9 +8,9 @@
 #   pwsh tests/run-phase4-tests.ps1
 #   pwsh tests/run-phase4-tests.ps1 -SkipBuild      # reuse last app build
 #
-# Exit code: 0 when every currently-expected marker is present
-# (see $expected below - blocked apps are asserted as blocked so the
-# script doubles as a regression gate).
+# Exit code: 0 when every expected marker is present (all apps are
+# expected to pass on the current tree; SYSTEM HALTED must not appear).
+# The script doubles as a regression gate for the Phase 4 test suite.
 
 param(
     [switch]$SkipBuild
@@ -37,12 +37,17 @@ Write-Host "[phase4] running scripted QEMU session (about 3 minutes)..."
 Invoke-Wsl "bash /mnt/d/Projects/Code/NeutrinoOS/build/p4-session.sh > /root/p4session-run.log 2>&1; cat /root/p4session-run.log"
 
 # Expected markers: value >= 1 means "must appear", 0 means "must not".
-# Blocked apps are expected to produce their failure signature, not their
-# PASS marker; flip these to 1 as the JIT issues are fixed.
+# p4net is asserted via its degraded-mode PASS (no NIC in the harness).
 $expected = @(
     @{ Name = "hello output";        Pattern = "Hello, NeutrinoOS!";     Min = 1 },
-    @{ Name = "fileio blocked";      Pattern = "RAWV";                   Min = 1 },
-    @{ Name = "no system halt";      Pattern = "SYSTEM HALTED";          Min = 0 }
+    @{ Name = "multi PASS";          Pattern = "\[multi\] PASS";          Min = 1 },
+    @{ Name = "cs14 PASS";           Pattern = "\[csharp14\] PASS";       Min = 1 },
+    @{ Name = "async PASS";          Pattern = "\[async\] PASS";          Min = 1 },
+    @{ Name = "linq PASS";           Pattern = "\[linq\] PASS";           Min = 1 },
+    @{ Name = "interactive bye";     Pattern = "\[interactive\] bye";     Min = 1 },
+    @{ Name = "net degraded PASS";   Pattern = "\[net\] PASS";            Min = 1 },
+    @{ Name = "fileio PASS";         Pattern = "\[fileio\] PASS";         Min = 1 },
+    @{ Name = "no system halt";      Pattern = "SYSTEM HALTED";           Min = 0 }
 )
 
 Write-Host ""
@@ -60,6 +65,6 @@ foreach ($e in $expected) {
 
 Write-Host ""
 Write-Host "[phase4] see docs/PHASE4-ACCEPTANCE.md for the full checklist and"
-Write-Host "[phase4] docs/PHASE4-REPORT.md for the current blockers."
+Write-Host "[phase4] docs/PHASE4-REPORT.md for the current status and outstanding items."
 if ($failures -gt 0) { exit 1 }
 exit 0

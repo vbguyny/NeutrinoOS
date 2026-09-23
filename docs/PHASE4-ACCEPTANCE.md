@@ -46,7 +46,7 @@ references resolve to korlib via the virtual-assembly redirect.
 
 ## 3. Hello World output - **PASS** (line above).
 
-## 4. Interactive console test - **PENDING**
+## 4. Interactive console test - **PASS**
 
 ```text
 neutrinoos> run /apps/p4inter.dll
@@ -55,7 +55,9 @@ neutrinoos> run /apps/p4inter.dll
 exit                   -> [interactive] bye   (exit code 0)
 ```
 
-Builds and deploys; the interactive session still needs a manual pass.
+Verified on the final image with scripted serial input:
+`[interactive] echo: hello there` then `[interactive] bye` and
+`[run] exited with code 0`. Recipe: `bash build/run-p4inter.sh`.
 
 ## 5. File I/O test - **PASS**
 
@@ -135,12 +137,14 @@ generic-instantiation sharing (`Start<d__2>` code served `Start<d__3>`) -
 see PHASE4-JIT-COMPAT.md items 27-29. Recipe:
 `bash build/p4-deploy.sh` then `bash build/run-p4app.sh p4async 20`.
 
-## 8. Networking test (HttpClient) - **PENDING (degraded-capable)**
+## 8. Networking test (HttpClient) - **PASS (degraded mode)**
 
-The harness QEMU has no NIC, so `run /apps/p4net.dll` reports
+The harness QEMU has no NIC: `run /apps/p4net.dll` reports
 `[net] no network stack available (expected: no NIC in the test harness)`
-and exits 0. For a live fetch, boot with a virtio-net device on a
-user-mode network and a local HTTP server on 10.0.2.2:8080.
+and then `[net] PASS (degraded: fetch skipped)`, exit 0 (verified on the
+final image). For a live fetch, boot with a virtio-net device on a
+user-mode network and a local HTTP server on 10.0.2.2:8080 - the app
+then exercises `HttpClient` end to end and prints `[net] PASS`.
 
 ## 9. Multi-assembly test - **PASS**
 
