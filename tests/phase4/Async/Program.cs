@@ -37,6 +37,8 @@ public static class Program
 
         // -------- async chain (two awaits) --------
         int chained = AddThenScale(10).Result;
+        if (chained != 30)
+            Console.WriteLine("[async] chained returned " + chained);
         Check("chained awaits", chained == 30);
 
         // -------- FromResult --------
@@ -65,11 +67,18 @@ public static class Program
     private static async Task<int> AddThenScale(int x)
     {
         int a = await Add(x, 5);
-        return a * 2;
+        int r = a * 2;
+        if (a != 15)
+            Console.WriteLine("[async] Add returned " + a);
+        if (r != 30)
+            Console.WriteLine("[async] r=" + r + " a=" + a + " x=" + x);
+        return r;
     }
 
     private static async Task<int> Add(int a, int b)
     {
+        if (a != 10 || b != 5)
+            Console.WriteLine("[async] Add args " + a + "," + b);
         await Task.Delay(1);
         return a + b;
     }

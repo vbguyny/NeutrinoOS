@@ -64,16 +64,33 @@ blocked, and what remains.
   blocker (three root causes: FAT directory entry index, vtable slot
   registration numbering, interface-dispatch stub alignment; see
   PHASE4-JIT-COMPAT.md items 22-25 and PHASE4-ACCEPTANCE.md item 5).
-- `run /apps/p4async.dll`: `Task.Run(...).Result` and `Task.Run(...).Wait()`
-  checks pass (partial file; see blockers).
+- `run /apps/p4async.dll`: all six checks pass (`[async] PASS`, exit 0)
+  including `await Task.Delay`, chained awaits via `Task<int>`,
+  `Task.FromResult` and async completion. Fixes: `constrained.` calls
+  on state-machine structs no longer box, type-arg contexts survive
+  nested compiles, and generic-method instantiations are verified per
+  instantiation (PHASE4-JIT-COMPAT.md items 27-29).
+- `run /apps/p4cs14.dll`: exit 0 (all C# 14 feature checks pass).
+  Fixed by the inherited-method base-chain resolution (PHASE4-JIT-COMPAT.md
+  item 26); see PHASE4-ACCEPTANCE.md item 10.
 
 ## Blockers (open JIT issues, in priority order)
 
-1. **`async` deep-await hang**: `p4async` completes its first two checks,
-   then stops responding; suspected await-continuation path in the
-   synchronous Task builder.
-2. **`p4cs14` produced no captured output** - needs a re-run with serial
-   capture to separate build-time issues from runtime failures.
+None blocking the Phase 4 acceptance items. Two former blockers were
+fixed:
+
+1. **`async` deep-await hang**: `constrained.` callvirt on the state
+   machine boxed the struct (mutations lost; `.Result` spun in
+   `Task.SpinWait`), and `Start<TStateMachine>` instantiations for
+   different state-machine types shared one compiled native. Fixed via
+   PHASE4-JIT-COMPAT.md items 27-29.
+2. **`p4cs14` produced no captured output**: `Exception.GetType`
+   MemberRef (declared on `System.Object`) failed to resolve, so
+   `Main`'s codegen failed before any test output. Fixed via item 26.
+
+Remaining (non-blocking) JIT gap: asynchronous suspension - the
+synchronous Task model never exercises a deferred continuation path
+(see PHASE4-JIT-COMPAT.md "Known open JIT issues").
 
 ## Deviations and limitations (documented, by design or discovery)
 
@@ -107,12 +124,14 @@ blocked, and what remains.
 
 ## Next steps (recommended order)
 
-1. Debug the async hang (blocker 1).
-2. Re-run `p4cs14`, `p4inter`, `p4multi`, `p4net` with serial capture and
-   close out their acceptance items.
-3. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
-4. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
+1. Add `System.Linq.AsyncEnumerable` stub + small BCL backlog items.
+2. Wire `tests/run-phase4-tests.ps1` into the workflow and re-verify the
    full checklist.
+3. Deferred: true asynchronous suspension (task scheduler), `Span<T>` in
+   the IL BCL (see "Deferred to later phases").
 
-Note: item 2 of the earlier list ("unresolved generic `newobj` token")
-was fixed - `p4linq` now passes 34/34 checks; see "Verified working".
+Note: the earlier blockers (async hang, `p4cs14` no output) were fixed -
+see "Verified working" above; `p4linq` (34/34), `p4fileio` (16/16),
+`p4cs14` (exit 0), `p4async` (6/6) and `p4multi` (exit 0) all pass, and
+the boot gate is unchanged (HALTED=0, boot complete, RAWV=6,
+AppTest 20 passed / 4 failed).

@@ -86,7 +86,11 @@ public static unsafe class Tier0JIT
         // Save method type arg context - will restore on exit
         // This ensures each method compilation starts with clean context
         // but nested MethodSpec resolutions can still use outer context
-        int savedMethodTypeArgCount = MetadataIntegration.GetMethodTypeArgCount();
+        // Push the full incoming context onto the save stack; RestoreContext pops it
+        // on every exit path. Nested compiles parse MethodSpecs and overwrite the
+        // context arrays, so without this the residue leaks into the enclosing
+        // compile (which then resolves MVAR TypeSpecs against stale/null entries).
+        MetadataIntegration.PushMethodTypeArgContext();
 
         // Clear context for this method unless we're being called for a generic method
         // (Generic methods have their context set up by ResolveMethodSpecMethod before CompileMethod)
@@ -883,6 +887,11 @@ public static unsafe class Tier0JIT
     {
         // Always decrement nesting level on exit
         _compileNestingLevel--;
+
+        // Restore the method type-arg context captured at CompileMethod entry.
+        // Undoes any MethodSpec-context changes made during this compilation
+        // (including by nested compiles) so the enclosing compile is unaffected.
+        MetadataIntegration.PopMethodTypeArgContext();
 
         if (savedAsmId != 0)
         {

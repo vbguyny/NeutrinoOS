@@ -120,8 +120,10 @@ Documented consequences:
 - No true concurrency in Phase 4; CPU-bound `Task.Run` blocks the caller.
 - `Task.WhenAll` folds to sequential completion.
 - `ConfigureAwait` is accepted and ignored.
-- The `p4async` test app exercises the state-machine lowering; the current
-  partial-hang on deeper await chains is tracked in PHASE4-REPORT.md.
+- The `p4async` test app exercises the state-machine lowering and passes
+  all checks (including chained awaits); a truly deferred completion
+  path remains unverified - see PHASE4-JIT-COMPAT.md "Known open JIT
+  issues".
 
 A real scheduler (work queues per CPU, awaitable timers) is a later-phase
 deliverable; Phase 5+ networking/timers will build on it.

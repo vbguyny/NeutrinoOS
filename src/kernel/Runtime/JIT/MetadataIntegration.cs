@@ -172,6 +172,17 @@ public static unsafe class MetadataIntegration
     private static MethodTable** _methodTypeArgMTs;  // MethodTable pointers for each type arg (for constrained. support)
     private static int _methodTypeArgCount;
 
+    // Save stack for the method type-arg context. Each method compilation pushes
+    // the incoming context and pops it on exit, so nested compiles (which parse
+    // MethodSpecs and overwrite the context) cannot leak residue into the
+    // enclosing compile. This is what makes "restore on exit" in Tier0JIT real.
+    private const int MaxContextSaveDepth = 32;
+    private static MethodTable** _ctxSaveMTs;
+    private static byte* _ctxSaveTypes;
+    private static ushort* _ctxSaveSizes;
+    private static int* _ctxSaveCounts;
+    private static int _ctxSaveTop;
+
     // Type type argument context for generic type resolution
     // This holds the type arguments for the current generic type instantiation
     // Used when resolving VAR types in type signatures
@@ -254,6 +265,18 @@ public static unsafe class MetadataIntegration
             return;
         }
         _methodTypeArgCount = 0;
+
+        // Allocate the context save stack (see PushMethodTypeArgContext)
+        _ctxSaveMTs = (MethodTable**)HeapAllocator.AllocZeroed((ulong)(MaxContextSaveDepth * MaxMethodTypeArgs * sizeof(MethodTable*)));
+        _ctxSaveTypes = (byte*)HeapAllocator.AllocZeroed((ulong)(MaxContextSaveDepth * MaxMethodTypeArgs));
+        _ctxSaveSizes = (ushort*)HeapAllocator.AllocZeroed((ulong)(MaxContextSaveDepth * MaxMethodTypeArgs * sizeof(ushort)));
+        _ctxSaveCounts = (int*)HeapAllocator.AllocZeroed((ulong)(MaxContextSaveDepth * sizeof(int)));
+        if (_ctxSaveMTs == null || _ctxSaveTypes == null || _ctxSaveSizes == null || _ctxSaveCounts == null)
+        {
+            DebugConsole.WriteLine("[MetaInt] Failed to allocate context save stack");
+            return;
+        }
+        _ctxSaveTop = 0;
 
         // Allocate type type argument storage (for VAR resolution in generic types)
         _typeTypeArgMTs = (MethodTable**)HeapAllocator.AllocZeroed((ulong)(MaxTypeTypeArgs * sizeof(MethodTable*)));
@@ -3311,7 +3334,17 @@ public static unsafe class MetadataIntegration
 
                     byte argCount = (sig != null && sigLen > 1) ? sig[1] : (byte)0;
 
-                    if (AotMethodRegistry.TryLookup(fullTypeName, memberName, argCount, out AotMethodEntry entry))
+                    bool aotFound = AotMethodRegistry.TryLookup(fullTypeName, memberName, argCount, out AotMethodEntry entry);
+                    if (!aotFound)
+                    {
+                        // Inherited method (e.g. Exception.GetType is declared on
+                        // System.Object): the entry is registered under a base type,
+                        // not under the MemberRef's type. Walk korlib's base chain
+                        // exactly like the loader did during resolution.
+                        aotFound = AssemblyLoader.TryResolveAotInherited(srcAsm, typeName, typeNs, memberName, sig, sigLen, argCount,
+                                                                         out entry, out _);
+                    }
+                    if (aotFound)
                     {
                         result.NativeCode = (void*)entry.NativeCode;
                         result.IsAotTarget = true;
@@ -3847,35 +3880,57 @@ public static unsafe class MetadataIntegration
                             fullToken = 0x1B000000 | typeRid; // TypeSpec
                         _methodTypeArgSizes[i] = (ushort)GetTypeSize(fullToken);
                         _methodTypeArgMTs[i] = GetOrCreateMethodTableForToken(fullToken);
+                        DebugConsole.Write("[MetaInt] MethodSpec VT arg ");
+                        DebugConsole.WriteDecimal(i);
+                        DebugConsole.Write(" token=0x");
+                        DebugConsole.WriteHex(fullToken);
+                        DebugConsole.Write(" MT=0x");
+                        DebugConsole.WriteHex((ulong)_methodTypeArgMTs[i]);
+                        DebugConsole.WriteLine();
                     }
                     break;
-                case 0x15: // GenericInst
-                    _methodTypeArgs[i] = elemType;
-                    ptr++;
+                case 0x15: // GenericInst - resolve to the instantiated generic MethodTable
                     {
-                        // GenericInst format: CLASS/VALUETYPE + TypeDefOrRef + ArgCount + Type*
-                        byte genKind = *ptr++;
-                        bool isValueType = (genKind == 0x11);
-                        uint typeDefOrRef = MetadataReader.ReadCompressedUInt(ref ptr);
-                        uint genArgCount = MetadataReader.ReadCompressedUInt(ref ptr);
-                        // Skip the generic type arguments
-                        for (uint j = 0; j < genArgCount && ptr < end; j++)
-                        {
+                        // Delegate to the signature parser so the type arguments get
+                        // resolved (e.g. TaskAwaiter<T>). Without this, an MVAR that
+                        // references this argument had a null MethodTable, and box /
+                        // constrained resolution of the instantiation failed.
+                        LoadedAssembly* ctxAsm = AssemblyLoader.GetAssembly(_currentAssemblyId);
+                        MethodTable* instMT = null;
+                        int sigPos = (int)(ptr - instantiationBlob);
+                        if (ctxAsm != null)
+                            instMT = AssemblyLoader.ParseTypeFromSignature(ctxAsm, instantiationBlob, ref sigPos, blobLen);
+                        if (sigPos > (int)(ptr - instantiationBlob))
+                            ptr = instantiationBlob + sigPos;
+                        else
                             SkipTypeSig(ref ptr, end);
-                        }
-                        if (isValueType)
+
+                        if (instMT != null)
                         {
-                            uint tag = typeDefOrRef & 0x03;
-                            uint typeRid = typeDefOrRef >> 2;
-                            uint fullToken = 0;
-                            if (tag == 0) fullToken = 0x02000000 | typeRid;
-                            else if (tag == 1) fullToken = 0x01000000 | typeRid;
-                            else if (tag == 2) fullToken = 0x1B000000 | typeRid;
-                            _methodTypeArgSizes[i] = (ushort)GetTypeSize(fullToken);
+                            _methodTypeArgMTs[i] = instMT;
+                            if (instMT->IsValueType)
+                            {
+                                _methodTypeArgs[i] = 0x11; // ValueType
+                                ushort compSize = instMT->_usComponentSize;
+                                _methodTypeArgSizes[i] = compSize > 0 ? compSize :
+                                    (ushort)(instMT->BaseSize >= 8 ? instMT->BaseSize - 8 : 4);
+                            }
+                            else
+                            {
+                                _methodTypeArgs[i] = 0x12; // Class
+                                _methodTypeArgSizes[i] = 8;
+                            }
+                            DebugConsole.Write("[MetaInt] MethodSpec GenericInst arg ");
+                            DebugConsole.WriteDecimal(i);
+                            DebugConsole.Write(" MT=0x");
+                            DebugConsole.WriteHex((ulong)instMT);
+                            DebugConsole.WriteLine();
                         }
                         else
                         {
-                            _methodTypeArgSizes[i] = 8; // Reference type
+                            // Unresolved: treat as pointer-sized
+                            _methodTypeArgs[i] = elemType;
+                            _methodTypeArgSizes[i] = 8;
                         }
                     }
                     break;
@@ -4124,6 +4179,51 @@ public static unsafe class MetadataIntegration
     public static int GetMethodTypeArgCount()
     {
         return _methodTypeArgCount;
+    }
+
+    /// <summary>
+    /// Push a copy of the current method type-arg context onto the save stack.
+    /// Called at the start of every method compilation (see Tier0JIT.CompileMethod).
+    /// </summary>
+    public static void PushMethodTypeArgContext()
+    {
+        if (_ctxSaveMTs == null || _ctxSaveTop >= MaxContextSaveDepth)
+            return;
+
+        int slot = _ctxSaveTop++;
+        _ctxSaveCounts[slot] = _methodTypeArgCount;
+        MethodTable** dstMTs = _ctxSaveMTs + (slot * MaxMethodTypeArgs);
+        byte* dstTypes = _ctxSaveTypes + (slot * MaxMethodTypeArgs);
+        ushort* dstSizes = _ctxSaveSizes + (slot * MaxMethodTypeArgs);
+        for (int i = 0; i < MaxMethodTypeArgs; i++)
+        {
+            dstMTs[i] = _methodTypeArgMTs[i];
+            dstTypes[i] = _methodTypeArgs[i];
+            dstSizes[i] = _methodTypeArgSizes[i];
+        }
+    }
+
+    /// <summary>
+    /// Pop the method type-arg context back from the save stack. Called on exit
+    /// of every method compilation so nested MethodSpec parsing cannot leak
+    /// context into the enclosing compile.
+    /// </summary>
+    public static void PopMethodTypeArgContext()
+    {
+        if (_ctxSaveMTs == null || _ctxSaveTop <= 0)
+            return;
+
+        int slot = --_ctxSaveTop;
+        _methodTypeArgCount = _ctxSaveCounts[slot];
+        MethodTable** srcMTs = _ctxSaveMTs + (slot * MaxMethodTypeArgs);
+        byte* srcTypes = _ctxSaveTypes + (slot * MaxMethodTypeArgs);
+        ushort* srcSizes = _ctxSaveSizes + (slot * MaxMethodTypeArgs);
+        for (int i = 0; i < MaxMethodTypeArgs; i++)
+        {
+            _methodTypeArgMTs[i] = srcMTs[i];
+            _methodTypeArgs[i] = srcTypes[i];
+            _methodTypeArgSizes[i] = srcSizes[i];
+        }
     }
 
     /// <summary>
@@ -4850,9 +4950,11 @@ public static unsafe class MetadataIntegration
 
         // For generic methods, ensure the TypeArgHash is updated after compilation
         // to reflect the method type args used for this instantiation
-        if (success && tag == 0 && _methodTypeArgCount > 0)
+        if (success && _methodTypeArgCount > 0)
         {
-            CompiledMethodInfo* info = CompiledMethodRegistry.Lookup(underlyingToken, _currentAssemblyId);
+            CompiledMethodInfo* info = (CompiledMethodInfo*)result.RegistryEntry;
+            if (info == null && tag == 0)
+                info = CompiledMethodRegistry.Lookup(underlyingToken, _currentAssemblyId);
             if (info != null)
             {
                 ulong methodHash = GetMethodTypeArgHash();

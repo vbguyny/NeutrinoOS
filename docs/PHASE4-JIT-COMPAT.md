@@ -19,15 +19,15 @@ below was verified empirically on the Phase 4 test applications
 
 | C# 14 feature | Compiles (net10.0) | JIT status | Notes |
 |---------------|--------------------|------------|-------|
-| Field-backed properties (`field` keyword) | YES | Tested by `p4cs14`; results not yet green | The backing field is an ordinary compiler-generated field; no special JIT work identified. `p4cs14` must pass for sign-off. |
-| Extension members (`extension(...)` blocks) | YES | Same as above | Lowered to static methods with `[Extension]`; ordinary call patterns. |
-| Null-conditional assignment (`a?.b = c`) | YES | Same as above | Conditional-branch pattern; no new opcodes. |
-| Simple lambda parameters with modifiers (`(ref x) => ...`) | YES | Same as above | Custom delegate + byref parameter; exercises delegate ctor with byref signature. |
-| Partial properties | YES | Same as above | Ordinary property lowering. |
+| Field-backed properties (`field` keyword) | YES | PASS | Tested by `p4cs14` (exit 0). The backing field is an ordinary compiler-generated field; no special JIT work identified. The earlier failures were a MemberRef-resolution gap for inherited methods (`ex.GetType()` - see item 26), not the C# 14 feature lowering. |
+| Extension members (`extension(...)` blocks) | YES | PASS | Lowered to static methods with `[Extension]`; ordinary call patterns. Verified with `p4cs14`. |
+| Null-conditional assignment (`a?.b = c`) | YES | PASS | Conditional-branch pattern; no new opcodes. Verified with `p4cs14`. |
+| Simple lambda parameters with modifiers (`(ref x) => ...`) | YES | PASS | Custom delegate + byref parameter; exercises delegate ctor with byref signature. Verified with `p4cs14`. |
+| Partial properties | YES | PASS | Ordinary property lowering. Verified with `p4cs14`. |
 | Unbound generics in `nameof` (`nameof(List<>)`) | YES | Compile-time only | No runtime metadata pattern. |
 | Implicit span conversions (`ReadOnlySpan<char> s = "abc"`) | NO (app model) | BLOCKED | The app-facing IL BCL (`korlib.dll`) does not ship `Span<T>`/`ReadOnlySpan<T>` yet (the kernel AOT path has them via bflat-excluded sources). Tracked in PHASE4-REPORT.md. |
 | `yield return` iterators (app + korlib) | NO | BLOCKED (compiler model) | With `NoStdLib`/korlib-as-corlib the compiler's iterator-interface check rejects iterator blocks (CS1624: "`IEnumerable<T>` is not an iterator interface type") because korlib's own `System.Collections.Generic.IEnumerable<T>` shadows the one span. Hand-written enumerators are the supported pattern; korlib's LINQ uses them. |
-| `async`/`await` (state machines) | YES | PARTIAL | `Task`/`AsyncTaskMethodBuilder`/`TaskAwaiter` exist and simple awaits compile; the `p4async` test app completes `Task.Run` + `.Result` + `.Wait` but currently hangs later in the file (see PHASE4-REPORT.md). |
+| `async`/`await` (state machines) | YES | PASS | `p4async` passes all 6 checks (exit 0): `Task.Run` + `.Result` + `.Wait`, `await Task.Delay`, chained awaits (`await` of a `Task<int>` returned by another async method), `Task.FromResult`, async completion. Fixes: `constrained.` calls on the state-machine struct no longer box (item 27), type-argument contexts survive nested compiles (item 28), and generic-method instantiations are verified per instantiation instead of shared (item 29). |
 | `System.Linq.AsyncEnumerable` (referenced assemblies) | n/a | PENDING | Not yet present in korlib; assemblies referencing it will not resolve the type yet. |
 
 ## JIT changes made in Phase 4
@@ -216,18 +216,62 @@ finding that four independent bugs stacked together:
     sits after an LFN entry therefore flushed the new file size into the
     wrong slot and the appended data never became visible (the
     `p4fileio` "two lines" failure). The lookup now counts every slot.
+26. **Inherited-method resolution walks the korlib base chain**
+    (`AssemblyLoader.TryResolveAotInherited`, used both by the
+    well-known-type MemberRef fallback and by `MetadataIntegration`'s
+    synthetic-AOT re-lookup): a MemberRef may name a method the
+    declaring type does not itself define (the `p4cs14` app's `Fail()`
+    helper calls `ex.GetType()`; `GetType` is declared on
+    `System.Object`, not `Exception`). The walk resolves the first chain
+    level that has an AOT registry entry, or that declares the method in
+    IL (own-body wins over inherited), and handles reference-BCL bases
+    such as `System.Object` that exist only as external TypeRefs.
+    `p4cs14`'s `Fail()` helper compiles and runs once
+    `Exception.GetType` resolves to the `ObjectHelpers.GetType` AOT
+    bridge.
+27. **`constrained.` callvirt on a value type calls the interface
+    implementation directly** (`ILCompiler.CompileCallvirt`, constrained
+    value-type branch): the previous fallback boxed the value and ran the
+    method on the box - mutations were lost and `Start<>(ref stateMachine)`
+    completed a different builder task than the caller read, so
+    `.Result` spun forever in `Task.SpinWait`. The branch now resolves
+    the implementation on the constraint type
+    (`JitStubs.ResolveInterfaceMethodByName` first - type-checked against
+    the constraint type's own metadata - with the interface-map slot as
+    fallback) and emits a direct call with the managed pointer as `this`.
+28. **Type-argument context is saved/restored per compilation**
+    (`MetadataIntegration.Push/PopMethodTypeArgContext`, hooked into
+    `Tier0JIT.CompileMethod`/`RestoreContext`): nested compiles parse
+    MethodSpecs and overwrite the context arrays, previously leaking
+    residue into the enclosing compile (MVAR TypeSpecs then resolved
+    against stale or null entries and `box`/`constrained.` emission
+    failed). Also, `ParseMethodSpecInstantiation`'s `GenericInst` case
+    now resolves the instantiated generic MethodTable via
+    `AssemblyLoader.ParseTypeFromSignature` instead of only recording a
+    size (method type args like `TaskAwaiter<int>` arrived with a null
+    MethodTable before).
+29. **Generic-method instantiation caching is verified per
+    instantiation** (`MetadataIntegration.ResolveMethodSpecMethod`): the
+    instantiation hash (`TypeArgHash`) was only stamped for
+    MethodDef-backed specs (`tag == 0`), so MemberRef-backed specs - all
+    `AsyncTaskMethodBuilder.Start<TStateMachine>` call sites - could
+    reuse a native compiled for a different state-machine type
+    (`Start<d__2>` served `Start<d__3>`, running the wrong `MoveNext`).
+    The stamp/re-verify now covers both spec forms; each state-machine
+    type gets its own `Start` code.
 
 ## Known open JIT issues (blocking the Phase 4 acceptance items)
 
 | Issue | Symptom | Where |
 |-------|---------|-------|
-| `async` state machine hang | `p4async` completes the first two checks, then stops responding | Suspected await continuation path (`AsyncTaskMethodBuilder`/`TaskAwaiter` interaction with the synchronous Task); under investigation. |
-| `p4cs14` produced no serial output | needs a dedicated re-run with serial capture | re-run and fix. |
+| Asynchronous suspension (awaits that complete later) | Not exercised by the current tests: the synchronous Task model completes every awaited task before `IsCompleted` is probed, so continuation registration/boxing never takes a truly deferred path | `AsyncTaskMethodBuilder`/`TaskAwaiter` in korlib; the `StateMachineContinuation` path is unverified |
 
 ## Fixed since the initial audit (kept for history)
 
 | Former issue | Status |
 |--------------|--------|
+| `async` state machine hang (`p4async` completed checks 1-2, then spun forever) | FIXED - `Start<TStateMachine>`'s `constrained.` call boxed the state machine (mutations landed on the box copy; the caller's `builder.Task` stayed incomplete and `.Result` spun in `Task.SpinWait`), and `Start<T>` instantiations for different state machines shared one compiled native. Items 27-29. `p4async` passes 6/6 checks, exit 0. |
+| `p4cs14` produced no serial output | FIXED - `Exception.GetType` (declared on `System.Object`) failed MemberRef resolution (item 26), so `Main`'s codegen failed before any test output. `p4cs14` passes, exit 0. |
 | Virtual/interface call sites not parity-corrected (`movaps` `#GP` inside `MethodTable.GetInterfaceMethodSlot` via the dispatch stub, file I/O write path) | FIXED - root causes were the `RhpStackProbe` ABI mismatch (item 5), the dispatch-stub RSP restore anchor (item 6), merge-point byte-size accounting (item 7), the resulting wrong/absent parity pads (items 3, 8), and the dispatch stub's fixed-frame resolver call, now alignment-normalized (item 24). |
 | `[JitStubs] FATAL: VTable slot N has no registered method` during `p4fileio`'s disposal path | FIXED - derived override registrations and abstract entries used different slot numbering than the base-class registrations (items 22, 23). |
 | `p4fileio` "two lines" check (`FAIL: line 2`) | FIXED - FAT driver entry-index semantics (item 25). `p4fileio` now passes 16/16 checks with exit code 0. |
@@ -235,7 +279,9 @@ finding that four independent bugs stacked together:
 ## Guidance for application authors (current state)
 
 - Prefer plain loops over `yield return` in application code.
-- Prefer `Task.Run(...).Result`/`.Wait()` style over deep await chains.
+- `async`/`await` works for synchronous-completing tasks (the Phase 4
+  model); deep await chains are fine. True suspension (tasks completing
+  after the caller blocks) is unverified - see Known open JIT issues.
 - Avoid `Span<T>`/`ReadOnlySpan<T>` in application code for now.
 - Keep assembly names FAT-short (<= 8 chars).
 - `System.IO`: file create/append/read/delete, `FileStream`,

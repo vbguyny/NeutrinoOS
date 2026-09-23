@@ -124,11 +124,16 @@ against a net10.0 ground-truth run).
   leading to an int-flavored `MoveNext` being executed for
   `List<string>.Enumerator` (buffer corruption during `OrderBy`).
 
-## 7. Async/await test - **PARTIAL**
+## 7. Async/await test - **PASS**
 
-`run /apps/p4async.dll` completes `Task.Run(...).Result` and
-`Task.Run(...).Wait()` (both observed ok) but hangs later in the await
-state-machine sequence. Tracked in PHASE4-JIT-COMPAT.md.
+`run /apps/p4async.dll` prints `[async] PASS` and exits 0; all six
+checks pass: `Task.Run(...).Result`, `Task.Run(...).Wait()`, `await
+Task.Delay`, chained awaits (`await` of a `Task<int>` returned by
+another async method), `Task.FromResult`, and async completion. The
+earlier hang was a `constrained.`-call boxing bug in the JIT plus
+generic-instantiation sharing (`Start<d__2>` code served `Start<d__3>`) -
+see PHASE4-JIT-COMPAT.md items 27-29. Recipe:
+`bash build/p4-deploy.sh` then `bash build/run-p4app.sh p4async 20`.
 
 ## 8. Networking test (HttpClient) - **PENDING (degraded-capable)**
 
@@ -137,17 +142,23 @@ The harness QEMU has no NIC, so `run /apps/p4net.dll` reports
 and exits 0. For a live fetch, boot with a virtio-net device on a
 user-mode network and a local HTTP server on 10.0.2.2:8080.
 
-## 9. Multi-assembly test - **PENDING (loader implemented)**
+## 9. Multi-assembly test - **PASS**
 
-Deploy `p4math.dll` to `/lib`, `p4multi.dll` to `/apps`, then
-`run /apps/p4multi.dll` should print `[multi] PASS` (exit 0). The
-on-demand `/lib` loader is implemented (PHASE4-DESIGN.md 1.2); the
-end-to-end run still needs a verified capture.
+With `p4math.dll` deployed to `/lib` and `p4multi.dll` to `/apps`,
+`run /apps/p4multi.dll` prints `[multi] PASS` and exits 0 (verified on
+the final build; the on-demand `/lib` loader is implemented - see
+PHASE4-DESIGN.md 1.2). Recipe: `bash build/p4-deploy.sh` then
+`bash build/run-p4app.sh p4multi 15`.
 
-## 10. C# 14 features test - **PENDING**
+## 10. C# 14 features test - **PASS**
 
-`run /apps/p4cs14.dll` - the app builds; the run produced no captured
-output yet and needs a dedicated serial capture + fix pass.
+`run /apps/p4cs14.dll` exits 0 (all `[csharp14]` checks pass). The
+initial failure produced no output at all because the app's `Fail()`
+helper calls `ex.GetType()` - a MemberRef to a method declared on
+`System.Object`, not on `System.Exception` - which the loader could not
+resolve; `Main`'s codegen then failed before any test ran. Fixed by the
+inherited-method base-chain walk (PHASE4-JIT-COMPAT.md item 26). Recipe:
+`bash build/p4-deploy.sh` then `bash build/run-p4app.sh p4cs14 20`.
 
 ## 11. `System.Linq.AsyncEnumerable` in korlib - **PENDING**
 

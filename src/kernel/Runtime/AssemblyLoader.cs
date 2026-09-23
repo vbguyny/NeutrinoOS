@@ -1618,7 +1618,7 @@ public static unsafe class AssemblyLoader
     /// Parse a type from a signature blob.
     /// Returns the MethodTable for the parsed type.
     /// </summary>
-    private static MethodTable* ParseTypeFromSignature(LoadedAssembly* asm, byte* sig, ref int pos, uint sigLen)
+    internal static MethodTable* ParseTypeFromSignature(LoadedAssembly* asm, byte* sig, ref int pos, uint sigLen)
     {
         if (pos >= (int)sigLen)
         {
@@ -7440,6 +7440,23 @@ public static unsafe class AssemblyLoader
                                     DebugConsole.Write("[AsmLoader] Found korlib TypeDef 0x");
                                     DebugConsole.WriteHex(typeDefToken);
                                     DebugConsole.WriteLine();
+
+                                    // Inherited-method walk: a MemberRef may name a method the
+                                    // declaring type does not itself define (e.g. the app's
+                                    // Exception.GetType() MemberRef - GetType is declared on
+                                    // System.Object). See TryResolveAotInherited.
+                                    if (TryResolveAotInherited(sourceAsm, typeName, typeNs, memberName, sig, sigLen, argCount,
+                                                               out AotMethodEntry baseEntry, out uint declaringToken))
+                                    {
+                                        methodToken = 0xFA000000 | (uint)(baseEntry.NativeCode & 0x00FFFFFF);
+                                        return true;
+                                    }
+                                    if (declaringToken != 0)
+                                    {
+                                        // Declared in IL at some level of the chain - compile that body.
+                                        typeDefToken = declaringToken;
+                                    }
+
                                     // Fall through to normal method lookup below
                                     goto doNormalLookup;
                                 }
@@ -8739,6 +8756,145 @@ public static unsafe class AssemblyLoader
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Resolve an inherited method via the AOT registry: walk up korlib's base
+    /// chain from (typeNs, typeName) and return the first level with an AOT
+    /// entry. Levels that declare the method in IL are not AOT-resolved; their
+    /// TypeDef token is returned via declaringToken so the caller can compile
+    /// the IL body (an own body always wins over an inherited AOT entry).
+    /// korlib is compiled against the reference BCL, so bases such as
+    /// System.Object are TypeRefs to an external assembly with no korlib
+    /// TypeDef: those are probed once by name and then the walk stops.
+    /// </summary>
+    internal static bool TryResolveAotInherited(LoadedAssembly* sourceAsm, byte* typeName, byte* typeNs,
+                                                byte* memberName, byte* sig, uint sigLen, byte argCount,
+                                                out AotMethodEntry entry, out uint declaringToken)
+    {
+        entry = default;
+        declaringToken = 0;
+
+        LoadedAssembly* coreAsm = GetCoreLib();
+        if (coreAsm == null)
+            return false;
+
+        uint startToken = FindTypeDefByName(coreAsm, typeName, typeNs);
+        uint walkRow = startToken & 0x00FFFFFF;
+        if (walkRow == 0)
+            return false;
+
+        byte* walkFull = stackalloc byte[96];
+        byte* extObjName = stackalloc byte[8];
+        byte* extObjNs = stackalloc byte[8];
+        extObjName[0] = (byte)'O'; extObjName[1] = (byte)'b'; extObjName[2] = (byte)'j';
+        extObjName[3] = (byte)'e'; extObjName[4] = (byte)'c'; extObjName[5] = (byte)'t'; extObjName[6] = 0;
+        extObjNs[0] = (byte)'S'; extObjNs[1] = (byte)'y'; extObjNs[2] = (byte)'s';
+        extObjNs[3] = (byte)'t'; extObjNs[4] = (byte)'e'; extObjNs[5] = (byte)'m'; extObjNs[6] = 0;
+        byte* extNm = null;
+        byte* extNs = null;
+
+        for (int depth = 0; depth < 16; depth++)
+        {
+            byte* wNm;
+            byte* wNs;
+            if (walkRow != 0)
+            {
+                wNs = MetadataReader.GetString(ref coreAsm->Metadata,
+                    MetadataReader.GetTypeDefNamespace(ref coreAsm->Tables, ref coreAsm->Sizes, walkRow));
+                wNm = MetadataReader.GetString(ref coreAsm->Metadata,
+                    MetadataReader.GetTypeDefName(ref coreAsm->Tables, ref coreAsm->Sizes, walkRow));
+            }
+            else if (extNm != null)
+            {
+                wNs = extNs;
+                wNm = extNm;
+            }
+            else
+            {
+                break; // end of chain
+            }
+
+            int wPos = 0;
+            for (int i = 0; wNs != null && wNs[i] != 0 && wPos < 80; i++)
+                walkFull[wPos++] = wNs[i];
+            if (wNs != null && wNs[0] != 0)
+                walkFull[wPos++] = (byte)'.';
+            for (int i = 0; wNm != null && wNm[i] != 0 && wPos < 94; i++)
+                walkFull[wPos++] = wNm[i];
+            walkFull[wPos] = 0;
+
+            DebugConsole.Write("[AsmLoader] base-chain walk: ");
+            for (int i = 0; walkFull[i] != 0 && i < 64; i++)
+                DebugConsole.WriteChar((char)walkFull[i]);
+            DebugConsole.Write(" row=0x");
+            DebugConsole.WriteHex(walkRow);
+            DebugConsole.WriteLine();
+
+            if (AotMethodRegistry.TryLookup(walkFull, memberName, argCount, out entry))
+            {
+                DebugConsole.Write("[AsmLoader] AOT base-chain resolved: ");
+                for (int i = 0; walkFull[i] != 0 && i < 64; i++)
+                    DebugConsole.WriteChar((char)walkFull[i]);
+                DebugConsole.Write(".");
+                for (int i = 0; memberName[i] != 0 && i < 32; i++)
+                    DebugConsole.WriteChar((char)memberName[i]);
+                DebugConsole.Write(" -> 0x");
+                DebugConsole.WriteHex((ulong)entry.NativeCode);
+                DebugConsole.WriteLine();
+                return true;
+            }
+
+            if (walkRow == 0)
+                break; // external base: no metadata to walk further
+
+            if (FindMethodDefByName(sourceAsm, coreAsm, 0x02000000 | walkRow, memberName, sig, sigLen) != 0)
+            {
+                // Declared in IL at this level - compile that body.
+                declaringToken = 0x02000000 | walkRow;
+                DebugConsole.Write("[AsmLoader] base-chain IL-declared at 0x");
+                DebugConsole.WriteHex(declaringToken);
+                DebugConsole.WriteLine();
+                return false;
+            }
+
+            // Advance to the base type.
+            CodedIndex extendsIdx = MetadataReader.GetTypeDefExtends(ref coreAsm->Tables, ref coreAsm->Sizes, walkRow);
+            if (extendsIdx.RowId == 0)
+            {
+                uint walkFlags = MetadataReader.GetTypeDefFlags(ref coreAsm->Tables, ref coreAsm->Sizes, walkRow);
+                if ((walkFlags & 0x20) != 0)
+                    break; // interface: no base
+                // Class with implicit base: System.Object (external).
+                extNs = extObjNs; extNm = extObjName; walkRow = 0;
+                continue;
+            }
+            if (extendsIdx.Table == MetadataTableId.TypeDef)
+            {
+                walkRow = extendsIdx.RowId;
+                continue;
+            }
+            if (extendsIdx.Table == MetadataTableId.TypeRef)
+            {
+                byte* rNm = MetadataReader.GetString(ref coreAsm->Metadata,
+                    MetadataReader.GetTypeRefName(ref coreAsm->Tables, ref coreAsm->Sizes, extendsIdx.RowId));
+                byte* rNs = MetadataReader.GetString(ref coreAsm->Metadata,
+                    MetadataReader.GetTypeRefNamespace(ref coreAsm->Tables, ref coreAsm->Sizes, extendsIdx.RowId));
+                uint localRow = FindTypeDefByName(coreAsm, rNm, rNs) & 0x00FFFFFF;
+                if (localRow != 0)
+                {
+                    walkRow = localRow;
+                    continue;
+                }
+                // External base (ref-pack type): probe by name once.
+                extNm = rNm; extNs = rNs; walkRow = 0;
+                continue;
+            }
+            break; // TypeSpec or other: cannot walk
+        }
+
+        entry = default;
+        return false;
     }
 
     // ============================================================================

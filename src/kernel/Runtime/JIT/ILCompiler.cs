@@ -6844,6 +6844,108 @@ public unsafe struct ILCompiler
                         }
                     }
 
+                    // Interface method on a value type (e.g. IAsyncStateMachine.MoveNext
+                    // called via constrained. on a state-machine struct). ECMA-335: for a
+                    // value-type constraint the implementation must be called DIRECTLY on
+                    // the managed pointer - boxing would run the method on a copy, so all
+                    // mutating effects (state machine state, builder task) would be lost.
+                    // Resolve the implementation on the constraint MT: interface map
+                    // slot first, then the by-name resolver (which JIT-compiles on demand).
+                    if (tempMethod.IsInterfaceMethod && tempMethod.InterfaceMT != null && tempMethod.InterfaceMethodSlot >= 0)
+                    {
+                        MethodTable* ifaceMTRef = (MethodTable*)tempMethod.InterfaceMT;
+                        // Prefer the by-name resolver: it searches the CONSTRAINT type's
+                        // own metadata for the implementation, so it cannot pick up a
+                        // same-named method registered for a different type (the vtable
+                        // slot map can be polluted by slot registration that matches on
+                        // simple name alone - e.g. every state machine has "MoveNext").
+                        nint ifaceImpl = JitStubs.ResolveInterfaceMethodByName(constraintMT, ifaceMTRef, tempMethod.InterfaceMethodSlot);
+                        int ifaceSlot = -1;
+                        if (ifaceImpl == 0)
+                        {
+                            ifaceSlot = constraintMT->GetInterfaceMethodSlot(ifaceMTRef, tempMethod.InterfaceMethodSlot);
+                            if (ifaceSlot >= 0)
+                            {
+                                ifaceImpl = constraintMT->GetVirtualSlot((short)ifaceSlot);
+                                if (ifaceImpl == 0)
+                                {
+                                    var ifaceOvr = CompiledMethodRegistry.LookupByVtableSlot(constraintMT, (short)ifaceSlot);
+                                    if (ifaceOvr != null && ifaceOvr->Token != 0 && ifaceOvr->MethodTable == constraintMT)
+                                    {
+                                        JitStubs.EnsureCompiled(ifaceOvr->Token, ifaceOvr->AssemblyId);
+                                        ifaceImpl = constraintMT->GetVirtualSlot((short)ifaceSlot);
+                                        if (ifaceImpl == 0 && ifaceOvr->NativeCode != null)
+                                            ifaceImpl = (nint)ifaceOvr->NativeCode;
+                                    }
+                                }
+                            }
+                        }
+
+                        DebugConsole.Write("[constrained] iface on VT: slot=");
+                        DebugConsole.WriteDecimal((uint)(ifaceSlot < 0 ? 0xFFFF : ifaceSlot));
+                        DebugConsole.Write(" impl=0x");
+                        DebugConsole.WriteHex((ulong)ifaceImpl);
+                        DebugConsole.Write(" cmt=0x");
+                        DebugConsole.WriteHex((ulong)constraintMT);
+                        {
+                            uint dbgAsmId, dbgTok;
+                            Reflection.ReflectionRuntime.LookupTypeInfo(constraintMT, out dbgAsmId, out dbgTok);
+                            DebugConsole.Write(" tv=");
+                            DebugConsole.WriteDecimal(dbgAsmId);
+                            DebugConsole.Write("/0x");
+                            DebugConsole.WriteHex(dbgTok);
+                        }
+                        DebugConsole.WriteLine();
+
+                        if (ifaceImpl != 0)
+                        {
+                            // Stack: [managed_ptr, arg0, arg1, ...] - same layout as the
+                            // vtable direct-call path above; managed_ptr becomes 'this'.
+                            if (numArgs >= 3)
+                            {
+                                X64Emitter.Pop(ref _code, VReg.R7);   // R12 = arg2
+                                PopEntry();
+                            }
+                            if (numArgs >= 2)
+                            {
+                                X64Emitter.Pop(ref _code, VReg.R6);   // R11 = arg1
+                                PopEntry();
+                            }
+                            if (numArgs >= 1)
+                            {
+                                X64Emitter.Pop(ref _code, VReg.R5);   // R10 = arg0
+                                PopEntry();
+                            }
+
+                            X64Emitter.Pop(ref _code, VReg.R1);  // RCX = managed_ptr (this)
+                            PopEntry();
+
+                            if (numArgs >= 1) X64Emitter.MovRR(ref _code, VReg.R2, VReg.R5);  // RDX = arg0
+                            if (numArgs >= 2) X64Emitter.MovRR(ref _code, VReg.R3, VReg.R6);  // R8 = arg1
+                            if (numArgs >= 3) X64Emitter.MovRR(ref _code, VReg.R4, VReg.R7);  // R9 = arg2
+
+                            X64Emitter.SubRI(ref _code, VReg.SP, 32);  // Shadow space
+                            X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)ifaceImpl);
+                            X64Emitter.CallR(ref _code, VReg.R0);
+                            X64Emitter.AddRI(ref _code, VReg.SP, 32);
+
+                            if (tempMethod.ReturnKind != ReturnKind.Void)
+                            {
+                                X64Emitter.Push(ref _code, VReg.R0);
+                                if (tempMethod.ReturnKind == ReturnKind.Struct)
+                                    PushEntry(EvalStackEntry.Struct(tempMethod.ReturnStructSize > 8 ? 16 : 8));
+                                else if (tempMethod.ReturnKind == ReturnKind.Float32)
+                                    PushEntry(EvalStackEntry.Float32);
+                                else if (tempMethod.ReturnKind == ReturnKind.Float64)
+                                    PushEntry(EvalStackEntry.Float64);
+                                else
+                                    PushEntry(EvalStackEntry.NativeInt);
+                            }
+
+                            return true;  // Done - don't fall through to boxing
+                        }
+                    }
+
                     // OPTIMIZATION: For primitive types, inline Equals comparison instead of boxing
                     // This avoids the boxing overhead and correctly implements value equality
                     // (Object.Equals does reference equality which doesn't work for boxed primitives)
