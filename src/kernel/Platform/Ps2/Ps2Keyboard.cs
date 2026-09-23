@@ -126,10 +126,15 @@ public static unsafe class Ps2Keyboard
     /// </summary>
     public static void ProcessScancode(byte code)
     {
-        // Controller/keyboard command responses: ACK, BAT complete,
-        // echo, resend, overrun - not key data.
-        if (code == 0xFA || code == 0xAA || code == 0xAB || code == 0xFE ||
-            code == 0x00 || code == 0xFF)
+        // Controller/keyboard command responses: ACK, echo, resend,
+        // overrun - never key data. 0xAA (BAT complete) and 0xAB (BAT
+        // failure) share their byte values with the break codes of Left
+        // Shift (0x2A) and Backslash (0x2B): swallow them only while the
+        // controller is still being initialized - discarding 0xAA during
+        // normal operation left Shift stuck down after every '|' or '>'.
+        if (code == 0xFA || code == 0xFE || code == 0x00 || code == 0xFF)
+            return;
+        if (!IsInitialized && (code == 0xAA || code == 0xAB))
             return;
 
         // Pause key: 0xE1 <2 bytes> (make and break forms both have two

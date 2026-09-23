@@ -20,9 +20,18 @@ public static class NetworkManager
 
     /// <summary>
     /// Get all registered network interfaces (as interface for API compatibility).
+    /// Lazily initializes the manager so the loopback interface ('lo') exists
+    /// even on systems where no NIC driver was bound.
     /// </summary>
-    public static IReadOnlyList<NetworkInterface> Interfaces =>
-        _interfaces ?? (IReadOnlyList<NetworkInterface>)new List<NetworkInterface>();
+    public static IReadOnlyList<NetworkInterface> Interfaces
+    {
+        get
+        {
+            if (!_initialized)
+                Initialize();
+            return _interfaces!;
+        }
+    }
 
     /// <summary>
     /// Get the concrete list of network interfaces (internal, avoids interface dispatch).

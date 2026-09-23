@@ -1,6 +1,7 @@
 param(
     [switch]$Rebuild,
-    [switch]$NoStart
+    [switch]$NoStart,
+    [string]$SerialPipe = ""
 )
 # Create (or recreate) a separate VirtualBox VM "NeutrinoOSCli" that boots the
 # GUI image variant produced by build/gui-image.sh:
@@ -64,7 +65,16 @@ Write-Host "Creating VM '$name'..."
 & $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 none --hpet on | Out-Null
 & $vb storagectl $name --name SATA --add sata --controller IntelAhci | Out-Null
 & $vb storageattach $name --storagectl SATA --port 0 --device 0 --type hdd --medium $vdi | Out-Null
-& $vb modifyvm $name --uart1 0x3F8 4 --uartmode1 file $serial | Out-Null
+if ($SerialPipe -ne "") {
+    # Server-pipe UART: the host connects with a named-pipe client and can
+    # both capture the transcript and type into the guest's line discipline.
+    # NOTE: the legacy --uartmode1 server form is used on purpose - the
+    # newer --uart-mode1 "server pipe ..." spelling fails to open the host
+    # device on VirtualBox 7.1 (VERR_INVALID_HANDLE).
+    & $vb modifyvm $name --uart1 0x3F8 4 --uartmode1 server ("\\.\pipe\" + $SerialPipe) | Out-Null
+} else {
+    & $vb modifyvm $name --uart1 0x3F8 4 --uartmode1 file $serial | Out-Null
+}
 
 if ($NoStart) {
     Write-Host "VM '$name' created (not started). Start it from the VirtualBox GUI or with:"
