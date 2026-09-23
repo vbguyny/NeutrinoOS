@@ -798,16 +798,16 @@ public unsafe class NetworkStack
 
     /// <summary>
     /// Find a TCP connection matching the given parameters.
+    /// Scans every slot: removed connections leave gaps in the table, so
+    /// the slot range can extend past _tcpConnectionCount.
     /// </summary>
     private TcpConnection FindConnection(uint remoteIP, ushort remotePort, ushort localPort)
     {
-        for (int i = 0; i < _tcpConnectionCount; i++)
+        for (int i = 0; i < MaxTcpConnections; i++)
         {
-            if (_tcpConnections[i] != null &&
-                _tcpConnections[i].Matches(remoteIP, remotePort, localPort))
-            {
-                return _tcpConnections[i];
-            }
+            var conn = _tcpConnections[i];
+            if (conn != null && conn.Matches(remoteIP, remotePort, localPort))
+                return conn;
         }
         return null;
     }
@@ -826,6 +826,7 @@ public unsafe class NetworkStack
             if (_tcpConnections[i] == null)
             {
                 _tcpConnections[i] = conn;
+                conn.StackIndex = i;
                 _tcpConnectionCount++;
                 return i;
             }
@@ -840,8 +841,43 @@ public unsafe class NetworkStack
     {
         if (index >= 0 && index < MaxTcpConnections && _tcpConnections[index] != null)
         {
+            _tcpConnections[index].StackIndex = -1;
             _tcpConnections[index] = null;
             _tcpConnectionCount--;
+        }
+    }
+
+    /// <summary>
+    /// Remove connections that have fully closed - or have been stuck in
+    /// a closing state for over 30 seconds - from the connection table.
+    /// Server loops call this after pumping so finished sessions release
+    /// slots promptly and a restarted server can bind immediately
+    /// (Phase 6; this is the simplified stand-in for TIME_WAIT aging).
+    /// </summary>
+    public void ReapClosedConnections()
+    {
+        long now = (long)Timer.GetUptimeMilliseconds();
+        for (int i = 0; i < MaxTcpConnections; i++)
+        {
+            var conn = _tcpConnections[i];
+            if (conn == null)
+                continue;
+
+            bool reap = conn.IsClosed;
+            if (!reap)
+            {
+                var st = conn.State;
+                if ((st == TcpState.FinWait1 || st == TcpState.FinWait2 ||
+                     st == TcpState.Closing || st == TcpState.LastAck ||
+                     st == TcpState.TimeWait) &&
+                    conn.LastActivityMs > 0 && now - conn.LastActivityMs > 30000)
+                {
+                    reap = true;
+                }
+            }
+
+            if (reap)
+                RemoveConnection(i);
         }
     }
 
@@ -942,18 +978,27 @@ public unsafe class NetworkStack
     /// </summary>
     /// <param name="listener">The listener to register.</param>
     /// <returns>True if registered successfully.</returns>
-    public bool RegisterListener(TcpListener listener)
+    public bool RegisterListener(TcpListener listener, bool reuseAddress = false)
     {
         if (_tcpListenerCount >= MaxTcpListeners)
             return false;
 
-        // Check for duplicate port
+        // Check for duplicate port. SO_REUSEADDR semantics: allow the new
+        // listener to take over the port, replacing a stale registration
+        // (e.g. a previous server instance), so servers can restart
+        // without the old bind blocking them.
         for (int i = 0; i < MaxTcpListeners; i++)
         {
             if (_tcpListeners[i] != null && _tcpListeners[i]!.Port == listener.Port)
             {
-                Debug.WriteLine("[NetStack] Port already in use by another listener");
-                return false;
+                if (!reuseAddress)
+                {
+                    Debug.WriteLine("[NetStack] Port already in use by another listener");
+                    return false;
+                }
+                Debug.WriteLine("[NetStack] SO_REUSEADDR: replacing existing listener for port");
+                _tcpListeners[i] = listener;
+                return true;
             }
         }
 
@@ -1145,6 +1190,31 @@ public unsafe class NetworkStack
         sent = _tcpSent;
         received = _tcpReceived;
         activeConnections = _tcpConnectionCount;
+    }
+
+    /// <summary>
+    /// Half-close a connection: send a FIN for the local send direction
+    /// while the receive direction stays open (FIN_WAIT1). Used by the
+    /// Phase 6 socket Shutdown API.
+    /// </summary>
+    public bool TcpShutdownSend(int connIndex)
+    {
+        var conn = GetTcpConnection(connIndex);
+        if (conn == null)
+            return false;
+
+        byte* finBuffer = stackalloc byte[TcpHeader.MinSize];
+        int finLen = conn.InitiateClose(finBuffer);
+        if (finLen == 0)
+            return false;
+
+        int frameLen = BuildIPv4Frame(conn.RemoteEndpoint.IP, TCP.ProtocolNumber, finBuffer, finLen);
+        if (frameLen > 0)
+        {
+            _pendingTxLen = frameLen;
+            _tcpSent++;
+        }
+        return true;
     }
 
     /// <summary>

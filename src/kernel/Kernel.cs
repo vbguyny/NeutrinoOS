@@ -70,6 +70,9 @@ public static unsafe class Kernel
     private static uint _testAssemblyId;
     private static uint _testSupportId;
     private static uint _ddkId;
+
+    /// <summary>The loaded ProtonOS.DDK assembly id (Phase 6 services).</summary>
+    internal static uint DdkAssemblyId => _ddkId;
     private static uint _virtioDriverId;
     private static uint _virtioBlkDriverId;
     private static uint _fatDriverId;

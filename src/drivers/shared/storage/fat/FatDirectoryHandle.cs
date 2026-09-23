@@ -25,6 +25,12 @@ public unsafe class FatDirectoryHandle : IDirectoryHandle
     // Root directory info for FAT12/16
     private uint _rootEntriesRead;
 
+    // Long-filename accumulation state (LFN entries precede their short entry).
+    private readonly char[] _lfnChars = new char[260];
+    private int _lfnMask;
+    private int _lfnTotal;
+    private byte _lfnChecksum;
+
     public FatDirectoryHandle(FatFileSystem fs, uint cluster, string path)
     {
         _fs = fs;
@@ -93,19 +99,40 @@ public unsafe class FatDirectoryHandle : IDirectoryHandle
                         }
 
                         if (entry.Name[0] == 0xE5)
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;  // Deleted entry
+                        }
 
                         if ((entry.Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
-                            continue;  // Skip LFN entries
+                        {
+                            FatFileSystem.LfnAccumulate((FatLfnEntry*)&entry, _lfnChars, ref _lfnMask, ref _lfnTotal, ref _lfnChecksum);
+                            continue;  // LFN entry: accumulates into the pending name
+                        }
 
                         if ((entry.Attr & (byte)FatAttr.VolumeId) != 0)
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;  // Skip volume label
+                        }
 
                         // Skip . and ..
                         if (entry.Name[0] == '.')
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;
+                        }
 
-                        string name = FatFileSystem.GetShortName(&entry);
+                        string name;
+                        if (_lfnMask != 0 && FatFileSystem.LfnComplete(_lfnMask, _lfnTotal, &entry, _lfnChecksum))
+                            name = FatFileSystem.AssembleLfnName(_lfnChars, _lfnTotal);
+                        else
+                            name = FatFileSystem.GetShortName(&entry);
+                        _lfnMask = 0;
+                        _lfnTotal = 0;
                         // Simple path combine to avoid VFS.Combine issues
                         string fullPath;
                         if (_basePath == "/" || _basePath.Length == 0)
@@ -157,19 +184,40 @@ public unsafe class FatDirectoryHandle : IDirectoryHandle
                         }
 
                         if (entry.Name[0] == 0xE5)
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;  // Deleted entry
+                        }
 
                         if ((entry.Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
-                            continue;  // Skip LFN entries
+                        {
+                            FatFileSystem.LfnAccumulate((FatLfnEntry*)&entry, _lfnChars, ref _lfnMask, ref _lfnTotal, ref _lfnChecksum);
+                            continue;  // LFN entry: accumulates into the pending name
+                        }
 
                         if ((entry.Attr & (byte)FatAttr.VolumeId) != 0)
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;  // Skip volume label
+                        }
 
                         // Skip . and ..
                         if (entry.Name[0] == '.')
+                        {
+                            _lfnMask = 0;
+                            _lfnTotal = 0;
                             continue;
+                        }
 
-                        string name = FatFileSystem.GetShortName(&entry);
+                        string name;
+                        if (_lfnMask != 0 && FatFileSystem.LfnComplete(_lfnMask, _lfnTotal, &entry, _lfnChecksum))
+                            name = FatFileSystem.AssembleLfnName(_lfnChars, _lfnTotal);
+                        else
+                            name = FatFileSystem.GetShortName(&entry);
+                        _lfnMask = 0;
+                        _lfnTotal = 0;
 
                         // Simple path combine to avoid VFS.Combine issues
                         string fullPath;

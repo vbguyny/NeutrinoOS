@@ -53,7 +53,42 @@ public static unsafe class KernelExportInit
         // Register system information exports (Phase 5 shell utilities)
         RegisterSystemInfoExports();
 
+        // Register entropy export (Phase 6 /dev/random + CSPRNG)
+        RegisterEntropyExports();
+
+        // Register service-management exports (Phase 6 sshd/webhost)
+        RegisterServiceExports();
+
+        // Register shell bridge exports (Phase 6 remote sessions)
+        RegisterShellExports();
+
         KernelExportRegistry.DebugPrint();
+    }
+
+    /// <summary>
+    /// Phase 6: shell bridge for remote (SSH) sessions.
+    /// </summary>
+    private static void RegisterShellExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_ShellExec",
+            (void*)(delegate* unmanaged<byte*, int, byte*, int, int>)&Exports.DDK.ShellExports.ShellExec);
+        Reg(n, "Kernel_ShellPing",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.ShellExports.ShellPing);
+    }
+
+    /// <summary>
+    /// Phase 6: background-service management for the shell utilities.
+    /// </summary>
+    private static void RegisterServiceExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_ServiceStart",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.ServiceExports.ServiceStart);
+        Reg(n, "Kernel_ServiceStop",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.ServiceExports.ServiceStop);
     }
 
     /// <summary>
@@ -102,6 +137,17 @@ public static unsafe class KernelExportInit
             (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.NetworkExports.NetTransmit);
         Reg(n, "Kernel_NetReceive",
             (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.NetworkExports.NetReceive);
+    }
+
+    /// <summary>
+    /// Phase 6: entropy source for the DDK CSPRNG.
+    /// </summary>
+    private static void RegisterEntropyExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_GetEntropy",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.EntropyExports.GetEntropy);
     }
 
     private static void RegisterPortIOExports()

@@ -92,6 +92,10 @@ public static unsafe class ShellMain
             return;
         if (ShellExecutor.InForegroundCommand)
             return;
+
+        // Phase 6: cooperative background services (sshd, webhost).
+        Services.ServiceRegistry.Tick();
+
         if (!JobManager.HasQueuedJobs)
             return;
         JobManager.Pump();

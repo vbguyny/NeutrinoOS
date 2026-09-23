@@ -76,6 +76,20 @@ public unsafe class TcpConnection
     }
 
     /// <summary>
+    /// Index of this connection in the owning stack's connection table
+    /// (-1 for untracked connections). Set by NetworkStack; lets sockets
+    /// created for accepted connections send data and close the
+    /// connection through the stack (Phase 6).
+    /// </summary>
+    internal int StackIndex = -1;
+
+    /// <summary>
+    /// Uptime (milliseconds) of the last packet processed on this
+    /// connection; used by the stack to reap stuck closing states.
+    /// </summary>
+    public long LastActivityMs;
+
+    /// <summary>
     /// Get the local endpoint.
     /// </summary>
     public TcpEndpoint LocalEndpoint => _local;
@@ -228,6 +242,7 @@ public unsafe class TcpConnection
     /// </summary>
     public int ProcessPacket(TcpPacket* packet, byte* responseBuffer)
     {
+        LastActivityMs = (long)Timer.GetUptimeMilliseconds();
         int responseLen = 0;
 
         switch (_state)

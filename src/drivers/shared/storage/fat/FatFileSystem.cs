@@ -893,6 +893,12 @@ public unsafe class FatFileSystem : IFileSystem
         parentCluster = 0;
         entryIndex = -1;
 
+        // Long-filename accumulation state (LFN entries precede their short entry).
+        char[]? lfnChars = null;
+        int lfnMask = 0;
+        int lfnTotal = 0;
+        byte lfnChecksum = 0;
+
         if (string.IsNullOrEmpty(path) || path == "/")
             return FileResult.InvalidPath;
 
@@ -950,15 +956,36 @@ public unsafe class FatFileSystem : IFileSystem
                     if (dirEntry[i].Name[0] == 0) // End of directory
                         break;
                     if (dirEntry[i].Name[0] == 0xE5) // Deleted
+                    {
+                        lfnMask = 0;
+                        lfnTotal = 0;
                         continue;
-                    if ((dirEntry[i].Attr & (byte)FatAttr.VolumeId) != 0 &&
-                        (dirEntry[i].Attr & (byte)FatAttr.LongName) != (byte)FatAttr.LongName)
-                        continue;
+                    }
                     if ((dirEntry[i].Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
-                        continue; // Skip LFN entries for now
+                    {
+                        if (lfnChars == null)
+                            lfnChars = new char[260];
+                        LfnAccumulate((FatLfnEntry*)&dirEntry[i], lfnChars, ref lfnMask, ref lfnTotal, ref lfnChecksum);
+                        continue;
+                    }
+                    if ((dirEntry[i].Attr & (byte)FatAttr.VolumeId) != 0)
+                    {
+                        lfnMask = 0;
+                        lfnTotal = 0;
+                        continue;
+                    }
 
                     string name = GetShortName(&dirEntry[i]);
-                    if (EqualsIgnoreCase(name, part))
+                    bool isMatch = EqualsIgnoreCase(name, part);
+                    if (!isMatch && lfnMask != 0 && LfnComplete(lfnMask, lfnTotal, &dirEntry[i], lfnChecksum))
+                    {
+                        string longName = AssembleLfnName(lfnChars!, lfnTotal);
+                        isMatch = longName.Length > 0 && EqualsIgnoreCase(longName, part);
+                    }
+                    lfnMask = 0;
+                    lfnTotal = 0;
+
+                    if (isMatch)
                     {
                         entry = dirEntry[i];
                         entryIndex = (int)i;
@@ -1010,23 +1037,38 @@ public unsafe class FatFileSystem : IFileSystem
                         // (the appended size never becomes visible).
                         if (dirEntry[i].Name[0] == 0xE5) // Deleted
                         {
-                            index++;
-                            continue;
-                        }
-                        if ((dirEntry[i].Attr & (byte)FatAttr.VolumeId) != 0 &&
-                            (dirEntry[i].Attr & (byte)FatAttr.LongName) != (byte)FatAttr.LongName)
-                        {
+                            lfnMask = 0;
+                            lfnTotal = 0;
                             index++;
                             continue;
                         }
                         if ((dirEntry[i].Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
                         {
+                            if (lfnChars == null)
+                                lfnChars = new char[260];
+                            LfnAccumulate((FatLfnEntry*)&dirEntry[i], lfnChars, ref lfnMask, ref lfnTotal, ref lfnChecksum);
+                            index++;
+                            continue;
+                        }
+                        if ((dirEntry[i].Attr & (byte)FatAttr.VolumeId) != 0)
+                        {
+                            lfnMask = 0;
+                            lfnTotal = 0;
                             index++;
                             continue;
                         }
 
                         string name = GetShortName(&dirEntry[i]);
-                        if (EqualsIgnoreCase(name, part))
+                        bool isMatch = EqualsIgnoreCase(name, part);
+                        if (!isMatch && lfnMask != 0 && LfnComplete(lfnMask, lfnTotal, &dirEntry[i], lfnChecksum))
+                        {
+                            string longName = AssembleLfnName(lfnChars!, lfnTotal);
+                            isMatch = longName.Length > 0 && EqualsIgnoreCase(longName, part);
+                        }
+                        lfnMask = 0;
+                        lfnTotal = 0;
+
+                        if (isMatch)
                         {
                             entry = dirEntry[i];
                             entryIndex = index;
@@ -1064,12 +1106,18 @@ public unsafe class FatFileSystem : IFileSystem
         var chars = new char[12];
         int len = 0;
 
+        // NTRes bits 0x08/0x10 flag lowercase base/extension (VFAT convention).
+        bool lowerBase = (entry->NTRes & 0x08) != 0;
+        bool lowerExt = (entry->NTRes & 0x10) != 0;
+
         // Name part (8 chars)
         for (int i = 0; i < 8; i++)
         {
             byte c = entry->Name[i];
             if (c == ' ')
                 break;
+            if (lowerBase && c >= 'A' && c <= 'Z')
+                c = (byte)(c + 32);
             chars[len++] = (char)c;
         }
 
@@ -1082,6 +1130,8 @@ public unsafe class FatFileSystem : IFileSystem
                 byte c = entry->Name[i];
                 if (c == ' ')
                     break;
+                if (lowerExt && c >= 'A' && c <= 'Z')
+                    c = (byte)(c + 32);
                 chars[len++] = (char)c;
             }
         }
@@ -1458,26 +1508,41 @@ public unsafe class FatFileSystem : IFileSystem
         entry = default;
         entryIndex = -1;
 
-        // Create 8.3 filename
-        if (!Create83Name(name, out entry))
-            return false;
+        byte attr = isDirectory ? (byte)FatAttr.Directory : (byte)FatAttr.Archive;
 
-        // Set attributes
-        entry.Attr = isDirectory ? (byte)FatAttr.Directory : (byte)FatAttr.Archive;
-
-        // TODO: Set timestamps when RTC is available
-
-        // Find free entry in directory
-        if (dirCluster == 0 && _fatType != FatType.Fat32)
+        // Names that fit 8.3 keep the classic single-entry path.
+        if (Fits83(name))
         {
-            // FAT12/16 root directory (fixed size)
-            return CreateEntryInRootDir(ref entry, out entryIndex);
+            // Create 8.3 filename
+            if (!Create83Name(name, out entry))
+                return false;
+
+            // Set attributes
+            entry.Attr = attr;
+
+            // TODO: Set timestamps when RTC is available
+
+            // Find free entry in directory
+            if (dirCluster == 0 && _fatType != FatType.Fat32)
+            {
+                // FAT12/16 root directory (fixed size)
+                return CreateEntryInRootDir(ref entry, out entryIndex);
+            }
+            else
+            {
+                // Normal directory (cluster chain)
+                return CreateEntryInDirectory(dirCluster, ref entry, out entryIndex);
+            }
         }
-        else
-        {
-            // Normal directory (cluster chain)
-            return CreateEntryInDirectory(dirCluster, ref entry, out entryIndex);
-        }
+
+        // Long name: 8.3 alias + LFN entries carrying the real name.
+        if (name.Length > 255)
+            name = name.Substring(0, 255);
+        int lfnCount = (name.Length + 12) / 13;
+        if (lfnCount < 1)
+            lfnCount = 1;
+
+        return CreateLongNameEntry(dirCluster, name, attr, lfnCount, out entry, out entryIndex);
     }
 
     /// <summary>
@@ -1769,6 +1834,543 @@ public unsafe class FatFileSystem : IFileSystem
         return true;
     }
 
+    // ==================== Long filename (LFN) support ====================
+
+    /// <summary>True when the name fits the 8.3 form (base &lt;= 8, ext &lt;= 3).</summary>
+    private static bool Fits83(string name)
+    {
+        int dotPos = name.LastIndexOf('.');
+        string baseName = dotPos >= 0 ? name.Substring(0, dotPos) : name;
+        string ext = dotPos >= 0 && dotPos < name.Length - 1 ? name.Substring(dotPos + 1) : "";
+        return baseName.Length > 0 && baseName.Length <= 8 && ext.Length <= 3;
+    }
+
+    /// <summary>Computes the LFN checksum over a raw 11-byte 8.3 name field.</summary>
+    private static byte ComputeLfnChecksum(byte* shortName)
+    {
+        byte sum = 0;
+        for (int i = 0; i < 11; i++)
+            sum = (byte)(((sum & 1) << 7) + (sum >> 1) + shortName[i]);
+        return sum;
+    }
+
+    /// <summary>Computes the LFN checksum over a managed 11-byte 8.3 name field.</summary>
+    private static byte ComputeLfnChecksum(byte[] shortName)
+    {
+        byte sum = 0;
+        for (int i = 0; i < 11; i++)
+            sum = (byte)(((sum & 1) << 7) + (sum >> 1) + shortName[i]);
+        return sum;
+    }
+
+    /// <summary>Reads one of the 13 UTF-16 characters stored in an LFN entry.</summary>
+    private static char LfnCharAt(FatLfnEntry* lfn, int slot)
+    {
+        byte lo, hi;
+        if (slot < 5)
+        {
+            lo = lfn->Name1[slot * 2];
+            hi = lfn->Name1[slot * 2 + 1];
+        }
+        else if (slot < 11)
+        {
+            lo = lfn->Name2[(slot - 5) * 2];
+            hi = lfn->Name2[(slot - 5) * 2 + 1];
+        }
+        else
+        {
+            lo = lfn->Name3[(slot - 11) * 2];
+            hi = lfn->Name3[(slot - 11) * 2 + 1];
+        }
+        return (char)(lo | (hi << 8));
+    }
+
+    /// <summary>Writes one of the 13 UTF-16 characters stored in an LFN entry.</summary>
+    private static void LfnSetChar(FatLfnEntry* lfn, int slot, char c)
+    {
+        byte lo = (byte)(c & 0xFF);
+        byte hi = (byte)(c >> 8);
+        if (slot < 5)
+        {
+            lfn->Name1[slot * 2] = lo;
+            lfn->Name1[slot * 2 + 1] = hi;
+        }
+        else if (slot < 11)
+        {
+            lfn->Name2[(slot - 5) * 2] = lo;
+            lfn->Name2[(slot - 5) * 2 + 1] = hi;
+        }
+        else
+        {
+            lfn->Name3[(slot - 11) * 2] = lo;
+            lfn->Name3[(slot - 11) * 2 + 1] = hi;
+        }
+    }
+
+    /// <summary>Maps a char to its safe uppercase 8.3 form.</summary>
+    private static byte To83(char c)
+    {
+        if (c >= 'a' && c <= 'z')
+            c = (char)(c - 32);
+        bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        return ok ? (byte)c : (byte)'_';
+    }
+
+    /// <summary>
+    /// Accumulates one LFN entry into <paramref name="chars"/>: stores the
+    /// entry's 13 UTF-16 characters at its ordinal position, records the
+    /// ordinal in the seen-mask, and captures the total part count from the
+    /// entry carrying the "last" flag (0x40).
+    /// </summary>
+    internal static bool LfnAccumulate(FatLfnEntry* lfn, char[] chars, ref int mask, ref int total, ref byte checksum)
+    {
+        int ord = lfn->Ord;
+        int seq = ord & 0x3F;
+        if (seq < 1 || seq > 20)
+            return false;
+        int baseIdx = (seq - 1) * 13;
+        for (int t = 0; t < 13; t++)
+            chars[baseIdx + t] = LfnCharAt(lfn, t);
+        mask |= 1 << (seq - 1);
+        if ((ord & 0x40) != 0)
+            total = seq;
+        checksum = lfn->Chksum;
+        return true;
+    }
+
+    /// <summary>
+    /// True when an accumulated LFN chain is complete (every ordinal seen)
+    /// and its checksum matches the short entry it precedes.
+    /// </summary>
+    internal static bool LfnComplete(int mask, int total, FatDirEntry* shortEntry, byte checksum)
+    {
+        if (total <= 0 || total > 20)
+            return false;
+        int expected = (1 << total) - 1;
+        if (mask != expected)
+            return false;
+        return ComputeLfnChecksum((byte*)shortEntry) == checksum;
+    }
+
+    /// <summary>Assembles the long name from accumulated characters.</summary>
+    internal static string AssembleLfnName(char[] chars, int total)
+    {
+        int max = total * 13;
+        if (max > 255)
+            max = 255;
+        int len = 0;
+        while (len < max)
+        {
+            char c = chars[len];
+            if (c == '\0' || c == (char)0xFFFF)
+                break;
+            len++;
+        }
+        return new string(chars, 0, len);
+    }
+
+    /// <summary>
+    /// Builds the 11-byte 8.3 alias ("BASE~N.EXT") for a long name, or
+    /// returns false when no valid alias can be produced.
+    /// </summary>
+    private static bool BuildShortAlias(string name, int suffix, byte[] out11)
+    {
+        int dotPos = name.LastIndexOf('.');
+        string baseName = dotPos >= 0 ? name.Substring(0, dotPos) : name;
+        string ext = dotPos >= 0 && dotPos < name.Length - 1 ? name.Substring(dotPos + 1) : "";
+
+        int digits = suffix < 10 ? 1 : (suffix < 100 ? 2 : 3);
+        int baseMax = 8 - 1 - digits;
+        if (baseMax < 1)
+            return false;
+
+        for (int i = 0; i < 11; i++)
+            out11[i] = (byte)' ';
+
+        int n = 0;
+        for (int i = 0; i < baseName.Length && n < baseMax; i++)
+            out11[n++] = To83(baseName[i]);
+        out11[n++] = (byte)'~';
+        if (digits == 3)
+            out11[n++] = (byte)('0' + (suffix / 100) % 10);
+        if (digits >= 2)
+            out11[n++] = (byte)('0' + (suffix / 10) % 10);
+        out11[n++] = (byte)('0' + suffix % 10);
+
+        int e = 0;
+        for (int i = 8; i < 11 && e < ext.Length; i++)
+            out11[i] = To83(ext[e++]);
+
+        return true;
+    }
+
+    /// <summary>Case-insensitive comparison of a stored 11-char short name and an alias.</summary>
+    private static bool AliasMatches(string stored, byte[] alias)
+    {
+        for (int i = 0; i < 11; i++)
+        {
+            char a = (char)alias[i];
+            char b = stored[i];
+            if (a >= 'a' && a <= 'z')
+                a = (char)(a - 32);
+            if (b >= 'a' && b <= 'z')
+                b = (char)(b - 32);
+            if (a != b)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>Builds one LFN entry slot of a chain (physical order left to right).</summary>
+    private static void BuildLfnSlot(FatDirEntry* slot, string name, int lfnCount, int physicalIdx, byte checksum)
+    {
+        byte* raw = (byte*)slot;
+        for (int i = 0; i < 32; i++)
+            raw[i] = 0;
+
+        var lfn = (FatLfnEntry*)slot;
+        int ord = lfnCount - physicalIdx;   // physical first slot carries the highest ordinal
+        lfn->Ord = (byte)(physicalIdx == 0 ? (ord | 0x40) : ord);
+        lfn->Attr = (byte)FatAttr.LongName;
+        lfn->Type = 0;
+        lfn->Chksum = checksum;
+
+        for (int t = 0; t < 13; t++)
+        {
+            int ci = (ord - 1) * 13 + t;
+            char c = ci < name.Length ? name[ci] : (ci == name.Length ? '\0' : (char)0xFFFF);
+            LfnSetChar(lfn, t, c);
+        }
+    }
+
+    /// <summary>
+    /// Creates a directory entry for a long name: an 8.3 alias plus the
+    /// LFN entries carrying the real name. Handles both FAT12/16 root
+    /// directories and cluster-chain directories, extending the chain
+    /// when no run of free slots exists.
+    /// </summary>
+    private bool CreateLongNameEntry(uint dirCluster, string name, byte attr, int lfnCount, out FatDirEntry entry, out int entryIndex)
+    {
+        entry = default;
+        entryIndex = -1;
+        if (_device == null)
+            return false;
+
+        int need = lfnCount + 1;
+        bool isRoot = dirCluster == 0 && _fatType != FatType.Fat32;
+
+        uint dirBytes = isRoot ? _rootEntryCount * 32 : _bytesPerCluster;
+        uint entriesPerCluster = dirBytes / 32;
+        ulong pageCount = ((ulong)dirBytes + 4095) / 4096;
+        ulong bufferPhys = Memory.AllocatePages(pageCount);
+        if (bufferPhys == 0)
+            return false;
+        byte* buffer = (byte*)Memory.PhysToVirt(bufferPhys);
+
+        try
+        {
+            // ---- Pass 1: walk the directory; collect existing short names
+            // (for alias uniqueness) and locate the first run of `need`
+            // consecutive free slots.
+            var existing = new string[512];
+            int existingCount = 0;
+            int runStart = -1;
+            int runLen = 0;
+            int totalSlots = 0;
+            uint lastCluster = dirCluster;
+            bool sawEnd = false;
+            bool foundRun = false;
+
+            if (isRoot)
+            {
+                if (!ReadRootDirectory(buffer, dirBytes))
+                {
+                    Memory.FreePages(bufferPhys, pageCount);
+                    return false;
+                }
+                var slots = (FatDirEntry*)buffer;
+                for (uint i = 0; i < entriesPerCluster; i++)
+                {
+                    var e = slots[i];
+                    totalSlots++;
+
+                    bool free;
+                    if (sawEnd)
+                    {
+                        free = true;
+                    }
+                    else if (e.Name[0] == 0)
+                    {
+                        sawEnd = true;
+                        free = true;
+                    }
+                    else if (e.Name[0] == 0xE5)
+                    {
+                        free = true;
+                    }
+                    else if ((e.Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
+                    {
+                        free = false;
+                    }
+                    else if ((e.Attr & (byte)FatAttr.VolumeId) != 0)
+                    {
+                        free = false;
+                    }
+                    else
+                    {
+                        if (existingCount < existing.Length)
+                        {
+                            var nb = new char[11];
+                            for (int b = 0; b < 11; b++)
+                                nb[b] = (char)e.Name[b];
+                            existing[existingCount++] = new string(nb);
+                        }
+                        free = false;
+                    }
+
+                    if (foundRun)
+                        continue;
+                    if (free)
+                    {
+                        if (runLen == 0)
+                            runStart = totalSlots - 1;
+                        runLen++;
+                        if (runLen >= need)
+                            foundRun = true;
+                    }
+                    else
+                    {
+                        runLen = 0;
+                        runStart = -1;
+                    }
+                }
+            }
+            else
+            {
+                uint cluster = dirCluster;
+                while (!FatCluster.IsEndOfChain(cluster, _fatType))
+                {
+                    if (!ReadCluster(cluster, buffer))
+                    {
+                        Memory.FreePages(bufferPhys, pageCount);
+                        return false;
+                    }
+                    var slots = (FatDirEntry*)buffer;
+                    for (uint i = 0; i < entriesPerCluster; i++)
+                    {
+                        var e = slots[i];
+                        totalSlots++;
+
+                        bool free;
+                        if (sawEnd)
+                        {
+                            free = true;
+                        }
+                        else if (e.Name[0] == 0)
+                        {
+                            sawEnd = true;
+                            free = true;
+                        }
+                        else if (e.Name[0] == 0xE5)
+                        {
+                            free = true;
+                        }
+                        else if ((e.Attr & (byte)FatAttr.LongName) == (byte)FatAttr.LongName)
+                        {
+                            free = false;
+                        }
+                        else if ((e.Attr & (byte)FatAttr.VolumeId) != 0)
+                        {
+                            free = false;
+                        }
+                        else
+                        {
+                            if (existingCount < existing.Length)
+                            {
+                                var nb = new char[11];
+                                for (int b = 0; b < 11; b++)
+                                    nb[b] = (char)e.Name[b];
+                                existing[existingCount++] = new string(nb);
+                            }
+                            free = false;
+                        }
+
+                        if (foundRun)
+                            continue;
+                        if (free)
+                        {
+                            if (runLen == 0)
+                                runStart = totalSlots - 1;
+                            runLen++;
+                            if (runLen >= need)
+                                foundRun = true;
+                        }
+                        else
+                        {
+                            runLen = 0;
+                            runStart = -1;
+                        }
+                    }
+
+                    lastCluster = cluster;
+                    cluster = GetFatEntry(cluster);
+                }
+            }
+
+            // ---- Pick a unique 8.3 alias.
+            var aliasArr = new byte[11];
+            bool aliasOk = false;
+            for (int k = 1; k < 1000 && !aliasOk; k++)
+            {
+                if (!BuildShortAlias(name, k, aliasArr))
+                    break;
+                bool used = false;
+                for (int i = 0; i < existingCount && !used; i++)
+                    used = AliasMatches(existing[i], aliasArr);
+                if (!used)
+                    aliasOk = true;
+            }
+            if (!aliasOk)
+            {
+                Memory.FreePages(bufferPhys, pageCount);
+                return false;
+            }
+
+            // ---- Ensure space: append or extend the chain when needed.
+            if (isRoot)
+            {
+                if (runStart < 0 || runStart + need > totalSlots)
+                {
+                    Memory.FreePages(bufferPhys, pageCount);
+                    return false;
+                }
+            }
+            else
+            {
+                if (runStart < 0)
+                    runStart = totalSlots;      // append after the last entry
+                int have = totalSlots - runStart;
+                if (have < need)
+                {
+                    int extra = need - have;
+                    int clustersNeeded = (extra + (int)entriesPerCluster - 1) / (int)entriesPerCluster;
+                    for (int c = 0; c < clustersNeeded; c++)
+                    {
+                        uint nc = ExtendClusterChain(lastCluster);
+                        if (nc == 0)
+                        {
+                            Memory.FreePages(bufferPhys, pageCount);
+                            return false;
+                        }
+                        for (uint b = 0; b < _bytesPerCluster; b++)
+                            buffer[b] = 0;
+                        if (!WriteCluster(nc, buffer))
+                        {
+                            Memory.FreePages(bufferPhys, pageCount);
+                            return false;
+                        }
+                        lastCluster = nc;
+                    }
+                    WriteFat();
+                    totalSlots += clustersNeeded * (int)entriesPerCluster;
+                }
+            }
+
+            // ---- Pass 2: write the LFN chain followed by the short entry.
+            byte checksum = ComputeLfnChecksum(aliasArr);
+            uint writeCluster = isRoot ? 0 : dirCluster;
+            int position = runStart;
+            if (!isRoot)
+            {
+                while (position >= (int)entriesPerCluster)
+                {
+                    position -= (int)entriesPerCluster;
+                    writeCluster = GetFatEntry(writeCluster);
+                }
+            }
+            int slotInCluster = position;
+            int written = 0;
+
+            while (written < need)
+            {
+                if (isRoot)
+                {
+                    if (!ReadRootDirectory(buffer, dirBytes))
+                    {
+                        Memory.FreePages(bufferPhys, pageCount);
+                        return false;
+                    }
+                }
+                else if (!ReadCluster(writeCluster, buffer))
+                {
+                    Memory.FreePages(bufferPhys, pageCount);
+                    return false;
+                }
+
+                int batch = (int)entriesPerCluster - slotInCluster;
+                if (batch > need - written)
+                    batch = need - written;
+
+                for (int i = 0; i < batch; i++)
+                {
+                    var slot = (FatDirEntry*)(buffer + (slotInCluster + i) * 32);
+                    int idx = written + i;
+                    if (idx < lfnCount)
+                    {
+                        BuildLfnSlot(slot, name, lfnCount, idx, checksum);
+                    }
+                    else
+                    {
+                        for (int b = 0; b < 11; b++)
+                            slot->Name[b] = aliasArr[b];
+                        slot->Attr = attr;
+                        slot->NTRes = 0;
+                        slot->CrtTimeTenth = 0;
+                        slot->CrtTime = 0;
+                        slot->CrtDate = 0;
+                        slot->LstAccDate = 0;
+                        slot->FstClusHI = 0;
+                        slot->WrtTime = 0;
+                        slot->WrtDate = 0;
+                        slot->FstClusLO = 0;
+                        slot->FileSize = 0;
+                        entry = *slot;
+                    }
+                }
+
+                if (isRoot)
+                {
+                    ulong rootSector = _reservedSectors + (_numFats * _fatSizeSectors);
+                    int result = _device.Write(rootSector, _rootDirSectors, buffer);
+                    if (result != (int)_rootDirSectors)
+                    {
+                        Memory.FreePages(bufferPhys, pageCount);
+                        return false;
+                    }
+                }
+                else if (!WriteCluster(writeCluster, buffer))
+                {
+                    Memory.FreePages(bufferPhys, pageCount);
+                    return false;
+                }
+
+                written += batch;
+                slotInCluster = 0;
+                if (written < need && !isRoot)
+                    writeCluster = GetFatEntry(writeCluster);
+            }
+
+            entryIndex = runStart + lfnCount;
+            Memory.FreePages(bufferPhys, pageCount);
+            return true;
+        }
+        catch
+        {
+            Memory.FreePages(bufferPhys, pageCount);
+            return false;
+        }
+    }
+
     /// <summary>
     /// Update just the cluster and size of a directory entry.
     /// Used by FatFileHandle.Flush() to update file metadata without
@@ -1895,6 +2497,15 @@ public unsafe class FatFileSystem : IFileSystem
                 var dirEntry = (FatDirEntry*)buffer;
                 dirEntry[entryIndex].Name[0] = 0xE5; // Deleted marker
 
+                // Clear the LFN entries belonging to this file so a stale
+                // long-name chain can never pair with a later entry.
+                int prev = entryIndex - 1;
+                while (prev >= 0 && dirEntry[prev].Attr == (byte)FatAttr.LongName)
+                {
+                    dirEntry[prev].Name[0] = 0xE5;
+                    prev--;
+                }
+
                 ulong rootSector = _reservedSectors + (_numFats * _fatSizeSectors);
                 int result = _device.Write(rootSector, _rootDirSectors, buffer);
 
@@ -1940,6 +2551,15 @@ public unsafe class FatFileSystem : IFileSystem
 
                 var dirEntry = (FatDirEntry*)buffer;
                 dirEntry[offsetInCluster].Name[0] = 0xE5;
+
+                // Clear the LFN entries belonging to this file so a stale
+                // long-name chain can never pair with a later entry.
+                int prev = (int)offsetInCluster - 1;
+                while (prev >= 0 && dirEntry[prev].Attr == (byte)FatAttr.LongName)
+                {
+                    dirEntry[prev].Name[0] = 0xE5;
+                    prev--;
+                }
 
                 bool success = WriteCluster(cluster, buffer);
                 Memory.FreePages(bufferPhys, pageCount);

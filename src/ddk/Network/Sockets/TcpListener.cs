@@ -69,13 +69,17 @@ public unsafe class TcpListener
     /// <summary>
     /// Start listening for incoming connections.
     /// </summary>
+    /// <param name="reuseAddress">
+    /// SO_REUSEADDR: replace a stale registration for the same port so a
+    /// restarted server can rebind immediately (Phase 6).
+    /// </param>
     /// <returns>True if started successfully.</returns>
-    public bool Start()
+    public bool Start(bool reuseAddress = false)
     {
         if (_isListening)
             return true;
 
-        if (!_stack.RegisterListener(this))
+        if (!_stack.RegisterListener(this, reuseAddress))
         {
             Debug.WriteLine("[TcpListener] Failed to register listener");
             return false;
@@ -154,7 +158,28 @@ public unsafe class TcpListener
         Debug.WriteDecimal(conn.RemoteEndpoint.Port);
         Debug.WriteLine("");
 
-        return new TcpSocket(conn);
+        return new TcpSocket(_stack, conn);
+    }
+
+    /// <summary>
+    /// Wait up to <paramref name="timeoutMs"/> for an incoming
+    /// connection, pumping the network stack while waiting. Returns null
+    /// on timeout. This is the blocking-accept equivalent for server
+    /// utilities (Phase 6); the stack has no kernel pump, so the caller
+    /// moves frames through this method.
+    /// </summary>
+    public TcpSocket? AcceptSocket(int timeoutMs, int maxFramesPerPoll = 4)
+    {
+        ulong start = Timer.GetUptimeMilliseconds();
+        while (true)
+        {
+            NetworkPump.Pump(_stack, maxFramesPerPoll);
+            if (Pending())
+                return AcceptSocket();
+            if (Timer.GetUptimeMilliseconds() - start >= (ulong)timeoutMs)
+                return null;
+            NetworkPump.FlushTx(_stack);
+        }
     }
 
     /// <summary>
@@ -166,6 +191,15 @@ public unsafe class TcpListener
     {
         if (!_isListening)
             return;
+
+        // Phase 6 minimal packet filter (/etc/firewall.conf).
+        if (!Firewall.AllowInbound(srcIP, dstPort))
+        {
+            Debug.Write("[TcpListener] SYN from ");
+            PrintIP(srcIP);
+            Debug.WriteLine(" denied by /etc/firewall.conf");
+            return;
+        }
 
         // Check if we already have a pending connection from this source
         for (int i = 0; i < MaxPendingConnections; i++)

@@ -90,6 +90,7 @@ public static unsafe class NetworkPump
             FlushTx(stack);
             processed++;
         }
+        stack.ReapClosedConnections();
         return processed;
     }
 

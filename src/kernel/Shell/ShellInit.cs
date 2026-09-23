@@ -31,6 +31,19 @@ public static class ShellInit
     public const string HistoryFile = "/history.txt";
 
     /// <summary>
+    /// Phase 6 boot parameters (key=value per line): net.ip=dhcp|static,
+    /// net.static.ip/gateway/dns/mask, sshd.autostart=yes|no,
+    /// webhost.autostart=yes|no. See docs/PHASE6-ACCEPTANCE.md.
+    /// </summary>
+    public const string BootParamsFile = "/etc/boot.params";
+
+    /// <summary>
+    /// Phase 6 local startup script, sourced after boot parameters and
+    /// before the first prompt (like Linux's /etc/rc.local).
+    /// </summary>
+    public const string RcLocalFile = "/etc/rc.local";
+
+    /// <summary>
     /// Applies the default environment (only for variables that are not
     /// set yet), initializes the shell PID, installs the tab completer,
     /// loads history and executes the profile scripts.
@@ -53,7 +66,86 @@ public static class ShellInit
         LoadHistory();
         RunProfile(SystemProfile);
         RunProfile(UserProfile);
+        ApplyBootParameters();
+        RunProfile(RcLocalFile);
         ShellState.SetVar("PWD", Directory.GetCurrentDirectory());
+    }
+
+    /// <summary>
+    /// Applies /etc/boot.params (Phase 6):
+    ///   net.ip=dhcp            runs the DHCP client on eth0
+    ///   net.ip=static          applies net.static.* via ifconfig
+    ///   sshd.autostart=yes     starts the SSH server
+    ///   webhost.autostart=yes  starts the web host
+    /// Unknown keys are ignored.
+    /// </summary>
+    private static void ApplyBootParameters()
+    {
+        if (!File.Exists(BootParamsFile))
+            return;
+
+        string staticIp = null;
+        string staticMask = null;
+        string staticGw = null;
+        string staticDns = null;
+        try
+        {
+            string[] lines = File.ReadAllLines(BootParamsFile);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                if (line.Length == 0 || line[0] == '#')
+                    continue;
+                int eq = line.IndexOf('=');
+                if (eq <= 0)
+                    continue;
+                string key = line.Substring(0, eq).Trim();
+                string value = line.Substring(eq + 1).Trim();
+
+                if (key == "net.ip")
+                {
+                    if (value == "dhcp")
+                        ShellExecutor.ExecuteLine("dhcp");
+                    else if (value == "static")
+                        Console.WriteLine("[boot] net.ip=static (applying net.static.*)");
+                }
+                else if (key == "net.static.ip")
+                    staticIp = value;
+                else if (key == "net.static.mask")
+                    staticMask = value;
+                else if (key == "net.static.gateway")
+                    staticGw = value;
+                else if (key == "net.static.dns")
+                    staticDns = value;
+                else if (key == "sshd.autostart")
+                {
+                    if (value == "yes")
+                        ShellExecutor.ExecuteLine("sshd");
+                }
+                else if (key == "webhost.autostart")
+                {
+                    if (value == "yes")
+                        ShellExecutor.ExecuteLine("webhost");
+                }
+            }
+        }
+        catch (Exception)
+        {
+            Console.Error.WriteLine("neutrinoos: warning: could not read " + BootParamsFile);
+            return;
+        }
+
+        if (staticIp != null)
+        {
+            if (staticMask == null)
+                staticMask = "255.255.255.0";
+            if (staticGw == null)
+                staticGw = staticIp;
+            string cmd = "ifconfig eth0 static " + staticIp + " " + staticMask + " " + staticGw;
+            if (staticDns != null)
+                cmd = cmd + " " + staticDns;
+            ShellExecutor.ExecuteLine(cmd);
+        }
     }
 
     private static void SetDefault(string name, string value)

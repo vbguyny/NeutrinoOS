@@ -64,12 +64,14 @@ public unsafe class TcpSocket
 
     /// <summary>
     /// Create a socket from an accepted connection (used by TcpListener).
+    /// The connection is tracked by the stack's table, so sends and
+    /// closes go through the owning stack (Phase 6).
     /// </summary>
-    internal TcpSocket(TcpConnection connection)
+    internal TcpSocket(NetworkStack stack, TcpConnection connection)
     {
-        _stack = null;  // Connection already managed by stack
+        _stack = stack;
         _connection = connection;
-        _connectionIndex = -1;  // Not tracked by index for accepted connections
+        _connectionIndex = connection.StackIndex;
     }
 
     /// <summary>
@@ -112,17 +114,27 @@ public unsafe class TcpSocket
     /// <returns>Number of bytes sent, or 0 on error.</returns>
     public int Send(byte* data, int length)
     {
-        if (_connection == null || !Connected)
+        if (_connection == null || !Connected || _stack == null || _connectionIndex < 0)
             return 0;
 
-        if (_stack != null && _connectionIndex >= 0)
+        // Segment large writes so each frame stays within one Ethernet
+        // MTU (the stack builds a single IP packet per call - no
+        // fragmentation support), transmitting after each segment.
+        const int MaxSegment = 1400;
+        int sent = 0;
+        while (sent < length)
         {
-            return _stack.TcpSend(_connectionIndex, data, length);
-        }
+            int chunk = length - sent;
+            if (chunk > MaxSegment)
+                chunk = MaxSegment;
 
-        // For accepted connections, we need to send through the connection directly
-        // This requires the stack to expose a method for sending
-        return 0;
+            int n = _stack.TcpSend(_connectionIndex, data + sent, chunk);
+            if (n <= 0)
+                break;
+            sent += n;
+            NetworkPump.FlushTx(_stack);
+        }
+        return sent;
     }
 
     /// <summary>
@@ -184,10 +196,76 @@ public unsafe class TcpSocket
         if (_stack != null && _connectionIndex >= 0)
         {
             _stack.TcpClose(_connectionIndex);
+            NetworkPump.FlushTx(_stack);
         }
 
         _connection = null;
         _connectionIndex = -1;
+    }
+
+    /// <summary>
+    /// Half-close: send a FIN for the send direction while the receive
+    /// direction remains open (FIN_WAIT1). Use Close for the full close
+    /// (Phase 6, TCP shutdown semantics).
+    /// </summary>
+    public void Shutdown()
+    {
+        if (_stack != null && _connectionIndex >= 0)
+        {
+            _stack.TcpShutdownSend(_connectionIndex);
+            NetworkPump.FlushTx(_stack);
+        }
+    }
+
+    /// <summary>
+    /// Block (pumping the stack) until at least one byte is available or
+    /// the peer closes or the timeout expires; returns the bytes read
+    /// into <paramref name="buffer"/> (0 on timeout/closed).
+    /// </summary>
+    public int ReceiveWait(byte* buffer, int maxLength, int timeoutMs)
+    {
+        if (_stack == null)
+            return Receive(buffer, maxLength);
+
+        ulong start = Timer.GetUptimeMilliseconds();
+        while (true)
+        {
+            NetworkPump.Pump(_stack, 4);
+            int n = Receive(buffer, maxLength);
+            if (n > 0)
+                return n;
+            if (_connection == null || _connection.IsClosed || State == TcpState.CloseWait)
+                return 0;
+            if (Timer.GetUptimeMilliseconds() - start >= (ulong)timeoutMs)
+                return 0;
+        }
+    }
+
+    /// <summary>
+    /// Block (pumping the stack) until buffered data is available or the
+    /// timeout expires. The bytes stay in the receive queue for a later
+    /// Receive call.
+    /// </summary>
+    public bool WaitReadable(int timeoutMs)
+    {
+        if (_connection == null)
+            return false;
+        if (Available > 0)
+            return true;
+        if (_stack == null)
+            return false;
+
+        ulong start = Timer.GetUptimeMilliseconds();
+        while (true)
+        {
+            NetworkPump.Pump(_stack, 4);
+            if (Available > 0)
+                return true;
+            if (_connection.IsClosed)
+                return false;
+            if (Timer.GetUptimeMilliseconds() - start >= (ulong)timeoutMs)
+                return false;
+        }
     }
 
     /// <summary>

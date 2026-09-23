@@ -1,7 +1,9 @@
 // NeutrinoOS Phase 5 utility: ifconfig - network interface configuration
 //
-// usage: ifconfig                 - show all interfaces
-//        ifconfig eth0 up|down    - change interface state
+// usage: ifconfig                              - show all interfaces
+//        ifconfig eth0 up|down                 - change interface state
+//        ifconfig eth0 static <ip> <mask> <gateway> [dns]
+//                                              - apply a static configuration
 //
 // Reads the live DDK NetworkManager state (shared between the driver,
 // kernel and utilities), so the eth0 entry registered by the virtio-net
@@ -22,7 +24,12 @@ public static class Program
         bool showHelp = false;
         string name = null;
         string op = null;
+        string p1 = null;
+        string p2 = null;
+        string p3 = null;
+        string p4 = null;
 
+        int positional = 0;
         for (int i = 0; i < args.Length; i++)
         {
             string a = args[i];
@@ -31,26 +38,30 @@ public static class Program
                 showHelp = true;
                 break;
             }
-            if (name == null)
-            {
+            if (positional == 0)
                 name = a;
-            }
-            else if (op == null)
-            {
+            else if (positional == 1)
                 op = a;
-            }
+            else if (positional == 2)
+                p1 = a;
+            else if (positional == 3)
+                p2 = a;
+            else if (positional == 4)
+                p3 = a;
+            else if (positional == 5)
+                p4 = a;
             else
-            {
-                return Util.Fail("ifconfig", "usage: ifconfig [interface [up|down]]");
-            }
+                return Util.Fail("ifconfig", "usage: ifconfig [interface [up|down|static ...]]");
+            positional++;
         }
 
         if (showHelp)
         {
             return Util.Help(
-                "usage: ifconfig [interface [up|down]]",
+                "usage: ifconfig [interface [up|down|static ...]]",
                 "  With no arguments, shows every network interface.",
-                "  'ifconfig eth0 up|down' changes the interface state.");
+                "  'ifconfig eth0 up|down' changes the interface state.",
+                "  'ifconfig eth0 static <ip> <mask> <gateway> [dns]' applies IP settings.");
         }
 
         if (name == null)
@@ -80,7 +91,45 @@ public static class Program
             Console.WriteLine(": interface down");
             return 0;
         }
-        return Util.Fail("ifconfig", op + ": expected 'up' or 'down'");
+        if (op == "static")
+        {
+            if (p1 == null || p2 == null || p3 == null)
+                return Util.Fail("ifconfig", "usage: ifconfig <iface> static <ip> <mask> <gateway> [dns]");
+            uint ip = ParseIP(p1);
+            uint mask = ParseIP(p2);
+            uint gw = ParseIP(p3);
+            uint dns = p4 != null ? ParseIP(p4) : 0;
+            if (!NetworkManager.ConfigureStatic(iface, ip, mask, gw, dns))
+                return Util.Fail("ifconfig", name + ": static configuration failed");
+            Console.Write(name);
+            Console.WriteLine(": static configuration applied");
+            return 0;
+        }
+        return Util.Fail("ifconfig", op + ": expected 'up', 'down' or 'static'");
+    }
+
+    /// <summary>Parses a dotted-quad IPv4 address into host byte order."</summary>
+    public static uint ParseIP(string s)
+    {
+        uint value = 0;
+        int part = 0;
+        int cur = 0;
+        for (int i = 0; i <= s.Length; i++)
+        {
+            if (i == s.Length || s[i] == '.')
+            {
+                value = (value << 8) | (uint)(cur & 0xFF);
+                part++;
+                cur = 0;
+                if (part == 4)
+                    break;
+            }
+            else if (s[i] >= '0' && s[i] <= '9')
+            {
+                cur = cur * 10 + (s[i] - '0');
+            }
+        }
+        return value;
     }
 
     private static void ShowAll()
