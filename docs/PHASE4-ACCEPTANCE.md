@@ -59,6 +59,12 @@ Verified on the final image with scripted serial input:
 `[interactive] echo: hello there` then `[interactive] bye` and
 `[run] exited with code 0`. Recipe: `bash build/run-p4inter.sh`.
 
+Also verified end-to-end on the VirtualBox GUI image (`NeutrinoOSCli`
+VM, PS/2 keyboard + VGA console): `scripts/vbox-phase4-test.ps1` types
+the full eight-app session and asserts the serial transcript - 10/10
+checks green including `[interactive] echo: vbox keyboard test` and
+`[interactive] bye`.
+
 ## 5. File I/O test - **PASS**
 
 ```bash

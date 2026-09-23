@@ -84,6 +84,18 @@ blocked, and what remains.
   as `p4net.dll` (the FAT-8.3-safe name) and is included in
   `build/p4-deploy.sh` / the scripted suite.
 
+## Verified working (VirtualBox GUI image)
+
+- `scripts/vbox-phase4-test.ps1` (run after `scripts/gui-vm.ps1`) types
+  the whole Phase 4 session through the PS/2 keyboard into the VGA
+  console of the `NeutrinoOSCli` VM: all eight apps pass (hello, multi,
+  net degraded, cs14, async, linq, fileio), the interactive round trip
+  echoes `vbox keyboard test` and `bye`s, every run exits 0 and `SYSTEM
+  HALTED` never appears - 10/10 automated checks green; transcript in
+  `build\vbox-gui-serial.log`. The script polls the serial log per app
+  (VirtualBox is slower than QEMU: `p4linq` needs ~2.5 min to compile and
+  run) and is safe to re-run on the same boot.
+
 ## Blockers (open JIT issues, in priority order)
 
 None blocking the Phase 4 acceptance items. Two former blockers were
