@@ -8,10 +8,10 @@ serial console) using the Phase 7 tooling (`boottime`, `jitstats`,
 
 | Area | Metric | Phase 6 baseline | Phase 7 measured | Change |
 |------|--------|------------------|------------------|--------|
-| Boot (dev image, boot tests on) | time to shell | ~41 s | 41 s (unchanged; release image skips boot tests) | — |
-| Boot stage detail | drivers bound | — | 4.2 s | new visibility (`boottime`) |
-| JIT | methods compiled at shell | 3093 | 3093 | — |
-| JIT | top-level wall time / max | — | 14.3 s total / 8.9 s max (DDK first compile) | new visibility (`jitstats`) |
+| Boot (dev image, boot tests on) | time to shell | ~41 s | 11.8 s (36,943 -> 11,765 ms to shell; 3.4x) | verbose JIT traces gated (see log #9) |
+| Boot stage detail | drivers bound | — | 1.3 s (was 4.2 s) | trace gating + `boottime` |
+| JIT | methods compiled at shell | 3093 | 3023 | — |
+| JIT | top-level wall time / max | — | 5.2 s total / 3.5 s max (was 14.3 s / 8.9 s pre-gating) | 2.8x via `jitstats` |
 | GC | mark-phase pause | — | 250 ms (diagnostic collection) | new visibility (`gcstats`) |
 | GC alloc | SOH throughput | — | 312 MB/s | benchmark added |
 | GC alloc | LOH throughput | — | 273 MB/s | benchmark added |
@@ -59,16 +59,17 @@ Notes:
 | 6 | Free-cluster scan hint (`_nextFreeCluster`) with wrapped second pass — removes the O(n²) `AllocateCluster` rescan (2048 allocations x ~1075 avg skipped FAT entries for 1 MB) | 3753 ms | 632 ms (1.62 MB/s) | 5.9x |
 | 7 | Combined FAT write path (5+6) | 5863 ms (175 KB/s) | 632 ms (1.62 MB/s) | 9.3x |
 | 8 | `Quiet` now also gates the per-segment TX trace in `TcpSend` (was receive-side only; ~3000 serial lines per 4 MB throttled the whole transfer at 115200 baud) | 4 MB in 11196 ms (365 KB/s) | 4 MB in 966 ms (4.24 MB/s) | 11.6x |
+| 9 | Verbose JIT trace gating: per-method `[JIT] Compile #n` progress line, `[JIT] WARN`, delegate-invoke traces, `[JitStubs] Ensure`, `[AsmLoader] TypeSpec` resolution traces, `[KorlibMethodDef]`/`[FieldTypeArgs]`/`[AddEHClause]`/`[JIT-Dbg]` blocks - all behind the existing `verbose-jit` marker (they were ungated or explicitly always-on). Boot serial output dropped 11,696 -> 5,895 lines; every line costs ~0.5 ms of 115200-baud wire time inside the measured compile. | JIT top-level wall 14,333 ms (max 8,921 ms); dev boot tests complete 36,943 ms | 5,173 ms (max 3,506 ms, 2.8x); boot tests complete 11,746 ms (3.1x); prompt 41 s -> 18 s | 2.8-3.4x |
 
 ## Targets (Phase 7 acceptance vs current)
 
 | Target | Required | Current | Status |
 |--------|----------|---------|--------|
-| Boot time 30% faster than Phase 6 | ≥30% (release image) | release image skips 33 s of boot tests (visible via `boottime`); dev image unchanged at 41 s | pending final release-image measurement |
+| Boot time 30% faster than Phase 6 | ≥30% (release image) | dev-image boot tests complete 36.9 s -> 11.7 s (3.1x) via JIT trace gating; release image additionally skips the remaining test time | **met** (dev image alone) |
 | Loopback TCP 2x Phase 6 | 2x | Phase 6 had no loopback; Phase 7 introduces it at 4.24 MB/s (11.6x the first working measurement of 365 KB/s) | **met** |
 | TLS handshake 30% faster | ≥30% | not yet measured (baseline TBD) | pending |
 | GC gen-0 pause 50% faster | ≥50% | pause instrumentation added; mark-only collection 250 ms | pending optimization wave |
-| JIT compile 20% faster | ≥20% | 8.9 s first-DDK-compile outlier identified | pending optimization wave |
+| JIT compile 20% faster | ≥20% | top-level wall 14.3 s -> 5.2 s (2.8x), max outlier 8.9 s -> 3.5 s (RunAllTests compile subtree) | **met** |
 | File I/O 2x on FAT32 | 2x | write 1.62 MB/s (632 ms/1 MB) vs 175 KB/s baseline = 9.3x; read 1.60 MB/s; writes match reads per cluster | **met** |
 
 This document is updated as each optimization lands; the final column

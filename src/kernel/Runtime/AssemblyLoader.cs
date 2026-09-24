@@ -7138,20 +7138,26 @@ public static unsafe class AssemblyLoader
                     // TypeDef - same assembly
                     targetAsm = sourceAsm;
                     typeDefToken = underlyingToken;
-                    DebugConsole.Write("[AsmLoader] TypeSpec -> TypeDef 0x");
-                    DebugConsole.WriteHex(typeDefToken);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[AsmLoader] TypeSpec -> TypeDef 0x");
+                        DebugConsole.WriteHex(typeDefToken);
+                        DebugConsole.WriteLine();
+                    }
                 }
                 else if (underlyingTable == 0x01)
                 {
                     // TypeRef - resolve to target assembly
                     if (!ResolveTypeRefToTypeDef(sourceAsm, underlyingRow, out targetAsm, out typeDefToken))
                         return false;
-                    DebugConsole.Write("[AsmLoader] TypeSpec -> TypeRef row ");
-                    DebugConsole.WriteDecimal(underlyingRow);
-                    DebugConsole.Write(" resolved to token 0x");
-                    DebugConsole.WriteHex(typeDefToken);
-                    DebugConsole.WriteLine();
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[AsmLoader] TypeSpec -> TypeRef row ");
+                        DebugConsole.WriteDecimal(underlyingRow);
+                        DebugConsole.Write(" resolved to token 0x");
+                        DebugConsole.WriteHex(typeDefToken);
+                        DebugConsole.WriteLine();
+                    }
                 }
                 else
                 {

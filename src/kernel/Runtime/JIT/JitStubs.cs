@@ -133,11 +133,15 @@ public static unsafe class JitStubs
     /// <param name="assemblyId">The assembly ID containing the method.</param>
     public static void EnsureCompiled(uint methodToken, uint assemblyId)
     {
-        DebugConsole.Write("[JitStubs] Ensure 0x");
-        DebugConsole.WriteHex(methodToken);
-        DebugConsole.Write(" asm ");
-        DebugConsole.WriteDecimal(assemblyId);
-        DebugConsole.WriteLine();
+        // Per-stub trace: hundreds of lines per boot - verbose-jit only.
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[JitStubs] Ensure 0x");
+            DebugConsole.WriteHex(methodToken);
+            DebugConsole.Write(" asm ");
+            DebugConsole.WriteDecimal(assemblyId);
+            DebugConsole.WriteLine();
+        }
 
         // Fast path: Check if already compiled
         CompiledMethodInfo* info = CompiledMethodRegistry.Lookup(methodToken, assemblyId);

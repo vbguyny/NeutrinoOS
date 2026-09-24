@@ -2320,11 +2320,14 @@ public static unsafe class MetadataIntegration
                 SetTypeTypeArgs(typeArgs, typeArgCount);
                 hasGenericContext = true;
 
-                DebugConsole.Write("[FieldTypeArgs] Set ");
-                DebugConsole.WriteDecimal((uint)typeArgCount);
-                DebugConsole.Write(" args for field MemberRef 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[FieldTypeArgs] Set ");
+                    DebugConsole.WriteDecimal((uint)typeArgCount);
+                    DebugConsole.Write(" args for field MemberRef 0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.WriteLine();
+                }
             }
             else if (genericInstMT->_relatedType != null)
             {
@@ -3050,13 +3053,16 @@ public static unsafe class MetadataIntegration
         // Try to look up in AOT registry
         if (AotMethodRegistry.TryLookup(fullTypeName, methodName, paramCount, out AotMethodEntry entry))
         {
-            DebugConsole.Write("[KorlibMethodDef] AOT resolved: ");
-            WriteByteString(fullTypeName);
-            DebugConsole.Write(".");
-            WriteByteString(methodName);
-            DebugConsole.Write(" -> 0x");
-            DebugConsole.WriteHex((ulong)entry.NativeCode);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[KorlibMethodDef] AOT resolved: ");
+                WriteByteString(fullTypeName);
+                DebugConsole.Write(".");
+                WriteByteString(methodName);
+                DebugConsole.Write(" -> 0x");
+                DebugConsole.WriteHex((ulong)entry.NativeCode);
+                DebugConsole.WriteLine();
+            }
 
             result.NativeCode = (void*)entry.NativeCode;
             result.IsAotTarget = true;

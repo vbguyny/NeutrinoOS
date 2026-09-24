@@ -292,13 +292,16 @@ public unsafe struct JITMethodInfo
             }
 
             // Write new clause in NativeAOT format
-            DebugConsole.Write("[AddEHClause] tryStart=0x");
-            DebugConsole.WriteHex(clause.TryStartOffset);
-            DebugConsole.Write(" tryEnd=0x");
-            DebugConsole.WriteHex(clause.TryEndOffset);
-            DebugConsole.Write(" handler=0x");
-            DebugConsole.WriteHex(clause.HandlerStartOffset);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AddEHClause] tryStart=0x");
+                DebugConsole.WriteHex(clause.TryStartOffset);
+                DebugConsole.Write(" tryEnd=0x");
+                DebugConsole.WriteHex(clause.TryEndOffset);
+                DebugConsole.Write(" handler=0x");
+                DebugConsole.WriteHex(clause.HandlerStartOffset);
+                DebugConsole.WriteLine();
+            }
 
             WriteNativeUnsigned(ref ptr, clause.TryStartOffset);
 

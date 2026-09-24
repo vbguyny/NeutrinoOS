@@ -1506,8 +1506,9 @@ public unsafe struct ILCompiler
 
     private void PatchBranches()
     {
-        // Debug large methods with many branches
-        bool debug = _branchCount > 25 && _ilLength > 0x400;
+        // Debug large methods with many branches (verbose-jit only; the
+        // block prints ~12 lines per large method).
+        bool debug = JitDiag.VerboseJit && _branchCount > 25 && _ilLength > 0x400;
         if (debug)
         {
             DebugConsole.Write("[JIT-Dbg] PatchBranches brCnt=");
@@ -7305,22 +7306,28 @@ public unsafe struct ILCompiler
         // Delegate.Invoke is a runtime-provided method - we emit inline dispatch code
         if (method.IsDelegateInvoke)
         {
-            DebugConsole.Write("[JIT] delegate invoke for 0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[JIT] delegate invoke for 0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.WriteLine();
+            }
             return CompileCallvirtDelegateInvoke(method);
         }
         else if (method.NativeCode == null && method.VtableSlot < 0)
         {
-            DebugConsole.Write("[JIT] WARN: no code for tok=0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" IsDelegateInvoke=");
-            DebugConsole.Write(method.IsDelegateInvoke ? "Y" : "N");
-            DebugConsole.Write(" isVirt=");
-            DebugConsole.Write(method.IsVirtual ? "Y" : "N");
-            DebugConsole.Write(" isIface=");
-            DebugConsole.Write(method.IsInterfaceMethod ? "Y" : "N");
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[JIT] WARN: no code for tok=0x");
+                DebugConsole.WriteHex(token);
+                DebugConsole.Write(" IsDelegateInvoke=");
+                DebugConsole.Write(method.IsDelegateInvoke ? "Y" : "N");
+                DebugConsole.Write(" isVirt=");
+                DebugConsole.Write(method.IsVirtual ? "Y" : "N");
+                DebugConsole.Write(" isIface=");
+                DebugConsole.Write(method.IsInterfaceMethod ? "Y" : "N");
+                DebugConsole.WriteLine();
+            }
         }
 
         // Callvirt always has 'this' as the first argument

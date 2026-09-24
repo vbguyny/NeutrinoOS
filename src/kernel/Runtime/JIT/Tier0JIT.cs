@@ -91,16 +91,21 @@ public static unsafe class Tier0JIT
         // Track nesting to only clear context at top-level
         _compileNestingLevel++;
 
-        // Progress: show every method being compiled with a running count
-        // so boot progress is visible on slow boots.
+        // Progress: show every method being compiled with a running count.
+        // Each line costs ~0.5 ms of serial time (~3000 lines per boot), so
+        // the print is gated behind the verbose-jit marker (Phase 7 boot
+        // speed); the counter itself keeps running for jitstats.
         JitDiag.CompiledMethods++;
-        DebugConsole.Write("[JIT] Compile #");
-        DebugConsole.WriteDecimal(JitDiag.CompiledMethods);
-        DebugConsole.Write(" asm=");
-        DebugConsole.WriteDecimal(assemblyId);
-        DebugConsole.Write(" tok=0x");
-        DebugConsole.WriteHex(methodToken);
-        DebugConsole.WriteLine();
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[JIT] Compile #");
+            DebugConsole.WriteDecimal(JitDiag.CompiledMethods);
+            DebugConsole.Write(" asm=");
+            DebugConsole.WriteDecimal(assemblyId);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(methodToken);
+            DebugConsole.WriteLine();
+        }
 
         // Note: the token-based AOT registry fast path (korlib DDK / console
         // bridge methods) runs AFTER signature parsing below, so the compiled
