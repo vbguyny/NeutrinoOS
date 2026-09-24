@@ -13,7 +13,7 @@ serial console) using the Phase 7 tooling (`boottime`, `jitstats`,
 | Boot stage detail | drivers bound | — | 1.3 s (was 4.2 s) | trace gating + `boottime` |
 | JIT | methods compiled at shell | 3093 | 3023 | — |
 | JIT | top-level wall time / max | — | 5.2 s total / 3.5 s max (was 14.3 s / 8.9 s pre-gating) | 2.8x via `jitstats` |
-| GC | mark-phase pause | — | 250 ms (diagnostic collection) | new visibility (`gcstats`) |
+| GC | mark-phase pause | — | 43 ms (18.7k objects; first measurement on wave-1 kernel: 250 ms) | 5.8x via wave-3 kernel work |
 | GC alloc | SOH throughput | — | 312 MB/s | benchmark added |
 | GC alloc | LOH throughput | — | 273 MB/s | benchmark added |
 | TCP loopback | throughput | not implemented | 4.24 MB/s (966 ms/4 MB) | feature + 11.6x trace fix |
@@ -74,7 +74,7 @@ Notes:
 | Boot time 30% faster than Phase 6 | ≥30% (release image) | dev-image boot tests complete 36.9 s -> 11.7 s (3.1x) via JIT trace gating; release image additionally skips the remaining test time | **met** (dev image alone) |
 | Loopback TCP 2x Phase 6 | 2x | Phase 6 had no loopback; Phase 7 introduces it at 4.24 MB/s (11.6x the first working measurement of 365 KB/s) | **met** |
 | TLS handshake 30% faster | ≥30% | 254 ms -> 179 ms (-29%, quiet defaults); SSH connect 1.08 -> 0.81 s (-25%); remaining cost is X25519/Ed25519 limb loops under TCG | **met** (~29%) |
-| GC gen-0 pause 50% faster | ≥50% | pause instrumentation added; mark-only collection 250 ms | pending optimization wave |
+| GC gen-0 pause 50% faster | ≥50% | mark-only pause 250 -> 43 ms (5.8x) for a same-size heap (18-20k objects) on the final kernel | **met** |
 | JIT compile 20% faster | ≥20% | top-level wall 14.3 s -> 5.2 s (2.8x), max outlier 8.9 s -> 3.5 s (RunAllTests compile subtree) | **met** |
 | File I/O 2x on FAT32 | 2x | write 1.62 MB/s (632 ms/1 MB) vs 175 KB/s baseline = 9.3x; read 1.60 MB/s; writes match reads per cluster | **met** |
 
