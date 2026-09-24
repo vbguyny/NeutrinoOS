@@ -330,6 +330,14 @@ public static unsafe class NetExecutable
         {
             currentThread->Process = proc;
             currentThread->IsUserMode = true;
+
+            // Syscall entry and ring-3 interrupts (TSS.RSP0) must use this
+            // thread's own kernel stack, not a shared one.
+            if (currentThread->KernelStackTop != 0)
+            {
+                CPU.SetSyscallKernelStack(currentThread->KernelStackTop);
+                GDT.SetKernelStack(currentThread->KernelStackTop);
+            }
         }
 
         // Switch to process address space and jump to user mode

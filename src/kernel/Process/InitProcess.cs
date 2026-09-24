@@ -144,6 +144,19 @@ public static unsafe class InitProcess
         {
             currentThread->Process = initProc;
             currentThread->IsUserMode = true;
+
+            // The boot thread runs init's user code, so give it init's
+            // dedicated kernel stack for syscall entry and ring-3
+            // interrupts (TSS.RSP0). Without this the boot thread's
+            // blocked syscall frames would live on the shared early-boot
+            // stack, where ring-3 timer IRQs from other threads overwrite
+            // them (garbage sysexit context -> #PF in user mode).
+            if (initThread->KernelStackTop != 0)
+            {
+                currentThread->KernelStackTop = initThread->KernelStackTop;
+                CPU.SetSyscallKernelStack(initThread->KernelStackTop);
+                GDT.SetKernelStack(initThread->KernelStackTop);
+            }
         }
 
         // Register the exit handler and capture a kernel resume context.

@@ -584,6 +584,14 @@ public static unsafe class ProcessSyscalls
         thread->UserRip = entryPoint;
         thread->UserRsp = userRsp;
 
+        // Syscall entry and ring-3 interrupts (TSS.RSP0) must use this
+        // thread's own kernel stack, not a shared one.
+        if (thread->KernelStackTop != 0)
+        {
+            CPU.SetSyscallKernelStack(thread->KernelStackTop);
+            GDT.SetKernelStack(thread->KernelStackTop);
+        }
+
         // Switch to new address space
         AddressSpace.SwitchTo(newPml4);
 

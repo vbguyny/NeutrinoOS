@@ -374,6 +374,15 @@ public static unsafe class Scheduler
             CPU.SetFsBase(thread->UserFsBase);
         }
 
+        // Ensure syscall entry and ring-3 interrupts use this thread's own
+        // kernel stack (the scheduler sets these on switch-in; be explicit
+        // because we jump straight to ring 3 here).
+        if (thread->KernelStackTop != 0)
+        {
+            CPU.SetSyscallKernelStack(thread->KernelStackTop);
+            GDT.SetKernelStack(thread->KernelStackTop);
+        }
+
         // Jump to user mode - this never returns
         // The thread's Context.Rax was set to 0 (clone returns 0 to child)
         // But we need to pass it via the actual jump mechanism
@@ -875,10 +884,17 @@ public static unsafe class Scheduler
                 if (next->IsUserMode && next->UserFsBase != 0)
                     CPU.SetFsBase(next->UserFsBase);
 
-                // Set the syscall kernel stack for the new thread
+                // Set the syscall kernel stack and the ring-3 interrupt
+                // stack (TSS.RSP0) for the new thread. Both must be
+                // per-thread: ring-3 timer IRQs land on TSS.RSP0, and a
+                // shared stack lets one thread's IRQ frames clobber
+                // another thread's saved syscall return frame.
                 // This is critical - each thread needs its own kernel stack for syscalls
                 if (next->KernelStackTop != 0)
+                {
                     CPU.SetSyscallKernelStack(next->KernelStackTop);
+                    GDT.SetKernelStack(next->KernelStackTop);
+                }
 
                 CPU.SwitchContext(&oldThread->Context, &next->Context);
             }
@@ -891,9 +907,12 @@ public static unsafe class Scheduler
                 if (next->IsUserMode && next->UserFsBase != 0)
                     CPU.SetFsBase(next->UserFsBase);
 
-                // Set the syscall kernel stack for the new thread
+                // Set the syscall kernel stack and TSS.RSP0 for the new thread
                 if (next->KernelStackTop != 0)
+                {
                     CPU.SetSyscallKernelStack(next->KernelStackTop);
+                    GDT.SetKernelStack(next->KernelStackTop);
+                }
 
                 CPU.LoadContext(&next->Context);
             }
@@ -1032,9 +1051,12 @@ public static unsafe class Scheduler
                 if (next->IsUserMode && next->UserFsBase != 0)
                     CPU.SetFsBase(next->UserFsBase);
 
-                // Set the syscall kernel stack for the new thread
+                // Set the syscall kernel stack and TSS.RSP0 for the new thread
                 if (next->KernelStackTop != 0)
+                {
                     CPU.SetSyscallKernelStack(next->KernelStackTop);
+                    GDT.SetKernelStack(next->KernelStackTop);
+                }
 
                 CPU.SwitchContext(&oldThread->Context, &next->Context);
             }
@@ -1047,9 +1069,12 @@ public static unsafe class Scheduler
                 if (next->IsUserMode && next->UserFsBase != 0)
                     CPU.SetFsBase(next->UserFsBase);
 
-                // Set the syscall kernel stack for the new thread
+                // Set the syscall kernel stack and TSS.RSP0 for the new thread
                 if (next->KernelStackTop != 0)
+                {
                     CPU.SetSyscallKernelStack(next->KernelStackTop);
+                    GDT.SetKernelStack(next->KernelStackTop);
+                }
 
                 CPU.LoadContext(&next->Context);
             }

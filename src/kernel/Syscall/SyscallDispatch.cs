@@ -713,8 +713,12 @@ public static unsafe class SyscallDispatch
         // load_context uses 'ret', so we need a kernel address
         newThread->Context.Rip = Scheduler.GetClonedUserThreadWrapperAddress();
 
-        // Set kernel stack for the wrapper to use (top of kernel stack)
-        newThread->Context.Rsp = newThread->KernelStackTop;
+        // Set kernel stack for the wrapper to use (top of kernel stack).
+        // Entry RSP must be 16-byte aligned *before* the call convention
+        // applies: subtract 8 so the wrapper sees RSP%16==8 like after a
+        // real call (see Scheduler.CreateThread). Without this the wrapper
+        // prologue's aligned SSE stores take a #GP.
+        newThread->Context.Rsp = newThread->KernelStackTop - 8;
 
         // Kernel-mode context (wrapper runs in Ring 0 then transitions to Ring 3)
         newThread->Context.Cs = GDTSelectors.KernelCode;

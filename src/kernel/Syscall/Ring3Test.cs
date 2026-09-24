@@ -162,6 +162,16 @@ public static unsafe class Ring3Test
         // Jump to Ring 3!
         // This will execute the user code which calls exit(0x42)
         // The exit syscall will be handled and should set _testCompleted
+        // Syscall entry and ring-3 interrupts (TSS.RSP0) should use this
+        // thread's own kernel stack when it has one (init's dedicated
+        // stack); kernel-only threads keep the shared early-boot stack.
+        var ring3Thread = Scheduler.CurrentThread;
+        if (ring3Thread != null && ring3Thread->KernelStackTop != 0)
+        {
+            CPU.SetSyscallKernelStack(ring3Thread->KernelStackTop);
+            GDT.SetKernelStack(ring3Thread->KernelStackTop);
+        }
+
         jump_to_ring3(_userCodePage, userStackTop);
 
         // We should NOT reach here - exit syscall should handle return
