@@ -106,6 +106,8 @@ was changed. It is an internal audit, not an external one.
 | F10 | Info | auth.log unbounded | Documented; manual truncate |
 | F11 | Medium | webhost pinned connection-table slots until the 12s idle timeout on short-lived connections (burst → refusals) | **Fixed** — peer-EOF slot reclaim |
 | F12 | Low | auth.log never created: single-level `Directory.CreateDirectory` failed on missing `/var` (exception swallowed) | **Fixed** — stepwise /var then /var/log + image fixture dirs |
+| F13 | Low | Windows schannel TLS clients rejected: NeutrinoOS TLS 1.3 server requires a signature_algorithms entry it recognizes; schannel's ClientHello matches no offered algorithm (server logs `hello rejected ... sig=0`). OpenSSL (WSL curl, curl, browsers using BoringSSL) negotiate fine | **Documented** — use an OpenSSL-based client; schannel interop deferred. Found during the VirtualBox acceptance (Windows `curl.exe`) |
+| F14 | High | 2-vCPU boots deadlocked (QEMU `-smp 2` and VirtualBox): early AP startup let a trampoline-era fault enter exception handling before JIT/EH/console lock ordering existed; `ExceptionHandling._lock` ended held with both CPUs spinning (`pause`/`atomic_cmpxchg32`) | **Fixed** — APs start only from `Kernel.Main` after early init (moved out of Arch Stage 2); APs additionally park in `SMP.ApEntry` until `ReleaseAps()` |
 
 ## 7. How to re-run the audit evidence
 

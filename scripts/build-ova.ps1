@@ -8,20 +8,28 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$vbox = Get-Command VBoxManage.exe -ErrorAction SilentlyContinue
-if (-not $vbox) { $vbox = Get-Command VBoxManage -ErrorAction SilentlyContinue }
-if (-not $vbox) { throw "VBoxManage not found - install Oracle VirtualBox first." }
+# VBoxManage is usually not on PATH; prefer the default install location
+# and fall back to PATH lookup.
+$vboxPath = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+if (-not (Test-Path $vboxPath)) {
+    $cmd = Get-Command VBoxManage.exe -ErrorAction SilentlyContinue
+    if (-not $cmd) { $cmd = Get-Command VBoxManage -ErrorAction SilentlyContinue }
+    if (-not $cmd) { throw "VBoxManage not found - install Oracle VirtualBox first." }
+    $vboxPath = $cmd.Source
+}
+$vbox = $vboxPath
 
-& $vbox.Source list vms | Out-Null
-if (-not (& $vbox.Source list vms | Select-String -SimpleMatch "`"$VmName`"")) {
+& $vbox list vms | Out-Null
+if (-not (& $vbox list vms | Select-String -SimpleMatch "`"$VmName`"")) {
     throw "VM '$VmName' not found. Create it first: powershell -File scripts\gui-vm.ps1"
 }
 
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 $ova = Join-Path $DistDir "neutrinoos-$Version.ova"
+Remove-Item -Force $ova -ErrorAction SilentlyContinue
 
 Write-Host "[ova] exporting $VmName -> $ova"
-& $vbox.Source export $VmName --ovf20 -o $ova
+& $vbox export $VmName --ovf20 -o $ova
 if ($LASTEXITCODE -ne 0) { throw "VBoxManage export failed ($LASTEXITCODE)" }
 
 $hash = (Get-FileHash -Algorithm SHA256 $ova).Hash.ToLower()

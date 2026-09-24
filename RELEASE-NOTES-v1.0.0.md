@@ -64,6 +64,17 @@ re-mapping and per-thread kernel stacks landed as part of the hardening.
 - .NET 10 (RC-generation IL; standard console assemblies).
 - NIC: virtio-net (QEMU/VBox), Intel E1000 (VBox fallback).
 
+## Fixes since the Phase 7 code freeze
+
+- **2-vCPU deadlock fixed** (found while validating the VirtualBox
+  appliance): AP startup moved out of early Stage 2 to the end of kernel
+  init, and APs park with interrupts disabled until explicitly released.
+  2-vCPU VirtualBox boots - the appliance configuration - complete in
+  ~13s with all Phase 7 security checks passing.
+- Kernel banner now reports `v1.0.0` (was a stale `v0.1` label).
+- `make release` no longer deadlocks on mtools overwrite prompts; the
+  OVA export overwrites stale artifacts cleanly.
+
 ## Known limitations (see `docs/PHASE7-SECURITY.md` §3)
 
 - Executable image base is not randomized (stack/heap/mmap are).

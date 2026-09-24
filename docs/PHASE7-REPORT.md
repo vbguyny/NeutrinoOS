@@ -90,9 +90,10 @@ unbounded) — see `PHASE7-SECURITY.md` §3.
 | Area | Evidence |
 |------|----------|
 | Boot stability | repeated single-boot runs: pass=1 halt=0 (plus 8/8 in the crash-fix wave) |
+| **VirtualBox end-to-end** | `scripts/test-vbox-phase7.ps1`: **ALL-PASS** - release image boots in 13s, banner v1.0.0, `[SEC] 4 pass 0 fail`, `/etc/neutrinoos-release = 1.0.0`, dhcp+sshd+webhost autostart on virtio-net NAT, SSH banner, HTTP 200, TLS 1.3 HTTPS 200 (OpenSSL client), OVA export (1.2 MB, checksummed) |
 | Security self-test | `[SEC] result: 4 pass, 0 fail` every boot |
 | Syscall filter | Test 57 PASS every boot |
-| Reproducibility | two clean builds → identical sha256 (verified twice) |
+| Reproducibility | two clean builds -> identical sha256 (verified twice, incl. final tree) |
 | SSH lockout | probe PASS (ban + refusal + auth.log trail + expiry) |
 | Web 429 | probe ALL-PASS (200x2 / 429x10 / recovery 200) |
 | Crypto | KATs 30/30 |
@@ -119,3 +120,10 @@ of scope by definition).
   timestamps validate ranges and fall back to uptime form.
 - EXT2 write-path optimizations (spec "2x on EXT2") retained the FAT32
   gains only; EXT2 remains read-focused (documented in PERF-RESULTS).
+- Windows schannel TLS clients are rejected by the TLS 1.3 server
+  (signature_algorithms mismatch; PHASE7-AUDIT.md F13) - use OpenSSL
+  clients or BoringSSL-based browsers.
+- QEMU TCG with `-smp 2` stalls after AP startup (AP trampoline debug
+  region; QEMU-only; VirtualBox 2-vCPU - the supported target - boots
+  fully). The historical 2-vCPU deadlock itself is **fixed** (F14:
+  APs now start from `Kernel.Main` after early init).

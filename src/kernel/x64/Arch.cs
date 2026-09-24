@@ -260,13 +260,13 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
             }
         }
 
-        // Start Application Processors (SMP)
-        if (CPUTopology.CpuCount > 1)
-        {
-            SMP.Init();
-            // Enable SMP mode in scheduler after APs are running
-            Scheduler.EnableSmp();
-        }
+        // NOTE (Phase 7): AP startup (SMP.Init) intentionally does NOT run
+        // here. Starting APs this early deadlocked 2-vCPU boots: an early
+        // trampoline-era AP fault entered the exception machinery before
+        // the JIT-registration / exception-table / console locks had an
+        // established order, leaving ExceptionHandling._lock held while
+        // both CPUs spun on it. The kernel calls SMP.Init() from
+        // Kernel.Main once early subsystems are up (see SMP._apsReleased).
 
         // Enable interrupts
         EnableInterrupts();

@@ -136,7 +136,11 @@ hardware (single-user OS), physical attacks, hardware side channels
   Cipher suite chosen by the TLS 1.3 fixed set (ChaCha20-Poly1305 /
   AES-GCM with SHA-256/384 KDF); certificates are self-signed Ed25519
   per install. Weak cipher suites / TLS 1.1- are structurally absent
-  (no code path implements them).
+  (no code path implements them). Interop note: Windows schannel
+  clients send a ClientHello whose signature_algorithms list matches
+  nothing the server offers and are rejected (`hello rejected ...
+  sig=0`); OpenSSL clients and BoringSSL-based browsers negotiate
+  correctly (PHASE7-AUDIT.md F13).
 
 ### 2.4 Crypto verification
 

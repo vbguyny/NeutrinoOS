@@ -150,7 +150,7 @@ public static unsafe class Kernel
         DebugConsole.Init();
         DebugConsole.WriteLine();
         DebugConsole.WriteLine("==============================");
-        DebugConsole.WriteLine("  NeutrinoOS v0.1 (x86-64 UEFI)");
+        DebugConsole.WriteLine("  " + Exports.DDK.SystemInfoExports.VersionBanner);
         DebugConsole.WriteLine("==============================");
         DebugConsole.WriteLine("[CONSOLE] Serial console initialized (ttyS0 @ 115200 8N1)");
         DebugConsole.WriteLine();
@@ -461,6 +461,19 @@ public static unsafe class Kernel
         // (marker-independent) and prints stable [SEC] lines for the
         // acceptance scripts.
         Process.SecuritySelfTest.Run();
+
+        // Phase 7 (SMP fix): start the APs only now. Starting them in early
+        // Stage 2 deadlocked 2-vCPU boots - a trampoline-era AP fault hit
+        // the exception machinery before JIT-registration / EH-table /
+        // console locks had an established order (ExceptionHandling._lock
+        // left held, both CPUs spinning; reproduced on QEMU -smp 2 and
+        // VirtualBox). APs then park in SMP.ApEntry until ReleaseAps().
+        if (Platform.CPUTopology.CpuCount > 1)
+        {
+            X64.SMP.Init();
+            Scheduler.EnableSmp();
+        }
+        X64.SMP.ReleaseAps();
 
         // Note: execve tests are available via:
         // - Process.NetExecutable.TestExecHelloApp() - Main() returns 42

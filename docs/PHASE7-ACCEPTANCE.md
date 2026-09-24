@@ -46,6 +46,8 @@ Phase 6 extras; SSH/web enabled for probes).
 | 29 | qcow2 + raw + Windows scripts | `build/p7-release.sh`, `scripts/install-neutrinoos.ps1`, `scripts/flash-usb.ps1`, `release.json` QEMU cmdline | ✅ |
 | 30 | Docs set | `PHASE7-RELEASE.md`, `PHASE7-INSTALL-WINDOWS.md`, `USER-MANUAL.md`, `DEVELOPER-GUIDE.md`, `RELEASE-NOTES-v1.0.0.md`, `PHASE7-REPORT.md` | ✅ |
 | 31 | Boot stability regression | `p7-bootloop.sh` pass=1 halt=0 across repeated runs (post-crash-fix wave: 8/8; this wave: every boot green) | ✅ |
+| 31b | **VirtualBox end-to-end (release appliance)** | `scripts/test-vbox-phase7.ps1` -> **ALL-PASS** (13s boot; banner/SEC/release-file; dhcp+sshd+webhost on virtio-net; SSH+HTTP+TLS 1.3; OVA export) | ✅ |
+| 31c | 2-vCPU SMP deadlock (F14) | Reproduced on QEMU -smp 2 + VBox; fixed by deferring AP startup to `Kernel.Main`; VBox 2-vCPU boots fully | ✅ |
 | 32 | Phase 1–6 regression | crypto KATs, SSH/exec/web probes (Phase 6 suite unaffected: password fixture explicit; limits fixture isolated) | ✅ |
 
 ## Deviations / deferred (with rationale)

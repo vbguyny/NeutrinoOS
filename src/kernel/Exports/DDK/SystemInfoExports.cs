@@ -95,6 +95,9 @@ public static unsafe class SystemInfoExports
     /// </summary>
     public const string VersionString = "NeutrinoOS 1.0.0 x86_64";
 
+    /// <summary>Human banner line (kept in sync with VersionString).</summary>
+    public const string VersionBanner = "NeutrinoOS v1.0.0 (x86-64 UEFI)";
+
     /// <summary>
     /// Copies the NeutrinoOS version string ("NeutrinoOS &lt;version&gt;
     /// &lt;arch&gt;"; UTF-16, not NUL-terminated) into the caller's

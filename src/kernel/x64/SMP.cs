@@ -59,6 +59,25 @@ public static unsafe class SMP
     private static SpinLock _initLock;
 
     /// <summary>
+    /// Phase 7: APs must not take interrupts until the BSP finishes early
+    /// kernel init (JIT registration, exception tables, console). Before
+    /// this point those subsystems' locks have no established ordering: an
+    /// early AP interrupt landed in the unhandled-vector path and its
+    /// LookupFunctionEntry spin deadlocked against the BSP's first JIT
+    /// method registration (AddFunctionTable) performed while holding the
+    /// console lock. Observed on every 2-vCPU boot (QEMU -smp 2 and
+    /// VirtualBox); invisible on -smp 1.
+    /// </summary>
+    private static volatile bool _apsReleased;
+
+    /// <summary>Let parked APs enable interrupts (called by Kernel after early init).</summary>
+    public static void ReleaseAps()
+    {
+        _apsReleased = true;
+        CPU.MemoryBarrier();
+    }
+
+    /// <summary>
     /// Whether SMP initialization has completed
     /// </summary>
     public static bool IsInitialized => _initialized;
@@ -315,6 +334,12 @@ public static unsafe class SMP
         // Signal that we're running
         var startupData = get_ap_startup_data();
         startupData->ApRunning = 1;
+
+        // Phase 7: park with interrupts DISABLED until the BSP releases us
+        // (see _apsReleased). Taking interrupts earlier can deadlock the
+        // BSP's JIT/exception-table/console lock ordering.
+        while (!_apsReleased)
+            CPU.Pause();
 
         // Enable interrupts on this AP
         CPU.EnableInterrupts();
