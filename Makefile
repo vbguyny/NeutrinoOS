@@ -71,9 +71,12 @@ rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(su
 
 # Source files
 NATIVE_SRC := $(wildcard $(KERNEL_DIR)/$(ARCH)/*.asm)
-# Filter out obj/ and bin/ directories from korlib (dotnet build artifacts)
-KORLIB_SRC := $(filter-out %/obj/% %/bin/%,$(call rwildcard,$(KORLIB_DIR),*.cs))
-KERNEL_SRC := $(call rwildcard,$(KERNEL_DIR),*.cs)
+# Filter out obj/ and bin/ directories from korlib (dotnet build artifacts).
+# NOTE: in GNU make filter-out patterns only the FIRST '%' is a wildcard;
+# a second '%' is literal, so '%/obj/%' matches nothing. Use one '%' per
+# pattern, anchored at the directory prefix.
+KORLIB_SRC := $(filter-out $(KORLIB_DIR)/obj/% $(KORLIB_DIR)/bin/%,$(call rwildcard,$(KORLIB_DIR),*.cs))
+KERNEL_SRC := $(filter-out $(KERNEL_DIR)/obj/% $(KERNEL_DIR)/bin/%,$(call rwildcard,$(KERNEL_DIR),*.cs))
 
 # Object files
 NATIVE_OBJ := $(BUILD_DIR)/native.obj
