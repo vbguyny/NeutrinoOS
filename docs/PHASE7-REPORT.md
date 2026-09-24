@@ -69,12 +69,14 @@ unbounded) — see `PHASE7-SECURITY.md` §3.
 
   | File | Size | SHA-256 |
   |------|------|---------|
-  | `neutrinoos-1.0.0.img` | 67,108,864 | `3d514af2f617cb89...a58e0068` |
-  | `neutrinoos-1.0.0.qcow2` | 3,801,088 | `ee4a30367dba1f06...bd4dfad7` |
+  | `neutrinoos-1.0.0.img` | 67,108,864 | `382de861c57915a9...b4e40d2d` |
+  | `neutrinoos-1.0.0.qcow2` | 3,801,088 | `18cbb5e1ebbdb275...e3c3ac94` |
+  | `neutrinoos-1.0.0.ova` | 1,285,120 | `a5010a30df66bf10...19c42a52` |
 
-  plus `SHA256SUMS` and `release.json` (GPG signing instructions
-  emitted when no key is present — this environment has none, so
-  `SHA256SUMS.asc` is to be produced by the release maintainer).
+  (refreshed after the 2-vCPU SMP fix; the authoritative list lives in
+  `dist/SHA256SUMS`) plus `release.json`. GPG signing instructions are
+  emitted when no key is present - this environment has none, so
+  `SHA256SUMS.asc` is to be produced by the release maintainer.
 - **OVA**: `scripts/build-ova.ps1` (VBoxManage export, checksum append).
 - **Windows installs**: `scripts/install-neutrinoos.ps1` (Hyper-V Gen-2,
   Secure Boot off, serial log), `scripts/flash-usb.ps1` (admin + typed
