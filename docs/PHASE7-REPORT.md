@@ -65,9 +65,16 @@ unbounded) — see `PHASE7-SECURITY.md` §3.
   verifies byte-identical `BOOTX64.EFI` + `neutrinoos.img`
   (SOURCE_DATE_EPOCH + fixed FAT serial; mtools 4.0.43). Toolchain
   pinned in `toolchain.lock`.
-- **Artifacts**: `make release` → `dist/neutrinoos-1.0.0.img`,
-  `.qcow2`, `SHA256SUMS` (+ optional GPG `.asc`), `release.json`
-  manifest (version/checksums/toolchain/install hints).
+- **Artifacts produced** (`make release`, verified present):
+
+  | File | Size | SHA-256 |
+  |------|------|---------|
+  | `neutrinoos-1.0.0.img` | 67,108,864 | `3d514af2f617cb89...a58e0068` |
+  | `neutrinoos-1.0.0.qcow2` | 3,801,088 | `ee4a30367dba1f06...bd4dfad7` |
+
+  plus `SHA256SUMS` and `release.json` (GPG signing instructions
+  emitted when no key is present — this environment has none, so
+  `SHA256SUMS.asc` is to be produced by the release maintainer).
 - **OVA**: `scripts/build-ova.ps1` (VBoxManage export, checksum append).
 - **Windows installs**: `scripts/install-neutrinoos.ps1` (Hyper-V Gen-2,
   Secure Boot off, serial log), `scripts/flash-usb.ps1` (admin + typed
@@ -82,7 +89,7 @@ unbounded) — see `PHASE7-SECURITY.md` §3.
 
 | Area | Evidence |
 |------|----------|
-| Boot stability | 1 boots × repeated runs: pass=1 halt=0 (regression loops), plus 8/8 in the crash-fix wave |
+| Boot stability | repeated single-boot runs: pass=1 halt=0 (plus 8/8 in the crash-fix wave) |
 | Security self-test | `[SEC] result: 4 pass, 0 fail` every boot |
 | Syscall filter | Test 57 PASS every boot |
 | Reproducibility | two clean builds → identical sha256 (verified twice) |

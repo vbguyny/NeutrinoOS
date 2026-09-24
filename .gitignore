@@ -43,3 +43,9 @@ tools/nuget-local/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Release packages (Phase 7)
+dist/
+*.qcow2
+*.ova
+*.vdi
