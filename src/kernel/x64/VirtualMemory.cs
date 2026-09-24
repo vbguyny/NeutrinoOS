@@ -187,6 +187,13 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
         DebugConsole.WriteHex(PhysicalMapBase);
         DebugConsole.WriteLine(" (4GB)");
 
+        // W^X: re-map the kernel image executable. The bulk identity map
+        // above marks ALL RAM non-executable; only the loaded image (code +
+        // its data) and the separate JIT code heap may execute. This must
+        // happen before the CR3 switch so the running code is valid in the
+        // new tables.
+        ProtectKernelImage();
+
         // Switch to our page tables
         DebugConsole.Write("[VMem] Loading CR3 with 0x");
         DebugConsole.WriteHex(_pml4PhysAddr);
@@ -200,7 +207,45 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
     }
 
     /// <summary>
-    /// Identity map a range of physical memory using 2MB pages
+    /// Re-map the kernel image range executable (2MB pages covering
+    /// [KernelPhysicalBase, +KernelSize), 2MB-aligned outward). All other
+    /// RAM stays NX so corrupting kernel data cannot yield code execution.
+    /// </summary>
+    private static void ProtectKernelImage()
+    {
+        var bootInfo = BootInfoAccess.Get();
+        if (bootInfo == null || bootInfo->KernelPhysicalBase == 0 || bootInfo->KernelSize == 0)
+        {
+            DebugConsole.WriteLine("[VMem] W^X: no boot info, image stays NX (expect failure)");
+            return;
+        }
+
+        ulong start = bootInfo->KernelPhysicalBase & ~(LargePageSize - 1);
+        ulong end = bootInfo->KernelPhysicalBase + bootInfo->KernelSize;
+        end = (end + LargePageSize - 1) & ~(LargePageSize - 1);
+
+        for (ulong addr = start; addr < end; addr += LargePageSize)
+        {
+            // KernelRW without NoExecute: read/write/execute like before,
+            // the W^X gain is that everything *outside* this range is NX.
+            if (!MapLargePage(addr, addr, PageFlags.KernelRW))
+            {
+                DebugConsole.WriteLine("[VMem] W^X: failed to re-map kernel image executable!");
+                return;
+            }
+        }
+
+        DebugConsole.Write("[VMem] W^X: kernel image executable 0x");
+        DebugConsole.WriteHex(start);
+        DebugConsole.Write(" - 0x");
+        DebugConsole.WriteHex(end);
+        DebugConsole.WriteLine("; all other RAM is NX");
+    }
+
+    /// <summary>
+    /// Identity map a range of physical memory using 2MB pages.
+    /// W^X: bulk RAM is mapped non-executable (NX); only the kernel image
+    /// and the JIT code heap are executable (see ProtectKernelImage).
     /// </summary>
     private static bool IdentityMapRange(ulong physStart, ulong size)
     {
@@ -210,7 +255,7 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
 
         for (ulong addr = physStart; addr < physEnd; addr += LargePageSize)
         {
-            if (!MapLargePage(addr, addr, PageFlags.KernelRW))
+            if (!MapLargePage(addr, addr, PageFlags.KernelRW | PageFlags.NoExecute))
                 return false;
         }
 
@@ -219,7 +264,8 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
 
     /// <summary>
     /// Map physical memory to higher-half virtual addresses using 2MB pages.
-    /// Maps physical 0 -> PhysicalMapBase, physical 2MB -> PhysicalMapBase + 2MB, etc.
+    /// NX: the physical map is a data window (DMA/device access); nothing
+    /// executes through it.
     /// </summary>
     private static bool MapHigherHalf(ulong physStart, ulong size)
     {
@@ -230,7 +276,7 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
         for (ulong phys = physStart; phys < physEnd; phys += LargePageSize)
         {
             ulong virt = phys + PhysicalMapBase;
-            if (!MapLargePage(virt, phys, PageFlags.KernelRW))
+            if (!MapLargePage(virt, phys, PageFlags.KernelRW | PageFlags.NoExecute))
                 return false;
         }
 
