@@ -1471,6 +1471,10 @@ public static unsafe class Kernel
         registered += RegisterDDKMethod(korlib, "System.IO", "File", "FileBootDelete",
             (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.FileBootDelete);
 
+        // System.Diagnostics.Stopwatch -> TimeExports (Phase 7)
+        registered += RegisterDDKMethod(korlib, "System.Diagnostics", "Stopwatch", "StopwatchBootNs",
+            (void*)(delegate* unmanaged<ulong>)&Platform.TimeExports.StopwatchBootNs);
+
         // System.IO.Directory -> FileExports
         registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootExists",
             (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootExists);

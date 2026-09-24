@@ -819,6 +819,7 @@ public static unsafe class GC
 
         _gcInProgress = true;
         _collectionsPerformed++;
+        ulong pauseStartTicks = ProtonOS.X64.HPET.IsInitialized ? ProtonOS.X64.HPET.ReadCounter() : 0;
         DebugConsole.WriteLine("[GC] Starting mark-only collection...");
 
         StopTheWorld();
@@ -845,6 +846,15 @@ public static unsafe class GC
 
         ResumeTheWorld();
         _gcInProgress = false;
+
+        // Phase 7: record the pause duration (HPET-backed).
+        if (pauseStartTicks != 0)
+        {
+            ulong delta = ProtonOS.X64.HPET.ReadCounter() - pauseStartTicks;
+            LastPauseMs = ProtonOS.X64.HPET.TicksToNanoseconds(delta) / 1_000_000;
+            TotalPauseMs += LastPauseMs;
+        }
+
         return marked;
     }
 
@@ -919,6 +929,24 @@ public static unsafe class GC
         collections = _collectionsPerformed;
         lastMarked = _objectsMarked;
         lastRoots = _rootsFound;
+    }
+
+    /// <summary>Duration of the last mark-only collection, in milliseconds (Phase 7).</summary>
+    public static ulong LastPauseMs;
+
+    /// <summary>Sum of all mark-only collection durations, in milliseconds (Phase 7).</summary>
+    public static ulong TotalPauseMs;
+
+    /// <summary>
+    /// Phase 7 extended statistics for the `gcstats` shell built-in:
+    /// collection count and pause times. Heap sizes are queried from
+    /// GCHeap by the caller.
+    /// </summary>
+    public static void GetExtendedStats(out ulong collections, out ulong lastPauseMs, out ulong totalPauseMs)
+    {
+        collections = _collectionsPerformed;
+        lastPauseMs = LastPauseMs;
+        totalPauseMs = TotalPauseMs;
     }
 
     /// <summary>

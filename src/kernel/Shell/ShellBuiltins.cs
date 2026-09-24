@@ -14,6 +14,7 @@
 using System;
 using System.IO;
 using ProtonOS.Platform;
+using ProtonOS.Profiling;
 
 namespace ProtonOS.Shell;
 
@@ -58,6 +59,11 @@ public static class ShellBuiltins
             case "true": return true && Succeed(out exitCode);
             case "false": return true && Fail(out exitCode);
             case "gc": return true && RunGc(args, out exitCode);
+            case "boottime": return true && RunBootTime(args, out exitCode);
+            case "jitstats": return true && RunJitStats(args, out exitCode);
+            case "gcstats": return true && RunGcStats(args, out exitCode);
+            case "perf": return true && RunPerf(args, out exitCode);
+            case "version": return true && RunVersion(args, out exitCode);
             default: return false;
         }
     }
@@ -482,6 +488,11 @@ public static class ShellBuiltins
             case "true": return "usage: true - exit with status 0";
             case "false": return "usage: false - exit with status 1";
             case "gc": return "usage: gc - trigger a garbage collection and print statistics";
+            case "boottime": return "usage: boottime - print the recorded boot timeline";
+            case "jitstats": return "usage: jitstats [reset] - Tier-0 JIT compile statistics";
+            case "gcstats": return "usage: gcstats - heap and pause statistics for the garbage collector";
+            case "perf": return "usage: perf start|stop|reset|dump - kernel sampling profiler (see /dev/profiler)";
+            case "version": return "usage: version - print the NeutrinoOS version string";
             default: return null;
         }
     }
@@ -528,6 +539,142 @@ public static class ShellBuiltins
             return true;
         }
         KernelGc.ReportAndCollect();
+        return true;
+    }
+
+    // ============ Phase 7: boottime / jitstats / gcstats / perf / version ============
+
+    /// <summary>Prints the NeutrinoOS version string (Phase 7).</summary>
+    private static bool RunVersion(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        Console.WriteLine(ProtonOS.Exports.DDK.SystemInfoExports.VersionString);
+        return true;
+    }
+
+    /// <summary>Prints the recorded boot timeline (Phase 7 boot profiling).</summary>
+    private static bool RunBootTime(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: boottime");
+            Console.WriteLine("  Print the boot stage timeline recorded by BootLog");
+            Console.WriteLine("  (one line per stage, milliseconds since boot).");
+            return true;
+        }
+        StringWriter sw = new StringWriter();
+        BootLog.FormatTimeline(sw);
+        Console.Write(sw.ToString());
+        return true;
+    }
+
+    /// <summary>Prints Tier-0 JIT compile statistics (Phase 7); "reset" clears them.</summary>
+    private static bool RunJitStats(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: jitstats [reset]");
+            Console.WriteLine("  JIT compile counters: methods, wall time, native code size,");
+            Console.WriteLine("  slowest compilations. 'reset' clears the counters.");
+            return true;
+        }
+        if (args.Length > 1 && args[1] == "reset")
+        {
+            JitStats.Reset();
+            JitStats.Count = Runtime.JitDiag.CompiledMethods;
+            Console.WriteLine("[jitstats] counters reset (method count re-synced)");
+            return true;
+        }
+        JitStats.Count = Runtime.JitDiag.CompiledMethods;
+        StringWriter sw = new StringWriter();
+        JitStats.Format(sw);
+        Console.Write(sw.ToString());
+        return true;
+    }
+
+    /// <summary>Prints GC heap and pause statistics (Phase 7).</summary>
+    private static bool RunGcStats(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: gcstats");
+            Console.WriteLine("  Garbage collector statistics: SOH/LOH heap usage, live");
+            Console.WriteLine("  object counts, collection count and pause times.");
+            return true;
+        }
+
+        Memory.GCHeap.GetStats(out ulong sohUsed, out ulong objects, out ulong free);
+        Memory.GCHeap.GetLOHStats(out ulong lohUsed, out ulong lohObjects);
+        Memory.GC.GetExtendedStats(out ulong collections, out ulong lastPauseMs, out ulong totalPauseMs);
+
+        Console.WriteLine("[gcstats] NeutrinoOS garbage collector");
+        Console.Write("[gcstats] SOH: ");
+        Console.Write((long)(sohUsed / 1024));
+        Console.Write(" KB used (");
+        Console.Write((long)objects);
+        Console.Write(" objects), ");
+        Console.Write((long)(free / 1024));
+        Console.WriteLine(" KB free");
+        Console.Write("[gcstats] LOH: ");
+        Console.Write((long)(lohUsed / 1024));
+        Console.Write(" KB (");
+        Console.Write((long)lohObjects);
+        Console.WriteLine(" objects)");
+        Console.Write("[gcstats] collections: ");
+        Console.Write((long)collections);
+        Console.Write("   last pause: ");
+        Console.Write((long)lastPauseMs);
+        Console.Write(" ms   total pause: ");
+        Console.Write((long)totalPauseMs);
+        Console.WriteLine(" ms");
+        return true;
+    }
+
+    /// <summary>Controls the kernel sampling profiler (Phase 7).</summary>
+    private static bool RunPerf(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        string sub = args.Length > 1 ? args[1] : "dump";
+        if (sub == "--help" || sub == "-h")
+        {
+            Console.WriteLine("usage: perf start|stop|reset|dump");
+            Console.WriteLine("  Kernel sampling profiler: samples the interrupted RIP on");
+            Console.WriteLine("  every LAPIC timer tick (1 kHz). 'dump' prints the hottest");
+            Console.WriteLine("  64-byte code ranges with nearest JIT symbols.");
+            Console.WriteLine("  The same report is readable from /dev/profiler.");
+            return true;
+        }
+        if (sub == "start")
+        {
+            Profiler.Start();
+            Console.WriteLine("[perf] sampling started (1 kHz); run 'perf stop' then 'perf dump'");
+            return true;
+        }
+        if (sub == "stop")
+        {
+            Profiler.Stop();
+            Console.Write("[perf] sampling stopped; samples=");
+            Console.WriteLine((long)Profiler.SampleCount);
+            return true;
+        }
+        if (sub == "reset")
+        {
+            Profiler.Reset();
+            Console.WriteLine("[perf] samples cleared");
+            return true;
+        }
+        if (sub != "dump")
+        {
+            Console.Error.WriteLine("perf: unknown subcommand '" + sub + "' (start|stop|reset|dump)");
+            exitCode = 1;
+            return true;
+        }
+        StringWriter sw = new StringWriter();
+        Profiler.Format(sw);
+        Console.Write(sw.ToString());
         return true;
     }
 

@@ -58,12 +58,35 @@ public static unsafe class Tier0JIT
     }
 
     /// <summary>
-    /// Compile a method given its assembly ID and method token.
+    /// Compile a method (public entry). Times top-level compilations for
+    /// the `jitstats` shell built-in and delegates to CompileMethodCore.
     /// </summary>
     /// <param name="assemblyId">The assembly containing the method.</param>
     /// <param name="methodToken">The MethodDef token (0x06xxxxxx).</param>
     /// <returns>JIT compilation result.</returns>
     public static JitResult CompileMethod(uint assemblyId, uint methodToken)
+    {
+        bool timed = _compileNestingLevel == 0 && ProtonOS.X64.HPET.IsInitialized;
+        ulong startNs = 0;
+        if (timed)
+            startNs = ProtonOS.X64.HPET.TicksToNanoseconds(ProtonOS.X64.HPET.ReadCounter());
+
+        JitResult result = CompileMethodCore(assemblyId, methodToken);
+
+        if (timed)
+        {
+            ulong elapsed = ProtonOS.X64.HPET.TicksToNanoseconds(ProtonOS.X64.HPET.ReadCounter()) - startNs;
+            ProtonOS.Profiling.JitStats.Record(assemblyId, methodToken, elapsed, result.Success, result.CodeSize);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Core of <see cref="CompileMethod"/>: performs the actual compile.
+    /// All historical call sites still route through the public wrapper
+    /// (stats keep working for nested compiles without double timing).
+    /// </summary>
+    private static JitResult CompileMethodCore(uint assemblyId, uint methodToken)
     {
         // Track nesting to only clear context at top-level
         _compileNestingLevel++;

@@ -84,6 +84,18 @@ public static unsafe class SystemInfoExports
     }
 
     /// <summary>
+    /// NeutrinoOS release version (Phase 7 semantic version).
+    /// </summary>
+    public const string ReleaseVersion = "1.0.0";
+
+    /// <summary>
+    /// The full version string ("NeutrinoOS &lt;version&gt; &lt;arch&gt;").
+    /// Must be const: bflat's TypePreinit pass rejects static string
+    /// field initializers in the kernel assembly.
+    /// </summary>
+    public const string VersionString = "NeutrinoOS 1.0.0 x86_64";
+
+    /// <summary>
     /// Copies the NeutrinoOS version string ("NeutrinoOS &lt;version&gt;
     /// &lt;arch&gt;"; UTF-16, not NUL-terminated) into the caller's
     /// buffer and returns its length (truncated to the capacity).
@@ -91,7 +103,7 @@ public static unsafe class SystemInfoExports
     [UnmanagedCallersOnly]
     public static int GetNeutrinoVersion(char* buffer, int capacity)
     {
-        string version = "NeutrinoOS 0.5 phase5 x86_64";
+        string version = VersionString;
         int len = version.Length;
         if (len > capacity)
             len = capacity;

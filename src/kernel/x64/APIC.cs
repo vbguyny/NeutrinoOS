@@ -552,6 +552,9 @@ public static unsafe class APIC
     {
         _tickCount++;
 
+        // Phase 7: feed the kernel sampling profiler with the interrupted RIP.
+        ProtonOS.Profiling.Profiler.Sample(frame->Rip);
+
         // Send EOI first to allow nested interrupts
         SendEoi();
 

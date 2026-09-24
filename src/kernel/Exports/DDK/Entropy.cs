@@ -24,6 +24,15 @@ public static unsafe class EntropyExports
     [UnmanagedCallersOnly(EntryPoint = "Kernel_GetEntropy")]
     public static int GetEntropy(byte* buffer, int length)
     {
+        return FillEntropy(buffer, length);
+    }
+
+    /// <summary>
+    /// Plain (callable) entropy core backing both the Kernel_GetEntropy
+    /// export and the /dev/random virtual device (Phase 7).
+    /// </summary>
+    public static int FillEntropy(byte* buffer, int length)
+    {
         if (buffer == null || length <= 0)
             return 0;
 

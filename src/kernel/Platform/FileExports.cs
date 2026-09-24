@@ -188,6 +188,10 @@ public static unsafe class FileExports
     /// <summary>Kernel-callable file size probe (see FileBootSize export).</summary>
     public static int KernelBootSize(char* path, int pathLen)
     {
+        // Phase 7: virtual /dev files are served before the FAT driver.
+        if (VirtualDevices.IsVirtual(path, pathLen))
+            return VirtualDevices.Size(path, pathLen);
+
         if (!EnsureDriverHelpers())
             return -1;
         var getSize = (delegate*<char*, int, int>)_fnGetBootFileSize;
@@ -211,6 +215,10 @@ public static unsafe class FileExports
     /// <summary>Kernel-callable file read (see FileBootRead export).</summary>
     public static int KernelBootRead(char* path, int pathLen, byte* buffer, int capacity)
     {
+        // Phase 7: virtual /dev files are served before the FAT driver.
+        if (VirtualDevices.IsVirtual(path, pathLen))
+            return VirtualDevices.Read(path, pathLen, buffer, capacity);
+
         if (!EnsureDriverHelpers())
             return -1;
 
@@ -259,6 +267,9 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "FileBootExists")]
     public static int FileBootExists(char* path, int pathLen)
     {
+        // Phase 7: virtual /dev files are served before the FAT driver.
+        if (VirtualDevices.IsVirtual(path, pathLen))
+            return 1;
         if (!EnsureDriverHelpers())
             return -1;
         var pathExists = (delegate*<char*, int, int, int>)_fnBootPathExists;

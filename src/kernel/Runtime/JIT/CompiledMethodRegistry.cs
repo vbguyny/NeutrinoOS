@@ -986,6 +986,44 @@ public static unsafe class CompiledMethodRegistry
     /// Falls back to TypeArgHash=0 for abstract/virtual method definitions that are
     /// registered without type args but called with type args in context.
     /// </summary>
+    /// <summary>
+    /// Phase 7 profiler support: best-effort reverse lookup of a native
+    /// code address. Returns the registered method whose native code
+    /// starts nearest at-or-below <paramref name="address"/> (entries
+    /// without code are skipped). Returns false when nothing matches.
+    /// </summary>
+    public static bool TryFindByAddress(ulong address, out uint token, out uint assemblyId)
+    {
+        token = 0;
+        assemblyId = 0;
+        if (!_initialized)
+            return false;
+
+        ulong best = 0;
+        bool found = false;
+        for (int b = 0; b < _blockCount; b++)
+        {
+            MethodBlock* block = _blocks[b];
+            if (block == null || block->IsEmpty)
+                continue;
+            CompiledMethodInfo* entries = block->GetEntries();
+            for (int i = 0; i < MethodBlock.EntriesPerBlock; i++)
+            {
+                if (!entries[i].IsUsed || entries[i].NativeCode == null)
+                    continue;
+                ulong code = (ulong)entries[i].NativeCode;
+                if (code <= address && code >= best)
+                {
+                    best = code;
+                    token = entries[i].Token;
+                    assemblyId = entries[i].AssemblyId;
+                    found = true;
+                }
+            }
+        }
+        return found;
+    }
+
     public static CompiledMethodInfo* Lookup(uint token, uint assemblyId, ulong typeArgHash)
     {
         if (!_initialized || token == 0)
