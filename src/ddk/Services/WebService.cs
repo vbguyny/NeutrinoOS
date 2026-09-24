@@ -32,9 +32,10 @@ public static class WebService
     internal const string WwwRoot = "/var/www";
     private const int MaxConnections = 10;
 
-    // Phase 7 security: per-source-IP limits.
-    private const int MaxConnectionsPerIp = 4;
-    private const int MaxRequestsPerIpPerSecond = 30;
+    // Phase 7 security: per-source-IP limits (overridable via
+    // /etc/webhost.conf for deployments and tests).
+    internal static int MaxConnectionsPerIp = 4;
+    internal static int MaxRequestsPerIpPerSecond = 30;
     private const int IpSlots = 8;
 
     private static readonly uint[] _ipTable = new uint[IpSlots];
@@ -240,6 +241,8 @@ public static class WebService
 
     private static void LoadConfig()
     {
+        MaxConnectionsPerIp = 4;
+        MaxRequestsPerIpPerSecond = 30;
         if (!File.Exists(ConfigPath))
             return;
         try
@@ -259,6 +262,18 @@ public static class WebService
                     _httpPort = (ushort)ParseInt(value, 80);
                 else if (StrEq(key, "HttpsPort"))
                     _httpsPort = (ushort)ParseInt(value, 443);
+                else if (StrEq(key, "MaxConnectionsPerIp"))
+                {
+                    int v = ParseInt(value, 4);
+                    if (v > 0)
+                        MaxConnectionsPerIp = v;
+                }
+                else if (StrEq(key, "MaxRequestsPerIpPerSecond"))
+                {
+                    int v = ParseInt(value, 30);
+                    if (v > 0)
+                        MaxRequestsPerIpPerSecond = v;
+                }
             }
         }
         catch (Exception)
@@ -511,6 +526,18 @@ public sealed unsafe class WebConnection
                 _lastActivity = now;
                 if (got < 1024)
                     break;
+            }
+
+            // Phase 7: reclaim the connection slot as soon as the peer
+            // has closed and no partial request is pending. Without this,
+            // bursts of short-lived HTTP/1.0-style clients pin table slots
+            // until the 12s idle timeout and later connections are refused.
+            if (_inLen == 0 && !_closed &&
+                (_sock.State == TcpState.CloseWait || _sock.State == TcpState.Closed))
+            {
+                _closed = true;
+                _sock.Close();
+                return;
             }
         }
 

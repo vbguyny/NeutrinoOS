@@ -154,6 +154,10 @@ public static class SshAuthGuard
     {
         try
         {
+            // korlib's Directory.CreateDirectory is single-level (documented
+            // deviation from the BCL), so create /var before /var/log.
+            if (!Directory.Exists("/var"))
+                Directory.CreateDirectory("/var");
             if (!Directory.Exists("/var/log"))
                 Directory.CreateDirectory("/var/log");
             File.AppendAllText(LogPath, Timestamp() + " sshd: " + message + "\n");
@@ -168,8 +172,19 @@ public static class SshAuthGuard
     {
         int year, month, day, hour, minute, second;
         SysInfo.GetWallClock(out year, out month, out day, out hour, out minute, out second);
-        if (year == 0)
+
+        // The CMOS RTC occasionally returns stray fields under QEMU/TCG
+        // (observed: second = 2^33 + n). Validate before trusting it and
+        // fall back to the uptime form so the audit trail stays parseable.
+        bool valid = year >= 1970 && year <= 2999 &&
+                     month >= 1 && month <= 12 &&
+                     day >= 1 && day <= 31 &&
+                     hour >= 0 && hour < 24 &&
+                     minute >= 0 && minute < 60 &&
+                     second >= 0 && second < 60;
+        if (!valid)
             return "[uptime " + IntToStr((int)(Timer.GetUptimeMilliseconds() / 1000)) + "s]";
+
         return "[" + IntToStr(year) + "-" + Pad2(month) + "-" + Pad2(day) + " " +
                Pad2(hour) + ":" + Pad2(minute) + ":" + Pad2(second) + "]";
     }

@@ -22,6 +22,8 @@ public static class Program
     /// <summary>Entry point; 0 when the server is reachable, 1 otherwise.</summary>
     public static unsafe int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         int port = 22;
         string target = null;
 

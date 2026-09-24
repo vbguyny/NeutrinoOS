@@ -19,6 +19,8 @@ public static class Program
     /// <summary>Entry point; returns 1 on failure.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         bool recursive = false;
         var operands = new System.Collections.Generic.List<string>();
 

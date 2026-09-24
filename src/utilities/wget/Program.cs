@@ -22,6 +22,8 @@ public static unsafe class Program
     /// <summary>Entry point; returns 1 on any failure.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         string outFile = null;
         string url = null;
 

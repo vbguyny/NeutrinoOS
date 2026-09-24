@@ -15,6 +15,8 @@ public static class Program
     /// <summary>Entry point; returns 1 when a file could not be read.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         int count = 10;
         var files = new System.Collections.Generic.List<string>();
 

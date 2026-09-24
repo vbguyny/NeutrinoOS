@@ -20,6 +20,8 @@ public static class Program
     /// <summary>Entry point; returns 1 for unsupported forms.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
         {
             return Util.Help(

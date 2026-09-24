@@ -20,6 +20,8 @@ public static class Program
     /// <summary>Entry point; runs every KAT group.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         Console.WriteLine("[cryptotest] NeutrinoOS managed crypto KATs");
 
         TestHashes();

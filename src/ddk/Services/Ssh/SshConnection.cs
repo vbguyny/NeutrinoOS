@@ -164,6 +164,18 @@ public sealed unsafe class SshConnection
 
         FlushPendingOut();
 
+        // Phase 7: reclaim the connection slot as soon as the peer has
+        // sent FIN and no buffered input remains, instead of waiting for
+        // the 10-minute idle timeout. Killed/thrown-away clients
+        // otherwise pin one of the four slots (found by the lockout
+        // probe: post-ban logins failed because dead connections from
+        // the failed attempts were still holding slots).
+        if ((_sock.State == TcpState.CloseWait || _sock.State == TcpState.Closed) && _rxLen == 0)
+        {
+            Close();
+            return;
+        }
+
         if (_sock.State == TcpState.Closed)
             _state = StClosed;
 

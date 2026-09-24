@@ -118,10 +118,20 @@ hardware (single-user OS), physical attacks, hardware side channels
 - **webhost** (Phase 7 additions in `WebService`):
   - **Disabled by default** — starts only via the `webhost` command or
     `webhost.autostart=yes` in the boot config.
-  - **Per-IP connection cap**: 4 concurrent connections (global cap 10).
+  - **Per-IP connection cap**: 4 concurrent connections (global cap 10);
+    configurable via `/etc/webhost.conf` (`MaxConnectionsPerIp`).
   - **Rate limiting**: >30 requests per source IP per second → `429 Too
     Many Requests` + connection close; per-connection cap 20 req/s
-    within a keep-alive stream.
+    within a keep-alive stream. Configurable
+    (`MaxRequestsPerIpPerSecond`); the test fixture lowers it to 3/s so
+    the acceptance probe is deterministic.
+  - **Slot hygiene**: plain-HTTP connections are reclaimed on peer EOF
+    instead of lingering until the 12 s idle timeout (found during the
+    Phase 7 rate-limit probe: bursts of short-lived connections could
+    pin the fixed connection table — see PHASE7-AUDIT.md F11).
+  - **Audit I/O robustness**: `/var/log` (and `/var`) are created
+    stepwise because korlib's `Directory.CreateDirectory` is
+    single-level (found during the lockout probe — F12).
 - **TLS** — TLS 1.3 only (Ported implementation in `src/ddk/Tls`).
   Cipher suite chosen by the TLS 1.3 fixed set (ChaCha20-Poly1305 /
   AES-GCM with SHA-256/384 KDF); certificates are self-signed Ed25519

@@ -25,6 +25,8 @@ public static class Program
     /// <summary>Entry point.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         string cmd = args.Length > 0 ? args[0] : "start";
 
         if (cmd == "--help" || cmd == "-h" || cmd == "help")

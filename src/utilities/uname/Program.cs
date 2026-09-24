@@ -18,6 +18,8 @@ public static class Program
     /// <summary>Entry point; always returns 0.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         bool all = false;
         for (int i = 0; i < args.Length; i++)
         {

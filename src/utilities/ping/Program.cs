@@ -23,6 +23,8 @@ public static unsafe class Program
     /// <summary>Entry point; returns 1 when no reply was received.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         int count = 4;
         string host = null;
 

@@ -20,6 +20,8 @@ public static class Program
     /// <summary>Entry point; returns 0 on success.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         string path = "/";
         string pattern = null;
 

@@ -21,6 +21,8 @@ public static class Program
     /// <summary>Entry point; returns 0 on success, 1 when a directory could not be listed.</summary>
     public static int Main(string[] args)
     {
+        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+            return 0;
         bool longFormat = false;
         bool showAll = false;
         var dirs = new System.Collections.Generic.List<string>();
