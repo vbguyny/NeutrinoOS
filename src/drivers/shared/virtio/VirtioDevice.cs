@@ -85,8 +85,21 @@ public unsafe class VirtioDevice : IDisposable
         Debug.WriteLine("[virtio] Initializing device");
         _isLegacy = VirtioPciIds.IsLegacyDevice(deviceId);
 
-        bool result = _isLegacy ? InitializeLegacy() : InitializeModern();
-        return result;
+        // Transitional devices (e.g. VirtualBox's 0x1000 NIC) may expose
+        // the modern (1.0) capability structures; try those first. Modern-ID
+        // devices only have the modern interface, and this is their normal
+        // path. Legacy-only devices fall through to InitializeLegacy.
+        if (InitializeModern())
+        {
+            _isLegacy = false;
+            return true;
+        }
+
+        if (_isLegacy)
+        {
+            return InitializeLegacy();
+        }
+        return false;
     }
 
     /// <summary>
@@ -201,6 +214,10 @@ public unsafe class VirtioDevice : IDisposable
                 if (_barVirtAddr[i] == 0)
                     return false;
 
+                Debug.Write("[virtio] BAR"); Debug.WriteDecimal(i);
+                Debug.Write(" phys="); Debug.WriteHex(_barPhysAddr[i]);
+                Debug.Write(" size="); Debug.WriteHex(_barSize[i]); Debug.WriteLine();
+
                 mappedCount++;
             }
         }
@@ -290,6 +307,10 @@ public unsafe class VirtioDevice : IDisposable
                     _commonCfgBar = bar;
                     _commonCfgOffset = offset;
                     _commonCfgLength = length;
+
+                    Debug.Write("[virtio] commonCfg bar="); Debug.WriteHex((uint)bar);
+                    Debug.Write(" off="); Debug.WriteHex(offset);
+                    Debug.Write(" len="); Debug.WriteHex(length); Debug.WriteLine();
                 }
                 break;
 
@@ -300,6 +321,10 @@ public unsafe class VirtioDevice : IDisposable
                     _notifyBar = bar;
                     _notifyOffset = offset;
                     _notifyMultiplier = PCI.ReadConfig32(bus, device, function, (ushort)(capPtr + 16));
+
+                    Debug.Write("[virtio] notifyCfg bar="); Debug.WriteHex((uint)bar);
+                    Debug.Write(" off="); Debug.WriteHex(offset);
+                    Debug.Write(" mult="); Debug.WriteHex(_notifyMultiplier); Debug.WriteLine();
                 }
                 break;
 
@@ -315,6 +340,10 @@ public unsafe class VirtioDevice : IDisposable
                     ulong devAddr = barAddr + offset;
                     _deviceCfg = (byte*)(nint)(long)devAddr;
                     _deviceCfgLength = length;
+
+                    Debug.Write("[virtio] deviceCfg bar="); Debug.WriteHex((uint)bar);
+                    Debug.Write(" off="); Debug.WriteHex(offset);
+                    Debug.Write(" len="); Debug.WriteHex(length); Debug.WriteLine();
                 }
                 break;
         }
@@ -377,20 +406,41 @@ public unsafe class VirtioDevice : IDisposable
 
         // Get queue size
         ushort queueSize = *(ushort*)(_commonCfg + VirtioCommonCfgOffsets.QueueSize);
+        Debug.Write("[virtio] queue "); Debug.WriteHex(queueIndex);
+        Debug.Write(" size="); Debug.WriteHex(queueSize); Debug.WriteLine();
         if (queueSize == 0)
             return false;
 
         // Create virtqueue
         var queue = new Virtqueue(queueIndex, queueSize);
         _queues[queueIndex] = queue;
+        Debug.Write("[virtio] q"); Debug.WriteHex(queueIndex);
+        Debug.Write(" desc="); Debug.WriteHex(queue.DescPhysAddr);
+        Debug.Write(" avail="); Debug.WriteHex(queue.AvailPhysAddr);
+        Debug.Write(" used="); Debug.WriteHex(queue.UsedPhysAddr); Debug.WriteLine();
 
-        // Set queue addresses
-        *(ulong*)(_commonCfg + VirtioCommonCfgOffsets.QueueDesc) = queue.DescPhysAddr;
-        *(ulong*)(_commonCfg + VirtioCommonCfgOffsets.QueueDriver) = queue.AvailPhysAddr;
-        *(ulong*)(_commonCfg + VirtioCommonCfgOffsets.QueueDevice) = queue.UsedPhysAddr;
+        // Set queue addresses. Written as two 32-bit stores per register:
+        // VirtualBox's MMIO accelerator does not accept 8-byte accesses
+        // (they fall through to PGM and raise a guru meditation), and the
+        // split form is equivalent per the virtio spec.
+        uint* qd = (uint*)(_commonCfg + VirtioCommonCfgOffsets.QueueDesc);
+        qd[0] = (uint)queue.DescPhysAddr;
+        qd[1] = (uint)(queue.DescPhysAddr >> 32);
+        Debug.WriteLine("[virtio] desc addr written");
+
+        uint* qa = (uint*)(_commonCfg + VirtioCommonCfgOffsets.QueueDriver);
+        qa[0] = (uint)queue.AvailPhysAddr;
+        qa[1] = (uint)(queue.AvailPhysAddr >> 32);
+        Debug.WriteLine("[virtio] avail addr written");
+
+        uint* qu = (uint*)(_commonCfg + VirtioCommonCfgOffsets.QueueDevice);
+        qu[0] = (uint)queue.UsedPhysAddr;
+        qu[1] = (uint)(queue.UsedPhysAddr >> 32);
+        Debug.WriteLine("[virtio] used addr written");
 
         // Enable queue
         *(ushort*)(_commonCfg + VirtioCommonCfgOffsets.QueueEnable) = 1;
+        Debug.WriteLine("[virtio] queue enabled");
 
         return true;
     }

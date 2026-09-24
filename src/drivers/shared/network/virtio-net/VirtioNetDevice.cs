@@ -248,8 +248,22 @@ public unsafe class VirtioNetDevice : VirtioDevice
             frameData[i] = data[i];
         }
 
+        // Pad to the Ethernet minimum frame size (60 bytes, 1518 max).
+        // VirtualBox's virtio-net drops shorter frames (e.g. bare TCP
+        // SYN-ACKs) while QEMU tolerates them; the virtio spec asks the
+        // driver to pad, so do it for both.
+        int wireLen = length;
+        if (wireLen < 60)
+        {
+            for (int i = length; i < 60; i++)
+            {
+                frameData[i] = 0;
+            }
+            wireLen = 60;
+        }
+
         // Set up descriptor - device reads from this buffer
-        queue.SetDescriptor(descIdx, bufferPhys, (uint)(HDR_SIZE + length),
+        queue.SetDescriptor(descIdx, bufferPhys, (uint)(HDR_SIZE + wireLen),
             VirtqDescFlags.None, 0);
 
         // Submit to available ring
@@ -324,6 +338,14 @@ public unsafe class VirtioNetDevice : VirtioDevice
         // Skip virtio-net header (12 bytes for VERSION_1)
         const int HDR_SIZE = 12;
         int frameLen = (int)usedLen - HDR_SIZE;
+
+        // Diagnostics: VirtualBox's NAT may mark packets for checksum
+        // offload (NEEDS_CSUM = bit 0).
+        if (rxBuffer[0] != 0)
+        {
+            Debug.Write("[virtio-net] rx flags="); Debug.WriteHex((uint)rxBuffer[0]);
+            Debug.Write(" len="); Debug.WriteDecimal(frameLen); Debug.WriteLine();
+        }
         if (frameLen <= 0 || frameLen > maxLength)
         {
             // Re-add buffer to queue

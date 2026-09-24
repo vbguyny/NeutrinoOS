@@ -405,6 +405,17 @@ public static unsafe class TCP
     /// </summary>
     public static bool VerifyChecksum(byte* tcpData, int tcpLength, uint srcIP, uint destIP)
     {
+        // Result should be 0xFFFF if valid
+        return ChecksumSum(tcpData, tcpLength, srcIP, destIP) == 0xFFFF;
+    }
+
+    /// <summary>
+    /// Folded one's-complement sum over the pseudo-header and the TCP
+    /// segment (checksum field included): 0xFFFF when the checksum is valid.
+    /// Exposed for diagnostics.
+    /// </summary>
+    public static ushort ChecksumSum(byte* tcpData, int tcpLength, uint srcIP, uint destIP)
+    {
         uint sum = 0;
 
         // Pseudo-header
@@ -434,7 +445,6 @@ public static unsafe class TCP
             sum = (sum & 0xFFFF) + (sum >> 16);
         }
 
-        // Result should be 0xFFFF if valid
-        return sum == 0xFFFF;
+        return (ushort)sum;
     }
 }

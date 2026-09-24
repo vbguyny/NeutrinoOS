@@ -489,8 +489,11 @@ public unsafe class VirtioBlkDevice : VirtioDevice, IBlockDevice
         if (_deviceCfg == null)
             return false;
 
-        // Read capacity (in 512-byte sectors)
-        _capacity = *(ulong*)(_deviceCfg + VirtioBlkCfgOffsets.Capacity);
+        // Read capacity (in 512-byte sectors) as two 32-bit reads: 8-byte
+        // MMIO accesses fall through VirtualBox's accelerated MMIO path.
+        uint capLo = *(uint*)(_deviceCfg + VirtioBlkCfgOffsets.Capacity);
+        uint capHi = *(uint*)(_deviceCfg + VirtioBlkCfgOffsets.Capacity + 4);
+        _capacity = ((ulong)capHi << 32) | capLo;
 
         // Read block size if supported
         if (((ulong)_features & (ulong)VirtioBlkFeatures.BlkSize) != 0)

@@ -228,7 +228,7 @@ public unsafe class NetworkStack
                 break;
 
             case EtherType.IPv4:
-                ProcessIPv4(frame.Payload, frame.PayloadLength);
+                ProcessIPv4(frame.Payload, frame.PayloadLength, frame.SourceMac);
                 break;
 
             default:
@@ -286,7 +286,7 @@ public unsafe class NetworkStack
     /// <summary>
     /// Process an IPv4 packet.
     /// </summary>
-    private void ProcessIPv4(byte* data, int length)
+    private void ProcessIPv4(byte* data, int length, byte* ethSrc)
     {
         // Basic IPv4 header validation
         if (length < 20)
@@ -307,13 +307,30 @@ public unsafe class NetworkStack
                       ((uint)data[18] << 8) | data[19];
         byte protocol = data[9];
 
+        // ARP gleaning: learn the sender's MAC from the inbound frame so
+        // replies do not get dropped when the ARP cache has no entry yet
+        // (e.g. images without the boot-test warmup - the GUI VBox image).
+        if (ethSrc != null && srcIP != 0)
+        {
+            _arpCache.Update(srcIP, ethSrc);
+        }
+
         // Check if packet is for us
         if (destIP != _config.IPAddress && destIP != 0xFFFFFFFF)
             return;
 
+        // Use the IPv4 total-length field (bytes 2-3) for the payload size:
+        // the received frame may carry trailing Ethernet padding (VirtualBox
+        // pads short frames to the 60-byte minimum, QEMU does not), which
+        // would otherwise be counted into TCP/UDP checksums and lengths.
+        int ipTotalLen = (data[2] << 8) | data[3];
+        int effectiveLen = length;
+        if (ipTotalLen >= headerLen && ipTotalLen <= length)
+            effectiveLen = ipTotalLen;
+
         // Dispatch based on protocol
         byte* payload = data + headerLen;
-        int payloadLen = length - headerLen;
+        int payloadLen = effectiveLen - headerLen;
 
         switch (protocol)
         {
@@ -729,7 +746,15 @@ public unsafe class NetworkStack
         // Verify checksum
         if (!TCP.VerifyChecksum(data, length, srcIP, destIP))
         {
-            Debug.WriteLine("[NetStack] TCP checksum invalid");
+            Debug.Write("[NetStack] TCP cksum fail: sum=");
+            Debug.WriteHex((uint)TCP.ChecksumSum(data, length, srcIP, destIP));
+            Debug.Write(" stored=");
+            Debug.WriteHex((uint)((data[16] << 8) | data[17]));
+            Debug.Write(" len=");
+            Debug.WriteDecimal(length);
+            Debug.Write(" doff=");
+            Debug.WriteHex((uint)((data[12] >> 4) & 0xF));
+            Debug.WriteLine();
             return;
         }
 
@@ -1429,7 +1454,9 @@ public unsafe class NetworkStack
         byte* destMac = stackalloc byte[6];
         if (!_arpCache.Lookup(nextHop, destMac))
         {
-            // Need ARP resolution
+            // Send an ARP request so a retry can resolve the next hop.
+            // (The packet itself is dropped - callers retransmit.)
+            SendArpRequest(nextHop);
             return 0;
         }
 

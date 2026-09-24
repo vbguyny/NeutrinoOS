@@ -88,10 +88,23 @@ added.
 8. **X.509 structure** — three DER fixes: signature AlgorithmIdentifier
    needs the Ed25519 OID sequence, validity position within TBSCert
    fields, and SPKI algorithm identifier.
-9. **/time formatting in service context** — deep JIT formatting
-   produced corrupt digits; solved by bridging to the proven `date`
-   utility output through `ShellBridge` and assembling the string
-   with chars.
+9. **VirtioNet under VirtualBox** — the transitional `1AF4:1000` device
+   exposes the modern interface: `Initialize()` now tries the modern
+   capability path first; 8-byte MMIO stores to the BAR raise a VBox
+   guru, so queue desc/avail/used are written as two 32-bit stores
+   (and the virtio-blk capacity is read as two 32-bit reads).
+10. **Ethernet padding** — VBox pads short frames to 60 bytes; the
+    stack now derives L4 lengths from the IP total-length field, and
+    the driver pads TX frames to 60 bytes (both harmless under QEMU).
+11. **Cold ARP cache** — `BuildIPv4Frame` silently dropped unicast IP
+    packets when the cache had no next-hop entry (QEMU images warmed
+    it via boot tests; the GUI image did not). Inbound IPv4 frames now
+    glean the sender MAC into the cache, and cache misses send an ARP
+    request before dropping. This fixed SSH/HTTP entirely under VBox.
+12. **/time formatting in service context** — deep JIT formatting
+    produced corrupt digits; solved by bridging to the proven `date`
+    utility output through `ShellBridge` and assembling the string
+    with chars.
 
 ## 4. Deviations / deferred (documented per feature)
 

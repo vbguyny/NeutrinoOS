@@ -1,6 +1,7 @@
 param(
     [switch]$Rebuild,
     [switch]$NoStart,
+    [switch]$Net,
     [string]$SerialPipe = ""
 )
 # Create (or recreate) a separate VirtualBox VM "NeutrinoOSCli" that boots the
@@ -62,7 +63,18 @@ Write-Host "Converting GUI image to VDI..."
 
 Write-Host "Creating VM '$name'..."
 & $vb createvm --name $name --ostype Other_64 --register | Out-Null
-& $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 none --hpet on | Out-Null
+if ($Net) {
+    # NAT with port forwards for the Phase 6 network tests (sshd/webhost).
+    # nictype virtio: the kernel's only NIC driver is virtio-net.
+    # NIC tracing (pcap) records device-level rx/tx for diagnostics.
+    & $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 nat --nictype1 virtio --hpet on | Out-Null
+    & $vb modifyvm $name --natpf1 "ssh,tcp,,2222,,22" | Out-Null
+    & $vb modifyvm $name --natpf1 "http,tcp,,8080,,80" | Out-Null
+    & $vb modifyvm $name --natpf1 "https,tcp,,8444,,443" | Out-Null
+    & $vb modifyvm $name --nictrace1 on --nictracefile1 (Join-Path $base "vbox-nic.pcap") | Out-Null
+} else {
+    & $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 none --hpet on | Out-Null
+}
 & $vb storagectl $name --name SATA --add sata --controller IntelAhci | Out-Null
 & $vb storageattach $name --storagectl SATA --port 0 --device 0 --type hdd --medium $vdi | Out-Null
 if ($SerialPipe -ne "") {

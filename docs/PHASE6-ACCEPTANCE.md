@@ -31,6 +31,31 @@ scripts\phase6-ssh-demo.ps1            # expects a running VM on :2222
 wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/p6-qemu-serve.sh
 ```
 
+## VirtualBox acceptance test (NAT + virtio-net)
+
+The GUI image variant (`bash build/p6-vbox-image.sh`) carries Phase 6
+(`/etc/boot.params` autostart, users, `/var/www`) and boots in the
+"NeutrinoOSCli" VM with NAT port forwards (2222/8080/8444):
+
+```powershell
+# 1. build the image once (WSL; after build/p5-all.sh)
+wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/p6-vbox-image.sh
+# 2. run the full check (recreates the VM with NAT, boots headless,
+#    runs Windows ssh.exe + curl.exe and WSL TLS/password probes)
+powershell -ExecutionPolicy Bypass -File scripts\vbox-phase6-test.ps1
+```
+
+Expected: `ALL PHASE 6 VBOX CHECKS PASSED` (boot/DHCP/sshd/webhost,
+ssh exec as `user`, HTTP `/health` `/time` `/var/www` and 404,
+HTTPS via a WSL OpenSSL client, SSH password auth, no `SYSTEM HALTED`).
+Serial transcript `build\vbox-gui-serial.log`, NIC-trace pcap
+`build\vbox-nic.pcap` (parse with `build/p6-pcap.py`), screenshot
+`build\vbox-phase6.png`. `-KeepRunning` leaves the VM up.
+
+Note: Windows `curl.exe`/Schannel cannot negotiate the Ed25519 TLS 1.3
+handshake, so the HTTPS check runs from WSL (reachable through the VBox
+NAT listener on the host IP).
+
 ## Checklist status
 
 | # | Criterion | Status | Evidence |
