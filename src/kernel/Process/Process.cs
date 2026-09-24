@@ -274,6 +274,23 @@ public unsafe struct Process
     /// </summary>
     public void* ControllingTerminal;
 
+    // ==================== Security (Phase 7) ====================
+
+    /// <summary>
+    /// Fixed bitmask of allowed syscall numbers (512 bits = one bit per
+    /// system call, little-endian qwords). Consulted by SyscallDispatch
+    /// when <see cref="SyscallFilterEnabled"/> is set.
+    /// </summary>
+    public fixed ulong SyscallAllowMask[8];
+
+    /// <summary>
+    /// When true, syscalls whose bit is clear in
+    /// <see cref="SyscallAllowMask"/> fail with EPERM. Once enabled the
+    /// filter can only be tightened, never removed (see
+    /// SyscallDispatch.SysSetSyscallFilter).
+    /// </summary>
+    public bool SyscallFilterEnabled;
+
     // ==================== Program Name ====================
 
     /// <summary>

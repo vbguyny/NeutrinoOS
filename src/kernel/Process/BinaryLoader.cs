@@ -287,8 +287,8 @@ public static unsafe class BinaryLoader
         // Align to page boundary
         stackSize = (stackSize + UserLayout.PageSize - 1) & ~(UserLayout.PageSize - 1);
 
-        // Stack grows down from UserStackTop
-        ulong stackTop = UserLayout.UserStackTop;
+        // Stack grows down from the (ASLR-randomized) stack top
+        ulong stackTop = UserLayout.RandomizedStackTop();
         ulong stackBottom = stackTop - stackSize;
 
         ulong numPages = stackSize / UserLayout.PageSize;

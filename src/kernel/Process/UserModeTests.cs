@@ -246,6 +246,10 @@ public static unsafe class UserModeTests
         builder.EmitTestHeader("thread_join");
         builder.EmitThreadJoinTest();
 
+        // Test 57: syscall filter (Phase 7 security)
+        builder.EmitTestHeader("syscall_filter");
+        builder.EmitSyscallFilterTest();
+
         // Summary and exit
         builder.EmitTestSummary();
 
@@ -3602,6 +3606,130 @@ public static unsafe class UserModeTests
                 // Clean up stack
                 code[_offset++] = 0x48; code[_offset++] = 0x83; code[_offset++] = 0xC4;
                 code[_offset++] = 32;
+            }
+        }
+
+        public void EmitSyscallFilterTest()
+        {
+            // Test: set_syscall_filter(mask) / SYS_SET_SYSCALL_FILTER = 500
+            // Install a mask that allows only write(1), getpid(39) and
+            // exit(60); verify:
+            //   1. the install call succeeds
+            //   2. getpid (allowed) still works
+            //   3. getppid (not allowed) fails with -EPERM
+            //   4. a second install with an all-ones mask cannot loosen the
+            //      filter (getppid still -EPERM, getpid still allowed)
+            // Everything the code after this point needs (write, exit) stays
+            // in the mask so the summary and process exit still work.
+            fixed (byte* code = _code)
+            {
+                // sub rsp, 144 (two 64-byte mask blocks + slack)
+                code[_offset++] = 0x48; code[_offset++] = 0x81; code[_offset++] = 0xEC;
+                Emit32(144);
+
+                // Zero mask block 0: mov qword [rsp+8*i], 0
+                for (int i = 0; i < 8; i++)
+                {
+                    code[_offset++] = 0x48; code[_offset++] = 0xC7; code[_offset++] = 0x44; code[_offset++] = 0x24;
+                    code[_offset++] = (byte)(8 * i);
+                    Emit32(0);
+                }
+
+                // Allow write(1): byte 0 bit 1; getpid(39): byte 4 bit 7;
+                // exit(60): byte 7 bit 4.
+                code[_offset++] = 0xC6; code[_offset++] = 0x44; code[_offset++] = 0x24; code[_offset++] = 0x00; code[_offset++] = 0x02;
+                code[_offset++] = 0xC6; code[_offset++] = 0x44; code[_offset++] = 0x24; code[_offset++] = 0x04; code[_offset++] = 0x80;
+                code[_offset++] = 0xC6; code[_offset++] = 0x44; code[_offset++] = 0x24; code[_offset++] = 0x07; code[_offset++] = 0x10;
+
+                var endJumps = new int[8];
+                int endJumpCount = 0;
+
+                // set_syscall_filter(rsp)
+                code[_offset++] = 0xB8; Emit32(500);
+                code[_offset++] = 0x48; code[_offset++] = 0x89; code[_offset++] = 0xE7;  // mov rdi, rsp
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;  // syscall
+                code[_offset++] = 0x85; code[_offset++] = 0xC0;  // test eax, eax
+                code[_offset++] = 0x74;  // jz install_ok
+                int installOk = _offset++;
+                EmitPrintString("  [FAIL] set_syscall_filter failed\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[installOk] = (byte)(_offset - installOk - 1);
+
+                // getpid(39) must still be allowed (returns > 0)
+                code[_offset++] = 0xB8; Emit32(39);
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;
+                code[_offset++] = 0x85; code[_offset++] = 0xC0;  // test eax, eax
+                code[_offset++] = 0x7F;  // jg getpid_ok
+                int getpidOk = _offset++;
+                EmitPrintString("  [FAIL] allowed getpid was blocked\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[getpidOk] = (byte)(_offset - getpidOk - 1);
+
+                // getppid(110) must fail with -EPERM (-1)
+                code[_offset++] = 0xB8; Emit32(110);
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xFF;  // cmp eax, -1
+                code[_offset++] = 0x74;  // je denied_ok
+                int deniedOk = _offset++;
+                EmitPrintString("  [FAIL] getppid was not blocked\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[deniedOk] = (byte)(_offset - deniedOk - 1);
+
+                // Fill mask block 1 (rsp+64..) with all ones
+                for (int i = 0; i < 8; i++)
+                {
+                    code[_offset++] = 0x48; code[_offset++] = 0xC7; code[_offset++] = 0x44; code[_offset++] = 0x24;
+                    code[_offset++] = (byte)(64 + 8 * i);
+                    Emit32(-1);
+                }
+
+                // set_syscall_filter(rsp + 64) - attempt to loosen
+                code[_offset++] = 0xB8; Emit32(500);
+                code[_offset++] = 0x48; code[_offset++] = 0x8D; code[_offset++] = 0x7C; code[_offset++] = 0x24; code[_offset++] = 0x40;  // lea rdi, [rsp+64]
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;
+                code[_offset++] = 0x85; code[_offset++] = 0xC0;  // test eax, eax
+                code[_offset++] = 0x74;  // jz tighten_ok
+                int tightenOk = _offset++;
+                EmitPrintString("  [FAIL] filter update call failed\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[tightenOk] = (byte)(_offset - tightenOk - 1);
+
+                // getppid must STILL be denied (filter cannot be loosened)
+                code[_offset++] = 0xB8; Emit32(110);
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;
+                code[_offset++] = 0x83; code[_offset++] = 0xF8; code[_offset++] = 0xFF;  // cmp eax, -1
+                code[_offset++] = 0x74;  // je still_denied
+                int stillDenied = _offset++;
+                EmitPrintString("  [FAIL] filter was loosened by update call\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[stillDenied] = (byte)(_offset - stillDenied - 1);
+
+                // getpid must still be allowed
+                code[_offset++] = 0xB8; Emit32(39);
+                code[_offset++] = 0x0F; code[_offset++] = 0x05;
+                code[_offset++] = 0x85; code[_offset++] = 0xC0;  // test eax, eax
+                code[_offset++] = 0x7F;  // jg getpid2_ok
+                int getpid2Ok = _offset++;
+                EmitPrintString("  [FAIL] allowed getpid blocked after tighten\n");
+                code[_offset++] = 0xE9; endJumps[endJumpCount++] = _offset; _offset += 4;
+                code[getpid2Ok] = (byte)(_offset - getpid2Ok - 1);
+
+                EmitPrintString("  [PASS] syscall_filter install/deny/tighten verified\n");
+
+                // ===== End: patch near jumps to land here =====
+                int endPos = _offset;
+                for (int j = 0; j < endJumpCount; j++)
+                {
+                    int disp = endPos - (endJumps[j] + 4);
+                    code[endJumps[j]] = (byte)(disp & 0xFF);
+                    code[endJumps[j] + 1] = (byte)((disp >> 8) & 0xFF);
+                    code[endJumps[j] + 2] = (byte)((disp >> 16) & 0xFF);
+                    code[endJumps[j] + 3] = (byte)((disp >> 24) & 0xFF);
+                }
+
+                // add rsp, 144
+                code[_offset++] = 0x48; code[_offset++] = 0x81; code[_offset++] = 0xC4;
+                Emit32(144);
             }
         }
 

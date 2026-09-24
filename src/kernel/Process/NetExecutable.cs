@@ -813,11 +813,11 @@ public static unsafe class NetExecutable
     {
         argsArrayAddr = 0;
 
-        // Allocate stack pages (8MB stack)
+        // Allocate stack pages (8MB stack) below the ASLR-randomized top
         const ulong stackSize = 8 * 1024 * 1024;
         const ulong stackPages = stackSize / 4096;
-        const ulong stackTop = 0x7FFFFFFF0000UL;
-        const ulong stackBase = stackTop - stackSize;
+        ulong stackTop = UserLayout.RandomizedStackTop();
+        ulong stackBase = stackTop - stackSize;
 
         for (ulong i = 0; i < stackPages; i++)
         {

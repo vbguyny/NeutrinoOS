@@ -213,6 +213,15 @@ public static unsafe class SyscallDispatch
         if (number < 0 || number >= SyscallNumbers.SYS_MAX)
             return -Errno.ENOSYS;
 
+        // Phase 7 security: per-process syscall filter. The filter-install
+        // syscall itself is always allowed (it can only tighten the mask).
+        if (proc != null && proc->SyscallFilterEnabled && number != SyscallNumbers.SYS_SET_SYSCALL_FILTER)
+        {
+            ulong bit = 1UL << ((int)number & 63);
+            if ((proc->SyscallAllowMask[number >> 6] & bit) == 0)
+                return -Errno.EPERM;
+        }
+
         var handler = _handlers[number];
         if (handler == null)
             return -Errno.ENOSYS;
@@ -238,6 +247,9 @@ public static unsafe class SyscallDispatch
         _handlers[SyscallNumbers.SYS_SETPGID] = SysSetpgid;
         _handlers[SyscallNumbers.SYS_GETSID] = SysGetsid;
         _handlers[SyscallNumbers.SYS_SETSID] = SysSetsid;
+
+        // Phase 7 security: syscall allow-mask installer
+        _handlers[SyscallNumbers.SYS_SET_SYSCALL_FILTER] = SysSetSyscallFilter;
 
         // Thread-related syscalls
         _handlers[SyscallNumbers.SYS_GETTID] = SysGettid;
@@ -464,6 +476,39 @@ public static unsafe class SyscallDispatch
             return -Errno.ESRCH;
 
         return target->ProcessGroupId;
+    }
+
+    /// <summary>
+    /// set_syscall_filter(mask) - install a syscall allow-mask for the
+    /// calling process (Phase 7 security). <paramref name="arg0"/> points
+    /// to 512 bits (8 x u64); bit N authorizes syscall number N. The
+    /// first call installs the mask and enables filtering; later calls
+    /// can only remove further permissions (the new mask is ANDed in),
+    /// so the filter can be tightened but never loosened or removed.
+    /// The calling process's already-installed filter is inherited by
+    /// children across fork.
+    /// </summary>
+    private static long SysSetSyscallFilter(long arg0, long arg1, long arg2, long arg3, long arg4, long arg5,
+                                             Process.Process* proc, Thread* thread)
+    {
+        if (arg0 == 0 || proc == null)
+            return -Errno.EFAULT;
+
+        ulong* mask = (ulong*)arg0;
+
+        if (!proc->SyscallFilterEnabled)
+        {
+            for (int i = 0; i < 8; i++)
+                proc->SyscallAllowMask[i] = mask[i];
+            proc->SyscallFilterEnabled = true;
+        }
+        else
+        {
+            for (int i = 0; i < 8; i++)
+                proc->SyscallAllowMask[i] &= mask[i];
+        }
+
+        return 0;
     }
 
     private static long SysSetpgid(long arg0, long arg1, long arg2, long arg3, long arg4, long arg5,

@@ -39,6 +39,37 @@ public static class UserLayout
     public const ulong UserStackSize = 8 * 1024 * 1024;  // 8MB
 
     /// <summary>
+    /// ASLR slide window for the user stack top (Phase 7 security).
+    /// The top of the main user stack is moved down by a random,
+    /// page-aligned offset within this window at process creation.
+    /// </summary>
+    public const ulong StackAslrWindow = 256 * 1024 * 1024;  // 256MB window (16 bits)
+
+    /// <summary>
+    /// Set false to force the fixed (pre-Phase-7) stack top, for
+    /// deterministic debugging and A/B tests.
+    /// </summary>
+    public static bool AslrEnabled = true;
+
+    /// <summary>
+    /// Randomized user stack top (ASLR). Draws 64 bits from the kernel
+    /// entropy pool and slides the canonical stack top down by a
+    /// page-aligned amount inside <see cref="StackAslrWindow"/>.
+    /// </summary>
+    public static unsafe ulong RandomizedStackTop()
+    {
+        if (!AslrEnabled)
+            return UserStackTop;
+
+        ulong r = 0;
+        Exports.DDK.EntropyExports.FillEntropy((byte*)&r, 8);
+
+        ulong pages = StackAslrWindow / PageSize;             // 65536 pages
+        ulong slide = (r % pages) * PageSize;                 // page-aligned
+        return UserStackTop - slide;
+    }
+
+    /// <summary>
     /// Default user heap start (grows up from after image)
     /// </summary>
     public const ulong UserHeapStart = 0x0000_0000_2000_0000;  // 512MB

@@ -142,6 +142,15 @@ public static class SyscallNumbers
     public const int SYS_GETRANDOM = 318;
     public const int SYS_DUP3 = 292;
 
+    // ==================== ProtonOS extensions ====================
+    /// <summary>
+    /// Phase 7 security: install a syscall allow-mask for the calling
+    /// process (pointer to 512 bits, i.e. 8 x u64). The first call sets
+    /// the mask; later calls can only tighten it (AND). See
+    /// SyscallDispatch.SysSetSyscallFilter.
+    /// </summary>
+    public const int SYS_SET_SYSCALL_FILTER = 500;
+
     // ==================== Maximum syscall number ====================
     public const int SYS_MAX = 512;
 }

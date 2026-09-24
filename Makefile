@@ -12,6 +12,13 @@ JITTEST_DIR := src/JITTest
 # Bootable disk image produced by 'make image'
 IMG := $(BUILD_DIR)/neutrinoos.img
 
+# Reproducible builds (Phase 7): a fixed timestamp for all toolchain and
+# filesystem artifacts. LLD honors SOURCE_DATE_EPOCH for PE timestamps and
+# GNU mtools 4.0.43 stamps FAT entries with it, so two builds from the
+# same sources produce byte-identical images (`make reproducible`).
+export SOURCE_DATE_EPOCH := 315532800
+export MTOOLS_SKIP_CHECK := 1
+
 # Output files
 ifeq ($(ARCH),x64)
     EFI_NAME := BOOTX64.EFI
@@ -318,7 +325,7 @@ $(BUILD_DIR)/$(EFI_NAME): $(NATIVE_OBJ) $(KERNEL_OBJ)
 image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
-	mformat -i $(IMG) -F -v NEUTRINOOS ::
+	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
 	mmd -i $(IMG) ::/EFI
 	mmd -i $(IMG) ::/EFI/BOOT
 	mmd -i $(IMG) ::/drivers
@@ -350,6 +357,15 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 
 clean:
 	rm -rf build/
+
+# Phase 7: build twice from clean state and compare artifact checksums.
+reproducible:
+	bash build/reproduce.sh
+
+# Phase 7: assemble the v1.0.0 distribution in dist/ (image + qcow2 + checksums).
+release:
+	bash build/p7-release-image.sh
+	bash build/p7-release.sh
 
 # Toolchain directories
 RUNTIME_DIR := tools/runtime

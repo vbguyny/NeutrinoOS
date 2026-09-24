@@ -178,6 +178,15 @@ public static unsafe class ProcessSyscalls
         child->BlockedSignals = parent->BlockedSignals;
         child->PendingSignals = 0;
 
+        // Copy the syscall filter (Phase 7): a sandboxed process must not
+        // escape its filter by forking an unfiltered child.
+        child->SyscallFilterEnabled = parent->SyscallFilterEnabled;
+        if (parent->SyscallFilterEnabled)
+        {
+            for (int i = 0; i < 8; i++)
+                child->SyscallAllowMask[i] = parent->SyscallAllowMask[i];
+        }
+
         // Copy working directory
         for (int i = 0; i < 256; i++)
             child->Cwd[i] = parent->Cwd[i];
