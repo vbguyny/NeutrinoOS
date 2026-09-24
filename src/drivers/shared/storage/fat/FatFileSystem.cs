@@ -39,6 +39,10 @@ public unsafe class FatFileSystem : IFileSystem
     private byte[]? _fatBuffer;         // First FAT
     private ulong _fatStartSector;
 
+    // Allocation scan hint (cluster number to start the next free-cluster
+    // scan from; set after each allocation, wrapping on full scan).
+    private uint _nextFreeCluster = 2;
+
     // Volume info
     private string _volumeLabel = "";
     private uint _volumeId;
@@ -1412,24 +1416,37 @@ public unsafe class FatFileSystem : IFileSystem
         if (_fatBuffer == null || _readOnly)
             return 0;
 
-        // Search for a free cluster
-        for (uint cluster = 2; cluster < _countOfClusters + 2; cluster++)
+        // Scan start hint: continue from the last allocation instead of
+        // rescanning from cluster 2 every time (O(n^2) for sequential
+        // writes). A wrapped second pass still finds clusters that were
+        // freed behind the hint.
+        uint count = _countOfClusters + 2;
+
+        uint end = _nextFreeCluster < count ? _nextFreeCluster : count;
+        for (uint pass = 0; pass < 2; pass++)
         {
-            if (GetFatEntry(cluster) == 0)
+            uint start = pass == 0 ? end : 2;
+            uint stop = pass == 0 ? count : end;
+
+            for (uint cluster = start; cluster < stop; cluster++)
             {
-                // Mark as end of chain
-                uint endMarker = _fatType switch
+                if (GetFatEntry(cluster) == 0)
                 {
-                    FatType.Fat12 => FatCluster.EndOfChain12,
-                    FatType.Fat16 => FatCluster.EndOfChain16,
-                    FatType.Fat32 => FatCluster.EndOfChain32,
-                    _ => 0xFFFFFFFF
-                };
+                    // Mark as end of chain
+                    uint endMarker = _fatType switch
+                    {
+                        FatType.Fat12 => FatCluster.EndOfChain12,
+                        FatType.Fat16 => FatCluster.EndOfChain16,
+                        FatType.Fat32 => FatCluster.EndOfChain32,
+                        _ => 0xFFFFFFFF
+                    };
 
-                if (!SetFatEntry(cluster, endMarker))
-                    return 0;
+                    if (!SetFatEntry(cluster, endMarker))
+                        return 0;
 
-                return cluster;
+                    _nextFreeCluster = cluster + 1;
+                    return cluster;
+                }
             }
         }
 

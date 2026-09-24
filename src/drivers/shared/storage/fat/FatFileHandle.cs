@@ -27,6 +27,12 @@ public unsafe class FatFileHandle : IFileHandle
     private uint _currentCluster;
     private ulong _currentClusterOffset;  // Byte offset of current cluster start
 
+    // Phase 7 write path: tail of the cluster chain (avoids re-walking the
+    // whole chain on every extension) and whether _lastChainCluster is
+    // still known to be the real tail.
+    private uint _lastChainCluster;
+    private bool _lastChainValid;
+
     /// <summary>
     /// Create a new file handle. Use Init() to set write-related parameters.
     /// </summary>
@@ -209,6 +215,7 @@ public unsafe class FatFileHandle : IFileHandle
             {
                 _currentCluster = _firstCluster;
                 _currentClusterOffset = 0;
+                _lastChainValid = false;
             }
 
             // Skip to position cluster
@@ -221,6 +228,11 @@ public unsafe class FatFileHandle : IFileHandle
 
             while (totalWritten < count)
             {
+                // Fresh clusters are zero-filled in RAM; the disk write of
+                // the zeroed cluster is deferred until the data write so a
+                // full-cluster write costs a single device operation.
+                bool freshCluster = false;
+
                 // Need to allocate first cluster?
                 if (_firstCluster == 0)
                 {
@@ -232,21 +244,27 @@ public unsafe class FatFileHandle : IFileHandle
                     }
                     _currentCluster = _firstCluster;
                     _currentClusterOffset = 0;
+                    _lastChainCluster = _firstCluster;
+                    _lastChainValid = true;
 
-                    // Zero the new cluster
+                    // Zero the new cluster in RAM
                     for (uint i = 0; i < bytesPerCluster; i++)
                         clusterBuffer[i] = 0;
-                    _fs.WriteCluster(_currentCluster, clusterBuffer);
+                    freshCluster = true;
                 }
 
                 // Need new cluster?
                 if (_currentCluster == 0 || FatCluster.IsEndOfChain(_currentCluster, _fs.FatVariant))
                 {
-                    // Extend cluster chain
-                    uint lastCluster = _currentCluster;
-                    if (lastCluster == 0 || FatCluster.IsEndOfChain(lastCluster, _fs.FatVariant))
+                    // Extend the chain from the known tail when possible;
+                    // otherwise fall back to walking the chain.
+                    uint lastCluster;
+                    if (_lastChainValid)
                     {
-                        // Find the last cluster in chain
+                        lastCluster = _lastChainCluster;
+                    }
+                    else
+                    {
                         lastCluster = _firstCluster;
                         while (lastCluster != 0 && !FatCluster.IsEndOfChain(lastCluster, _fs.FatVariant))
                         {
@@ -266,18 +284,13 @@ public unsafe class FatFileHandle : IFileHandle
 
                     _currentCluster = newCluster;
                     _currentClusterOffset = ((ulong)_position + (ulong)totalWritten) / bytesPerCluster * bytesPerCluster;
+                    _lastChainCluster = newCluster;
+                    _lastChainValid = true;
 
-                    // Zero the new cluster
+                    // Zero the new cluster in RAM
                     for (uint i = 0; i < bytesPerCluster; i++)
                         clusterBuffer[i] = 0;
-                    _fs.WriteCluster(_currentCluster, clusterBuffer);
-                }
-
-                // Read current cluster content (for partial writes)
-                if (!_fs.ReadCluster(_currentCluster, clusterBuffer))
-                {
-                    Memory.FreePages(bufferPhys, pageCount);
-                    return totalWritten > 0 ? totalWritten : (int)FileResult.IoError;
+                    freshCluster = true;
                 }
 
                 // Calculate offset within cluster
@@ -287,13 +300,25 @@ public unsafe class FatFileHandle : IFileHandle
                 if (bytesToCopy > bytesAvailable)
                     bytesToCopy = bytesAvailable;
 
+                // Read current cluster content only when preserving bytes
+                // (partial overwrite of an existing cluster). Fresh clusters
+                // are already zero-filled in RAM.
+                if (!freshCluster && !(offsetInCluster == 0 && bytesToCopy == bytesPerCluster))
+                {
+                    if (!_fs.ReadCluster(_currentCluster, clusterBuffer))
+                    {
+                        Memory.FreePages(bufferPhys, pageCount);
+                        return totalWritten > 0 ? totalWritten : (int)FileResult.IoError;
+                    }
+                }
+
                 // Copy to cluster buffer
                 for (uint i = 0; i < bytesToCopy; i++)
                 {
                     clusterBuffer[offsetInCluster + i] = buffer[totalWritten + i];
                 }
 
-                // Write cluster back
+                // Write cluster back (single device write per cluster)
                 if (!_fs.WriteCluster(_currentCluster, clusterBuffer))
                 {
                     Memory.FreePages(bufferPhys, pageCount);
@@ -306,7 +331,18 @@ public unsafe class FatFileHandle : IFileHandle
                 if (offsetInCluster + bytesToCopy >= bytesPerCluster)
                 {
                     uint nextCluster = _fs.GetFatEntry(_currentCluster);
-                    _currentCluster = nextCluster;
+                    if (FatCluster.IsEndOfChain(nextCluster, _fs.FatVariant))
+                    {
+                        // Remember the tail for the next extension; do not
+                        // store the end-of-chain marker as a cluster number.
+                        _lastChainCluster = _currentCluster;
+                        _lastChainValid = true;
+                        _currentCluster = 0;
+                    }
+                    else
+                    {
+                        _currentCluster = nextCluster;
+                    }
                     _currentClusterOffset += bytesPerCluster;
                 }
             }
