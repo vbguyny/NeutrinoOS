@@ -32,6 +32,15 @@ public static class WebService
     internal const string WwwRoot = "/var/www";
     private const int MaxConnections = 10;
 
+    // Phase 7 security: per-source-IP limits.
+    private const int MaxConnectionsPerIp = 4;
+    private const int MaxRequestsPerIpPerSecond = 30;
+    private const int IpSlots = 8;
+
+    private static readonly uint[] _ipTable = new uint[IpSlots];
+    private static readonly ulong[] _ipWindowStart = new ulong[IpSlots];
+    private static readonly int[] _ipWindowCount = new int[IpSlots];
+
     private static TcpServer _httpListener;
     private static TcpServer _httpsListener;
     private static NetworkStack _stack;
@@ -155,6 +164,22 @@ public static class WebService
             var sock = listener.Accept();
             if (sock == null)
                 break;
+
+            // Phase 7: per-IP connection cap.
+            uint peer = sock.RemoteAddress;
+            int sameIp = 0;
+            for (int i = 0; i < _connections.Length; i++)
+            {
+                var existing = _connections[i];
+                if (existing != null && existing.PeerIp == peer)
+                    sameIp++;
+            }
+            if (sameIp >= MaxConnectionsPerIp)
+            {
+                sock.Close();
+                continue;
+            }
+
             int slot = -1;
             for (int i = 0; i < _connections.Length; i++)
             {
@@ -172,6 +197,43 @@ public static class WebService
             var conn = new WebConnection(sock, tls ? _certDer : null, tls ? _keySeed : null);
             _connections[slot] = conn;
         }
+    }
+
+    /// <summary>
+    /// Phase 7: per-IP request window (sliding 1-second bucket). False
+    /// means the caller should answer 429 and back off.
+    /// </summary>
+    internal static bool AllowRequest(uint ip)
+    {
+        ulong now = Timer.GetUptimeMilliseconds();
+
+        int slot = -1;
+        int free = -1;
+        for (int i = 0; i < IpSlots; i++)
+        {
+            if (_ipTable[i] == ip)
+            {
+                slot = i;
+                break;
+            }
+            if (free < 0 && _ipTable[i] == 0)
+                free = i;
+        }
+        if (slot < 0)
+        {
+            slot = free >= 0 ? free : 0;   // steal slot 0 when the table is full
+            _ipTable[slot] = ip;
+            _ipWindowStart[slot] = now;
+            _ipWindowCount[slot] = 0;
+        }
+
+        if (now - _ipWindowStart[slot] >= 1000)
+        {
+            _ipWindowStart[slot] = now;
+            _ipWindowCount[slot] = 0;
+        }
+        _ipWindowCount[slot]++;
+        return _ipWindowCount[slot] <= MaxRequestsPerIpPerSecond;
     }
 
     // ==================== Configuration / certificate ====================
@@ -342,6 +404,11 @@ public sealed unsafe class WebConnection
 {
     private const ulong IdleTimeoutMs = 12000;
 
+    // Phase 7 security: per-connection request rate limit. A keep-alive
+    // client that exceeds this within a 1-second window gets a 429 and
+    // the connection is closed (the client must back off).
+    private const int RequestsPerSecond = 20;
+
     private readonly TcpSocket _sock;
     private readonly Tls13Connection _tls;
     private bool _tlsReady;
@@ -351,9 +418,14 @@ public sealed unsafe class WebConnection
     private int _inLen;
     private int _requests;
     private ulong _lastActivity;
+    private ulong _rateWindowStart;
+    private int _rateWindowCount;
 
     /// <summary>True when the connection has finished or errored.</summary>
     public bool Closed => _closed;
+
+    /// <summary>Source IP of the peer (Phase 7 rate limiting).</summary>
+    public uint PeerIp => _sock.RemoteAddress;
 
     /// <summary>Creates a connection; tlsCert/tlsSeed null means plain HTTP.</summary>
     public WebConnection(TcpSocket sock, byte[] tlsCert, byte[] tlsSeed)
@@ -493,11 +565,34 @@ public sealed unsafe class WebConnection
                 continue;
             }
 
+            // Phase 7: request-rate limits - per connection and per source
+            // IP (429 + close when exceeded).
+            if (!RateLimitOk() || !WebService.AllowRequest(_sock.RemoteAddress))
+            {
+                SendSimple(429, "Too Many Requests", "text/plain", "rate limit exceeded\n", headOnly);
+                Consume(totalLen);
+                Close();
+                return;
+            }
+
             _requests++;
             SendRoute(path, headOnly);
             Consume(totalLen);
             MaybeClose(keepAlive);
         }
+    }
+
+    private bool RateLimitOk()
+    {
+        ulong now = Timer.GetUptimeMilliseconds();
+        if (now - _rateWindowStart >= 1000)
+        {
+            _rateWindowStart = now;
+            _rateWindowCount = 1;
+            return true;
+        }
+        _rateWindowCount++;
+        return _rateWindowCount <= RequestsPerSecond;
     }
 
     private void MaybeClose(string keepAlive)

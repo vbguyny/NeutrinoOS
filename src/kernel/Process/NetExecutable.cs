@@ -315,9 +315,10 @@ public static unsafe class NetExecutable
         // Initialize memory regions for the new exec'd image
         proc->ImageBase = userCodeAddr;
         proc->ImageSize = codePages * 4096;
-        proc->MmapBase = 0x20000000; // Start mmap region after code
+        // ASLR: slide the mmap and heap bases within their respective windows.
+        proc->MmapBase = 0x20000000 + UserLayout.RandomPageSlide(UserLayout.HeapAslrWindow);
         proc->MmapRegions = null;
-        proc->HeapStart = 0x30000000; // Heap starts here
+        proc->HeapStart = 0x30000000 + UserLayout.RandomPageSlide(UserLayout.HeapAslrWindow);
         proc->HeapEnd = proc->HeapStart;
 
         DebugConsole.Write("[NetExec] Jumping to user mode at 0x");

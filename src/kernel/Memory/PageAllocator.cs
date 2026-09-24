@@ -563,6 +563,15 @@ public static unsafe class PageAllocator
     }
 
     /// <summary>
+    /// Phase 7 audit / debug: when true, freed pages are filled with
+    /// 0xDD so use-after-free reads are obvious during debugging, and
+    /// double frees are reported on the console. Off by default (the
+    /// fill is a small but nonzero cost on every free); enable from a
+    /// debugger or a debug build.
+    /// </summary>
+    public static bool PoisonOnFree;
+
+    /// <summary>
     /// Free a single physical page.
     /// </summary>
     /// <param name="physicalAddress">Physical address of the page to free</param>
@@ -582,11 +591,32 @@ public static unsafe class PageAllocator
             DebugConsole.WriteLine();
         }
 
-        if (!IsPageFree(pageNum))  // Only free if currently used
+        if (IsPageFree(pageNum))
         {
-            SetPageFree(pageNum);
-            _freePages++;
-            UpdateNodeStatsOnFree(pageNum);
+            // Phase 7 audit: the page was already free - this is a
+            // double free. Report it (silently ignoring it in the bitmap
+            // keeps the allocator consistent either way).
+            if (PoisonOnFree)
+            {
+                DebugConsole.Write("[PageAlloc] ERROR: double free of page 0x");
+                DebugConsole.WriteHex(physicalAddress);
+                DebugConsole.WriteLine();
+            }
+            return;
+        }
+
+        SetPageFree(pageNum);
+        _freePages++;
+        UpdateNodeStatsOnFree(pageNum);
+
+        if (PoisonOnFree && X64.VirtualMemory.IsInitialized)
+        {
+            byte* p = (byte*)X64.VirtualMemory.PhysToVirt(physicalAddress);
+            if (p != null)
+            {
+                for (int i = 0; i < (int)PageSize; i++)
+                    p[i] = 0xDD;
+            }
         }
     }
 

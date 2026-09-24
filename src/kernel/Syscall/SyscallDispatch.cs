@@ -1469,7 +1469,11 @@ public static unsafe class SyscallDispatch
         byte* path = (byte*)arg0;
         Stat* buf = (Stat*)arg1;
 
-        if (path == null || buf == null)
+        if (path == null)
+            return -Errno.EFAULT;
+
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(buf, (ulong)sizeof(Stat)))
             return -Errno.EFAULT;
 
         // Try to open the file to get its information
@@ -1495,7 +1499,8 @@ public static unsafe class SyscallDispatch
         int fd = (int)arg0;
         Stat* buf = (Stat*)arg1;
 
-        if (buf == null)
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(buf, (ulong)sizeof(Stat)))
             return -Errno.EFAULT;
 
         if (fd < 0 || fd >= proc->FdTableSize)
@@ -1864,6 +1869,10 @@ public static unsafe class SyscallDispatch
 
         if (buf == null || size < 1)
             return -Errno.EINVAL;
+
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(buf, (ulong)size))
+            return -Errno.EFAULT;
 
         // Copy cwd to buffer
         int len = 0;
@@ -2700,7 +2709,8 @@ public static unsafe class SyscallDispatch
     {
         Utsname* buf = (Utsname*)arg0;
 
-        if (buf == null)
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(buf, (ulong)sizeof(Utsname)))
             return -Errno.EFAULT;
 
         // Clear the structure first
@@ -2735,7 +2745,8 @@ public static unsafe class SyscallDispatch
     {
         Sysinfo* info = (Sysinfo*)arg0;
 
-        if (info == null)
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(info, (ulong)sizeof(Sysinfo)))
             return -Errno.EFAULT;
 
         // Clear the structure
@@ -2806,7 +2817,8 @@ public static unsafe class SyscallDispatch
         int clockId = (int)arg0;
         Timespec* ts = (Timespec*)arg1;
 
-        if (ts == null)
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(ts, (ulong)sizeof(Timespec)))
             return -Errno.EFAULT;
 
         ulong nanoseconds;
@@ -2853,6 +2865,11 @@ public static unsafe class SyscallDispatch
         int clockId = (int)arg0;
         Timespec* ts = (Timespec*)arg1;
 
+        // Phase 7: range-check the user-supplied destination buffer
+        // (null is allowed here: "is this clock valid?" probe).
+        if (ts != null && !UserAccess.Valid(ts, (ulong)sizeof(Timespec)))
+            return -Errno.EFAULT;
+
         // Validate clock ID
         switch (clockId)
         {
@@ -2893,7 +2910,9 @@ public static unsafe class SyscallDispatch
         long* tv = (long*)arg0;
         // arg1 is timezone pointer (deprecated, usually NULL)
 
-        if (tv == null)
+        // Phase 7: range-check the user-supplied destination buffer
+        // (two 64-bit longs: tv_sec, tv_usec).
+        if (!UserAccess.Valid(tv, 16))
             return -Errno.EFAULT;
 
         if (!X64.HPET.IsInitialized)
@@ -2988,6 +3007,10 @@ public static unsafe class SyscallDispatch
         // Limit to reasonable size per call
         if (buflen > 256)
             buflen = 256;
+
+        // Phase 7: range-check the user-supplied destination buffer.
+        if (!UserAccess.Valid(buf, buflen))
+            return -Errno.EFAULT;
 
         // Mix in current time for additional entropy
         if (X64.HPET.IsInitialized)

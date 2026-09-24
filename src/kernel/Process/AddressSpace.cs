@@ -56,17 +56,31 @@ public static class UserLayout
     /// entropy pool and slides the canonical stack top down by a
     /// page-aligned amount inside <see cref="StackAslrWindow"/>.
     /// </summary>
-    public static unsafe ulong RandomizedStackTop()
+    public static ulong RandomizedStackTop()
     {
-        if (!AslrEnabled)
-            return UserStackTop;
+        return UserStackTop - RandomPageSlide(StackAslrWindow);
+    }
+
+    /// <summary>
+    /// ASLR slide window for the heap and mmap bases (64MB each).
+    /// </summary>
+    public const ulong HeapAslrWindow = 64 * 1024 * 1024;
+
+    /// <summary>
+    /// Random page-aligned slide inside [0, windowBytes). Returns 0 when
+    /// ASLR is disabled. Used to offset the user stack top, heap start
+    /// and mmap base at process creation.
+    /// </summary>
+    public static unsafe ulong RandomPageSlide(ulong windowBytes)
+    {
+        if (!AslrEnabled || windowBytes < PageSize)
+            return 0;
 
         ulong r = 0;
         Exports.DDK.EntropyExports.FillEntropy((byte*)&r, 8);
 
-        ulong pages = StackAslrWindow / PageSize;             // 65536 pages
-        ulong slide = (r % pages) * PageSize;                 // page-aligned
-        return UserStackTop - slide;
+        ulong pages = windowBytes / PageSize;
+        return (r % pages) * PageSize;
     }
 
     /// <summary>

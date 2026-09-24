@@ -70,6 +70,10 @@ public sealed unsafe class SshConnection
     private string _user;
     private bool _authed;
 
+    // Phase 7 security: brute-force lockout + audit state.
+    private readonly uint _peerIp;
+    private int _authFailures;
+
     private bool _channelOpen;
     private uint _clientChannelId;
     private uint _ourChannelId = 1;
@@ -111,6 +115,7 @@ public sealed unsafe class SshConnection
         _sock = sock;
         _state = StVersion;
         _lastActivityMs = Timer.GetUptimeMilliseconds();
+        _peerIp = sock.RemoteAddress;
 
         // Version string for the exchange hash carries no CR/LF
         // (RFC 4253 section 8); wire form appends CR LF.
@@ -728,15 +733,17 @@ public sealed unsafe class SshConnection
             {
                 bool changing = r.ReadBool();
                 string password = r.ReadAscii();
-                if (!changing && password != null && CheckPassword(user, password))
+                if (!changing && password != null && SshService.PasswordAuthEnabled && CheckPassword(user, password))
                 {
                     _user = user;
                     _authed = true;
+                    _authFailures = 0;
+                    SshAuthGuard.RecordSuccess(_peerIp, user);
                     SendUserauthResult(true);
                     _state = StConnected;
                     return true;
                 }
-                SendUserauthFailure();
+                OnAuthFailure(user, "password");
                 return true;
             }
             if (method == "publickey")
@@ -747,7 +754,7 @@ public sealed unsafe class SshConnection
                 byte[] key32 = ExtractEd25519(keyBlob);
                 if (algo != "ssh-ed25519" || key32 == null)
                 {
-                    SendUserauthFailure();
+                    OnAuthFailure(user, "publickey");
                     return true;
                 }
 
@@ -764,7 +771,7 @@ public sealed unsafe class SshConnection
                     }
                     else
                     {
-                        SendUserauthFailure();
+                        OnAuthFailure(user, "publickey");
                     }
                     return true;
                 }
@@ -790,11 +797,13 @@ public sealed unsafe class SshConnection
                 {
                     _user = user;
                     _authed = true;
+                    _authFailures = 0;
+                    SshAuthGuard.RecordSuccess(_peerIp, user);
                     SendUserauthResult(true);
                     _state = StConnected;
                     return true;
                 }
-                SendUserauthFailure();
+                OnAuthFailure(user, "publickey");
                 return true;
             }
         }
@@ -811,6 +820,25 @@ public sealed unsafe class SshConnection
         if (entry.IsRoot)
             return false;   // root logins are console-only by policy
         return UserDatabase.VerifyPassword(user, password);
+    }
+
+    /// <summary>
+    /// Phase 7: count a failed authentication against the connection and
+    /// the source IP; disconnect when the per-connection cap is hit and
+    /// let SshAuthGuard handle cross-connection bans + the audit trail.
+    /// </summary>
+    private void OnAuthFailure(string user, string method)
+    {
+        _authFailures++;
+        SshAuthGuard.RecordFailure(_peerIp, user, method);
+        if (_authFailures >= SshService.MaxAuthAttempts)
+        {
+            SshAuthGuard.LogTooManyFailures(_peerIp);
+            // SSH_MSG_DISCONNECT reason 14 = NO_MORE_AUTH_METHODS_AVAILABLE
+            Disconnect(14, "too many authentication failures");
+            return;
+        }
+        SendUserauthFailure();
     }
 
     private bool CheckPublicKey(string user, byte[] key32)

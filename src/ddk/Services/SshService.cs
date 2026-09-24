@@ -36,6 +36,18 @@ public static class SshService
     private static bool _active;
     private static ushort _port = 22;
 
+    // ==================== Phase 7 security ====================
+
+    /// <summary>
+    /// Allow "password" userauth (config: PasswordAuthentication).
+    /// Phase 7 secure default: OFF - public-key auth only, unless
+    /// /etc/ssh/sshd_config explicitly sets PasswordAuthentication=yes.
+    /// </summary>
+    public static bool PasswordAuthEnabled = false;
+
+    /// <summary>Per-connection auth failure cap before disconnect (config: MaxAuthAttempts).</summary>
+    public static int MaxAuthAttempts = 6;
+
     /// <summary>The host key seed (32 bytes); valid after Start.</summary>
     public static byte[] HostSeed => _hostSeed;
 
@@ -115,12 +127,23 @@ public static class SshService
             var sock = _listener.Accept();
             if (sock == null)
                 break;
+
+            // Phase 7: refuse connections from temporarily banned IPs.
+            uint peer = sock.RemoteAddress;
+            if (SshAuthGuard.IsBanned(peer))
+            {
+                SshAuthGuard.LogBannedReject(peer);
+                sock.Close();
+                continue;
+            }
+
             int slot = FindFreeSlot();
             if (slot < 0)
             {
                 sock.Close();   // at capacity
                 continue;
             }
+            SshAuthGuard.LogAccept(peer);
             _connections[slot] = new SshConnection(sock, "SSH-2.0-NeutrinoOS_1.0");
         }
 
@@ -192,6 +215,10 @@ public static class SshService
     private static void LoadConfig()
     {
         _port = 22;
+        PasswordAuthEnabled = false;
+        MaxAuthAttempts = 6;
+        SshAuthGuard.BanThreshold = 5;
+        SshAuthGuard.BanSeconds = 300;
         try
         {
             if (!File.Exists(ConfigPath))
@@ -235,12 +262,54 @@ public static class SshService
                     if (ok && p > 0 && p < 65536)
                         _port = (ushort)p;
                 }
+                else if (key == "PasswordAuthentication")
+                {
+                    PasswordAuthEnabled = !(value == "no" || value == "false" || value == "0");
+                }
+                else if (key == "MaxAuthAttempts")
+                {
+                    int v = ParsePosInt(value, 0);
+                    if (v > 0)
+                        MaxAuthAttempts = v;
+                }
+                else if (key == "BanThreshold")
+                {
+                    int v = ParsePosInt(value, 0);
+                    if (v > 0)
+                        SshAuthGuard.BanThreshold = v;
+                }
+                else if (key == "BanSeconds")
+                {
+                    int v = ParsePosInt(value, 0);
+                    if (v > 0)
+                        SshAuthGuard.BanSeconds = v;
+                }
             }
         }
         catch
         {
             _port = 22;
         }
+    }
+
+    private static int ParsePosInt(string value, int fallback)
+    {
+        int p = 0;
+        bool ok = value != null && value.Length > 0;
+        if (ok)
+        {
+            for (int k = 0; k < value.Length; k++)
+            {
+                char ch = value[k];
+                if (ch < '0' || ch > '9')
+                {
+                    ok = false;
+                    break;
+                }
+                p = p * 10 + (ch - '0');
+            }
+        }
+        return ok && p > 0 ? p : fallback;
     }
 
     private static string TrimStr(string s)

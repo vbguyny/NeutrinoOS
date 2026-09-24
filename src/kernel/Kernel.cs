@@ -456,6 +456,12 @@ public static unsafe class Kernel
             BootLog.Status("Boot tests skipped");
         }
 
+        // Phase 7: verify the privilege boundary (user/kernel isolation,
+        // W^X) by walking a fresh user address space. Runs on every boot
+        // (marker-independent) and prints stable [SEC] lines for the
+        // acceptance scripts.
+        Process.SecuritySelfTest.Run();
+
         // Note: execve tests are available via:
         // - Process.NetExecutable.TestExecHelloApp() - Main() returns 42
         // - Process.NetExecutable.TestExecArgsApp()  - Main(string[] args) returns args.Length

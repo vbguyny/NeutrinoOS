@@ -170,6 +170,8 @@ public static class UserDatabase
                 all[lines.Length] = name + ":" + hash + ":";
                 File.WriteAllText(ShadowPath, TextLines.Join(all));
             }
+            // Phase 7 audit trail: every shadow update is security-relevant.
+            Services.Ssh.SshAuthGuard.Log("password changed for user=" + name);
             return true;
         }
         catch
@@ -189,6 +191,9 @@ public static class UserDatabase
             return false;
         if (Lookup(name) != null)
             return false;
+
+        // Phase 7 audit trail: account creation is security-relevant.
+        Services.Ssh.SshAuthGuard.Log("account created user=" + name + " uid=" + IntStr(uid));
 
         string home = uid == 0 ? "/root" : "/home/" + name;
         try
