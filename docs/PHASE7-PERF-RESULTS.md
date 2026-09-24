@@ -15,7 +15,7 @@ serial console) using the Phase 7 tooling (`boottime`, `jitstats`,
 | GC | mark-phase pause | — | 250 ms (diagnostic collection) | new visibility (`gcstats`) |
 | GC alloc | SOH throughput | — | 312 MB/s | benchmark added |
 | GC alloc | LOH throughput | — | 273 MB/s | benchmark added |
-| TCP loopback | throughput | not implemented | 0.36 MB/s (365 KB/s) | feature added (kernel loopback) |
+| TCP loopback | throughput | not implemented | 4.24 MB/s (966 ms/4 MB) | feature + 11.6x trace fix |
 | File I/O FAT32 | 1 MB write | — | 1.62 MB/s (632 ms; pre-optimization 175 KB/s) | initial benchmark + 9.3x optimization |
 | File I/O FAT32 | 1 MB read | 1.16 MB/s | 1.60 MB/s (641 ms) | re-measured |
 | JIT workload | warm run | — | 31 ms; +5 methods, +3 top-level compiles (~20 ms wall) | `jitstats` deltas work |
@@ -36,8 +36,13 @@ Notes:
   last-free-cluster scan hint. Result: 632 ms per 1 MB (9.3x), i.e.
   writes now run at the same per-cluster cost as reads.
 - The loopback path processes one segment per `Send`/flush chain
-  synchronously in a single CPU; batching multiple segments per flush
-  is the planned optimization (target ≥1 MB/s).
+  synchronously in a single CPU; the original 365 KB/s was almost
+  entirely console throttle: the per-segment `[NetStack] TCP sent N
+  bytes...` trace (one ~50-char line per 1400-byte segment, ~3000 lines
+  per 4 MB at 115200 baud) gated by `Quiet` in the receive path only.
+  Gating the send trace too took the transfer to 4.24 MB/s (966 ms).
+  Segment batching is therefore not needed; remaining cost is the
+  per-segment stack walk itself.
 - TLS/SSH handshake latency is measured externally against the live VM
   (see PHASE7-ACCEPTANCE.md); the release-image boot comparison
   (dev 41 s vs release image) is recorded in the release section.
@@ -53,13 +58,14 @@ Notes:
 | 5 | FAT write de-amplification: no zero-fill disk write after allocation (RAM zero + fresh-cluster flag), RMW read skipped for fresh clusters and full-cluster overwrites, chain-tail cache (`_lastChainCluster`) removes EOC re-walks | 1 MB write 5863 ms (175 KB/s) | 3753 ms (279 KB/s) | 1.56x |
 | 6 | Free-cluster scan hint (`_nextFreeCluster`) with wrapped second pass — removes the O(n²) `AllocateCluster` rescan (2048 allocations x ~1075 avg skipped FAT entries for 1 MB) | 3753 ms | 632 ms (1.62 MB/s) | 5.9x |
 | 7 | Combined FAT write path (5+6) | 5863 ms (175 KB/s) | 632 ms (1.62 MB/s) | 9.3x |
+| 8 | `Quiet` now also gates the per-segment TX trace in `TcpSend` (was receive-side only; ~3000 serial lines per 4 MB throttled the whole transfer at 115200 baud) | 4 MB in 11196 ms (365 KB/s) | 4 MB in 966 ms (4.24 MB/s) | 11.6x |
 
 ## Targets (Phase 7 acceptance vs current)
 
 | Target | Required | Current | Status |
 |--------|----------|---------|--------|
 | Boot time 30% faster than Phase 6 | ≥30% (release image) | release image skips 33 s of boot tests (visible via `boottime`); dev image unchanged at 41 s | pending final release-image measurement |
-| Loopback TCP 2x Phase 6 | 2x | Phase 6 had no loopback; Phase 7 introduces it at 365 KB/s | capability added; batching optimization planned |
+| Loopback TCP 2x Phase 6 | 2x | Phase 6 had no loopback; Phase 7 introduces it at 4.24 MB/s (11.6x the first working measurement of 365 KB/s) | **met** |
 | TLS handshake 30% faster | ≥30% | not yet measured (baseline TBD) | pending |
 | GC gen-0 pause 50% faster | ≥50% | pause instrumentation added; mark-only collection 250 ms | pending optimization wave |
 | JIT compile 20% faster | ≥20% | 8.9 s first-DDK-compile outlier identified | pending optimization wave |

@@ -1173,16 +1173,23 @@ public unsafe class NetworkStack
         if (frameLen == 0)
             return 0;
 
-        _pendingTxLen = frameLen;  // Queue frame for transmission
+        // Queue frame for transmission
+        _pendingTxLen = frameLen;
         _tcpSent++;
 
-        Debug.Write("[NetStack] TCP sent ");
-        Debug.WriteDecimal(length);
-        Debug.Write(" bytes to ");
-        PrintIP(conn.RemoteEndpoint.IP);
-        Debug.Write(":");
-        Debug.WriteDecimal(conn.RemoteEndpoint.Port);
-        Debug.WriteLine();
+        // Per-segment trace: at 115200 baud this costs ~4 ms per segment
+        // and throttles bulk transfers, so it is suppressed by Quiet (the
+        // benchmark harness enables it for the transfer window).
+        if (!Quiet)
+        {
+            Debug.Write("[NetStack] TCP sent ");
+            Debug.WriteDecimal(length);
+            Debug.Write(" bytes to ");
+            PrintIP(conn.RemoteEndpoint.IP);
+            Debug.Write(":");
+            Debug.WriteDecimal(conn.RemoteEndpoint.Port);
+            Debug.WriteLine();
+        }
 
         return length;
     }
