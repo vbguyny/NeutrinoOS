@@ -54,6 +54,13 @@ public sealed unsafe class Tls13Connection
     private readonly byte[] _certDer;
     private readonly byte[] _keySeed;
 
+    /// <summary>
+    /// When true, per-handshake trace lines are written to the console.
+    /// Defaults to false: each line costs ~0.5 ms of serial console time
+    /// inside the handshake latency and floods normal service logs.
+    /// </summary>
+    public static bool Verbose;
+
     // Cipher suite parameters.
     private HashKind _hashKind = HashKind.Sha256;
     private int _hashLen = 32;
@@ -430,7 +437,8 @@ public sealed unsafe class Tls13Connection
 
     private void HandleClientHello()
     {
-        Console.WriteLine("[web] tls: clienthello received (" + IntStr(_hsLen) + " bytes)");
+            if (Verbose)
+                Console.WriteLine("[web] tls: clienthello received (" + IntStr(_hsLen) + " bytes)");
         // Need the full handshake message.
         if (_hsLen < 4)
             return;
@@ -617,13 +625,15 @@ public sealed unsafe class Tls13Connection
         // Middlebox-compat CCS then the encrypted flight.
         byte[] ccs = new byte[] { CtChangeCipherSpec, 0x03, 0x03, 0x00, 0x01, 0x01 };
         SendAll(ccs);
-        Console.WriteLine("[web] tls: ccs sent");
+if (Verbose)
+                Console.WriteLine("[web] tls: ccs sent");
 
         // EncryptedExtensions (no extensions).
         var ee = new TlsWriter(8);
         ee.U16(0);
         SendHandshake(HtEncryptedExtensions, ee.Buffer, 0, ee.Length);
-        Console.WriteLine("[web] tls: encrypted extensions sent");
+if (Verbose)
+                Console.WriteLine("[web] tls: encrypted extensions sent");
 
         // Certificate.
         var certW = new TlsWriter(_certDer.Length + 16);
@@ -646,13 +656,15 @@ public sealed unsafe class Tls13Connection
         cv.U16(signature.Length);
         cv.Bytes(signature, 0, signature.Length);
         SendHandshake(HtCertificateVerify, cv.Buffer, 0, cv.Length);
-        Console.WriteLine("[web] tls: certificate verify sent");
+if (Verbose)
+                Console.WriteLine("[web] tls: certificate verify sent");
 
         // Finished.
         byte[] finishedKey = ExpandLabel(_serverHsTraffic, "finished", null, _hashLen);
         byte[] verifyData = Hmac.Compute(_hashKind, finishedKey, HashTranscript());
         SendHandshake(HtFinished, verifyData, 0, verifyData.Length);
-        Console.WriteLine("[web] tls: finished sent");
+if (Verbose)
+                Console.WriteLine("[web] tls: finished sent");
 
         // Application secrets (transcript through server Finished).
         _clientApTraffic = DeriveSecret(masterSecret, "c ap traffic", HashTranscript());
@@ -673,7 +685,8 @@ public sealed unsafe class Tls13Connection
         _hsLen = 0;
 
         _state = StateWaitClientFinished;
-        Console.WriteLine("[web] tls: waiting for client finished");
+            if (Verbose)
+                Console.WriteLine("[web] tls: waiting for client finished");
     }
 
     private void HandleClientFinished()

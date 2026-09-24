@@ -741,11 +741,13 @@ public unsafe class NetworkStack
     // ===========================================
 
     /// <summary>
-    /// Phase 7: when true, per-packet RX/TX trace lines are suppressed.
-    /// Benchmarks and bulk-transfer workloads set this so the 115200-baud
-    /// serial console does not dominate throughput measurements.
+    /// When true, per-packet RX/TX trace lines are suppressed. Defaults to
+    /// true: every trace line costs ~0.5 ms of 115200-baud serial time and
+    /// fires per packet, which measurably inflates connection handshakes
+    /// (TLS/SSH latency probes) apart from flooding production logs.
+    /// Debugging re-enables traces by clearing this flag on the stack.
     /// </summary>
-    public bool Quiet;
+    public bool Quiet = true;
 
     /// <summary>
     /// Process a TCP packet.

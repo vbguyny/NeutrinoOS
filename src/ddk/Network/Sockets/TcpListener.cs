@@ -12,6 +12,12 @@ namespace ProtonOS.DDK.Network.Sockets;
 /// </summary>
 public unsafe class TcpListener
 {
+    /// <summary>
+    /// When true, per-connection trace lines are written to the console.
+    /// Defaults to false (each line costs ~0.5 ms of serial time inside
+    /// the connection setup latency).
+    /// </summary>
+    public static bool Verbose;
     private readonly NetworkStack _stack;
     private readonly uint _localAddress;
     private readonly ushort _port;
@@ -288,11 +294,14 @@ public unsafe class TcpListener
             _acceptTail = (_acceptTail + 1) % AcceptQueueSize;
             _acceptCount++;
 
-            Debug.Write("[TcpListener] Connection established, queued for accept from ");
-            PrintIP(conn.RemoteEndpoint.IP);
-            Debug.Write(":");
-            Debug.WriteDecimal(conn.RemoteEndpoint.Port);
-            Debug.WriteLine("");
+            if (Verbose)
+            {
+                Debug.Write("[TcpListener] Connection established, queued for accept from ");
+                PrintIP(conn.RemoteEndpoint.IP);
+                Debug.Write(":");
+                Debug.WriteDecimal(conn.RemoteEndpoint.Port);
+                Debug.WriteLine("");
+            }
         }
         else
         {
