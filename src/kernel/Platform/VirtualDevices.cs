@@ -26,12 +26,16 @@ public static unsafe class VirtualDevices
     // consistent snapshot.
     private static string _profilerText;
 
+    // /dev/netstats follows the same render-cache pattern.
+    private static string _netstatsText;
+
     /// <summary>True when the path names a virtual device this module serves.</summary>
     public static bool IsVirtual(char* path, int pathLen)
     {
         return Matches(path, pathLen, "/dev/profiler") ||
                Matches(path, pathLen, "/dev/random") ||
-               Matches(path, pathLen, "/dev/urandom");
+               Matches(path, pathLen, "/dev/urandom") ||
+               Matches(path, pathLen, "/dev/netstats");
     }
 
     /// <summary>Existence probe used by FileBootExists.</summary>
@@ -49,6 +53,11 @@ public static unsafe class VirtualDevices
         {
             RenderProfiler();
             return _profilerText.Length;
+        }
+        if (Matches(path, pathLen, "/dev/netstats"))
+        {
+            RenderNetStats();
+            return _netstatsText.Length;
         }
         return -1;
     }
@@ -73,18 +82,29 @@ public static unsafe class VirtualDevices
         {
             if (_profilerText == null)
                 RenderProfiler();
-            string text = _profilerText;
-            int len = text.Length;
-            if (len > capacity)
-                len = capacity;
-            for (int i = 0; i < len; i++)
-            {
-                buffer[i] = (byte)(text[i] & 0x7F);
-            }
-            return len;
+            return CopyText(_profilerText, buffer, capacity);
+        }
+
+        if (Matches(path, pathLen, "/dev/netstats"))
+        {
+            if (_netstatsText == null)
+                RenderNetStats();
+            return CopyText(_netstatsText, buffer, capacity);
         }
 
         return -1;
+    }
+
+    private static int CopyText(string text, byte* buffer, int capacity)
+    {
+        int len = text.Length;
+        if (len > capacity)
+            len = capacity;
+        for (int i = 0; i < len; i++)
+        {
+            buffer[i] = (byte)(text[i] & 0x7F);
+        }
+        return len;
     }
 
     private static void RenderProfiler()
@@ -92,6 +112,29 @@ public static unsafe class VirtualDevices
         System.IO.StringWriter sw = new System.IO.StringWriter();
         Profiler.Format(sw);
         _profilerText = sw.ToString();
+    }
+
+    private static void RenderNetStats()
+    {
+        ulong framesIn, framesOut, bytesIn, bytesOut, txErrors;
+        Exports.DDK.NetworkExports.GetFrameStats(out framesIn, out framesOut,
+                                                 out bytesIn, out bytesOut, out txErrors);
+        System.IO.StringWriter sw = new System.IO.StringWriter();
+        sw.WriteLine("[netstats] NeutrinoOS interface counters (virtio-net frames)");
+        sw.Write("[netstats] frames in: ");
+        sw.Write((long)framesIn);
+        sw.Write("   frames out: ");
+        sw.Write((long)framesOut);
+        sw.Write("   tx errors: ");
+        sw.WriteLine((long)txErrors);
+        sw.Write("[netstats] bytes in: ");
+        sw.Write((long)bytesIn);
+        sw.Write("   bytes out: ");
+        sw.WriteLine((long)bytesOut);
+        sw.Write("[netstats] uptime ms: ");
+        sw.WriteLine((long)ProtonOS.X64.APIC.TickCount);
+        sw.WriteLine("[netstats] protocol counters (TCP/UDP/ICMP): run `netstat -s`");
+        _netstatsText = sw.ToString();
     }
 
     /// <summary>UTF-16 path compare (exact match).</summary>

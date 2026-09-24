@@ -21,11 +21,14 @@ public static class Program
         if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
         {
             return Util.Help(
-                "usage: netstat",
-                "  Show interfaces, active TCP connections and packet counters.");
+                "usage: netstat [-s]",
+                "  Show interfaces, active TCP connections and packet counters.",
+                "  -s  extended statistics (Phase 7 byte counters)");
         }
-        if (args.Length > 0)
-            return Util.Fail("netstat", "usage: netstat");
+        if (args.Length > 0 && !(args.Length == 1 && args[0] == "-s"))
+            return Util.Fail("netstat", "usage: netstat [-s]");
+
+        bool extended = args.Length == 1 && args[0] == "-s";
 
         Console.WriteLine("INTERFACES");
         var interfaces = NetworkManager.Interfaces;
@@ -84,7 +87,15 @@ public static class Program
         ulong udpSent, udpRecv;
         stack.GetUdpStats(out udpSent, out udpRecv);
         Console.WriteLine("  UDP:  sent=" + udpSent.ToString() + ", received=" + udpRecv.ToString());
-        return 0;
+        // Phase 7 byte counters (shown with -s; cheap enough to always compute).
+        ulong ipIn, ipOut, tcpIn, tcpOut;
+        stack.GetByteStats(out ipIn, out ipOut, out tcpIn, out tcpOut);
+        if (extended)
+        {
+            Console.WriteLine("  BYTES  IPv4 in=" + ipIn.ToString() + ", out=" + ipOut.ToString()
+                + "   TCP payload in=" + tcpIn.ToString() + ", out=" + tcpOut.ToString());
+            Console.WriteLine("         (/dev/netstats carries interface-level frame counters)");
+        }        return 0;
     }
 
     private static string FormatEP(uint ip, ushort port)

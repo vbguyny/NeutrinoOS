@@ -12,6 +12,24 @@ namespace ProtonOS.Exports.DDK;
 /// <summary>Network frame pump exports (see file header).</summary>
 public static unsafe class NetworkExports
 {
+    // Phase 7 interface-level counters (see /dev/netstats).
+    private static ulong _framesIn;
+    private static ulong _framesOut;
+    private static ulong _bytesIn;
+    private static ulong _bytesOut;
+    private static ulong _txErrors;
+
+    /// <summary>Interface-level frame/byte counters (Phase 7).</summary>
+    public static void GetFrameStats(out ulong framesIn, out ulong framesOut,
+                                     out ulong bytesIn, out ulong bytesOut, out ulong txErrors)
+    {
+        framesIn = _framesIn;
+        framesOut = _framesOut;
+        bytesIn = _bytesIn;
+        bytesOut = _bytesOut;
+        txErrors = _txErrors;
+    }
+
     /// <summary>1 when a network device (frame pump) is available.</summary>
     [UnmanagedCallersOnly]
     public static int NetPresent()
@@ -23,13 +41,29 @@ public static unsafe class NetworkExports
     [UnmanagedCallersOnly]
     public static int NetTransmit(byte* data, int length)
     {
-        return Platform.NetworkBridge.Transmit(data, length);
+        int rc = Platform.NetworkBridge.Transmit(data, length);
+        if (rc > 0)
+        {
+            _framesOut++;
+            _bytesOut += (ulong)length;
+        }
+        else
+        {
+            _txErrors++;
+        }
+        return rc;
     }
 
     /// <summary>Receive one Ethernet frame; returns length or 0.</summary>
     [UnmanagedCallersOnly]
     public static int NetReceive(byte* buffer, int maxLength)
     {
-        return Platform.NetworkBridge.Receive(buffer, maxLength);
+        int len = Platform.NetworkBridge.Receive(buffer, maxLength);
+        if (len > 0)
+        {
+            _framesIn++;
+            _bytesIn += (ulong)len;
+        }
+        return len;
     }
 }

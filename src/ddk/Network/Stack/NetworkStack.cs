@@ -92,6 +92,12 @@ public unsafe class NetworkStack
     private ulong _tcpSent;
     private ulong _tcpReceived;
 
+    // Phase 7 byte counters (interface IP bytes and TCP payload bytes).
+    private ulong _ipBytesIn;
+    private ulong _ipBytesOut;
+    private ulong _tcpBytesIn;
+    private ulong _tcpBytesOut;
+
     // TCP connections
     private const int MaxTcpConnections = 16;
     private TcpConnection[] _tcpConnections;
@@ -316,7 +322,7 @@ public unsafe class NetworkStack
         }
 
         // Check if packet is for us
-        if (destIP != _config.IPAddress && destIP != 0xFFFFFFFF)
+        if (destIP != _config.IPAddress && destIP != 0xFFFFFFFF && !IsLocalAddress(destIP))
             return;
 
         // Use the IPv4 total-length field (bytes 2-3) for the payload size:
@@ -327,6 +333,11 @@ public unsafe class NetworkStack
         int effectiveLen = length;
         if (ipTotalLen >= headerLen && ipTotalLen <= length)
             effectiveLen = ipTotalLen;
+
+        // Phase 7: interface-level byte accounting.
+        _ipBytesIn += (ulong)effectiveLen;
+        if (protocol == TCP.ProtocolNumber)
+            _tcpBytesIn += (ulong)(effectiveLen - headerLen);
 
         // Dispatch based on protocol
         byte* payload = data + headerLen;
@@ -730,6 +741,13 @@ public unsafe class NetworkStack
     // ===========================================
 
     /// <summary>
+    /// Phase 7: when true, per-packet RX/TX trace lines are suppressed.
+    /// Benchmarks and bulk-transfer workloads set this so the 115200-baud
+    /// serial console does not dominate throughput measurements.
+    /// </summary>
+    public bool Quiet;
+
+    /// <summary>
     /// Process a TCP packet.
     /// </summary>
     private void ProcessTcp(byte* data, int length, uint srcIP, uint destIP)
@@ -739,7 +757,8 @@ public unsafe class NetworkStack
         TcpPacket packet;
         if (!TCP.Parse(data, length, out packet))
         {
-            Debug.WriteLine("[NetStack] Failed to parse TCP packet");
+            if (!Quiet)
+                Debug.WriteLine("[NetStack] Failed to parse TCP packet");
             return;
         }
 
@@ -758,22 +777,50 @@ public unsafe class NetworkStack
             return;
         }
 
-        Debug.Write("[NetStack] TCP from ");
-        PrintIP(srcIP);
-        Debug.Write(":");
-        Debug.WriteDecimal(packet.SourcePort);
-        Debug.Write(" to port ");
-        Debug.WriteDecimal(packet.DestPort);
-        Debug.Write(" flags=");
-        PrintTcpFlags(packet.Flags);
-        Debug.Write(" seq=");
-        Debug.WriteHex((uint)packet.SeqNum);
-        Debug.Write(" ack=");
-        Debug.WriteHex((uint)packet.AckNum);
-        Debug.WriteLine();
+        if (!Quiet)
+        {
+            Debug.Write("[NetStack] TCP from ");
+            PrintIP(srcIP);
+            Debug.Write(":");
+            Debug.WriteDecimal(packet.SourcePort);
+            Debug.Write(" to port ");
+            Debug.WriteDecimal(packet.DestPort);
+            Debug.Write(" flags=");
+            PrintTcpFlags(packet.Flags);
+            Debug.Write(" seq=");
+            Debug.WriteHex((uint)packet.SeqNum);
+            Debug.Write(" ack=");
+            Debug.WriteHex((uint)packet.AckNum);
+            Debug.WriteLine();
+        }
 
         // Find matching connection
         TcpConnection conn = FindConnection(srcIP, packet.SourcePort, packet.DestPort);
+
+        if (conn == null)
+        {
+            // Phase 7 loopback healing: connections created against a
+            // loopback destination store the remote as 127.x, while the
+            // peer's frames arrive with the interface's own IP as source
+            // (loopback delivery rewrites neither header). Match the port
+            // pair in that case.
+            if (IsLocalAddress(srcIP))
+            {
+                for (int i = 0; i < MaxTcpConnections && conn == null; i++)
+                {
+                    var c = _tcpConnections[i];
+                    if (c == null)
+                        continue;
+                    if (c.LocalEndpoint.Port == packet.DestPort &&
+                        c.RemoteEndpoint.Port == packet.SourcePort &&
+                        IsLocalAddress(c.RemoteEndpoint.IP) &&
+                        c.RemoteEndpoint.IP != srcIP)
+                    {
+                        conn = c;
+                    }
+                }
+            }
+        }
 
         if (conn == null)
         {
@@ -800,8 +847,12 @@ public unsafe class NetworkStack
 
         if (responseLen > 0)
         {
-            // Send response - put it in TX buffer for caller to transmit
-            int frameLen = BuildIPv4Frame(srcIP, TCP.ProtocolNumber, responseBuffer, responseLen);
+            // Reply to the peer address recorded on the connection: on
+            // loopback the peer's frames arrive with the interface IP as
+            // source while the connection records 127.x, and the TCP
+            // checksum was computed against the recorded address. For
+            // ordinary traffic the two are identical.
+            int frameLen = BuildIPv4Frame(conn.RemoteEndpoint.IP, TCP.ProtocolNumber, responseBuffer, responseLen);
             if (frameLen > 0)
             {
                 _pendingTxLen = frameLen;
@@ -1210,6 +1261,19 @@ public unsafe class NetworkStack
     /// <summary>
     /// Get TCP statistics.
     /// </summary>
+    /// <summary>
+    /// Phase 7: byte counters. ipIn/ipOut count IPv4 bytes at this
+    /// interface; tcpIn/tcpOut count TCP payload bytes (both directions
+    /// include TCP headers for RX/TX respectively - see the call sites).
+    /// </summary>
+    public void GetByteStats(out ulong ipIn, out ulong ipOut, out ulong tcpIn, out ulong tcpOut)
+    {
+        ipIn = _ipBytesIn;
+        ipOut = _ipBytesOut;
+        tcpIn = _tcpBytesIn;
+        tcpOut = _tcpBytesOut;
+    }
+
     public void GetTcpStats(out ulong sent, out ulong received, out int activeConnections)
     {
         sent = _tcpSent;
@@ -1423,6 +1487,17 @@ public unsafe class NetworkStack
     }
 
     /// <summary>
+    /// Phase 7: true when <paramref name="ip"/> is owned by this host
+    /// (the interface address or the 127.0.0.0/8 loopback range). Local
+    /// destinations are routed back through <see cref="ProcessFrame"/> by
+    /// NetworkPump instead of the NIC.
+    /// </summary>
+    public bool IsLocalAddress(uint ip)
+    {
+        return ip == _config.IPAddress || (ip >> 24) == 127;
+    }
+
+    /// <summary>
     /// Resolve an IP address to a MAC address.
     /// </summary>
     /// <param name="ip">IP address to resolve (host byte order).</param>
@@ -1450,9 +1525,14 @@ public unsafe class NetworkStack
         // Determine next hop
         uint nextHop = _config.IsLocalSubnet(destIP) ? destIP : _config.Gateway;
 
-        // Resolve MAC address
+        // Resolve MAC address (loopback destinations use our own MAC).
         byte* destMac = stackalloc byte[6];
-        if (!_arpCache.Lookup(nextHop, destMac))
+        if (IsLocalAddress(destIP))
+        {
+            for (int i = 0; i < 6; i++)
+                destMac[i] = _macAddress[i];
+        }
+        else if (!_arpCache.Lookup(nextHop, destMac))
         {
             // Send an ARP request so a retry can resolve the next hop.
             // (The packet itself is dropped - callers retransmit.)
@@ -1463,6 +1543,11 @@ public unsafe class NetworkStack
         // Build IP header
         int ipHeaderLen = 20;
         int totalIpLen = ipHeaderLen + payloadLen;
+
+        // Phase 7: interface-level byte accounting.
+        _ipBytesOut += (ulong)totalIpLen;
+        if (protocol == TCP.ProtocolNumber)
+            _tcpBytesOut += (ulong)payloadLen;
 
         byte* ipHeader = _txBuffer + EthernetHeader.Size;
 

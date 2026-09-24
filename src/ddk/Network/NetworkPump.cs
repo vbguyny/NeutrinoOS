@@ -50,7 +50,23 @@ public static unsafe class NetworkPump
 
     /// <summary>Transmit the frame the stack just built into its TX buffer.</summary>
     public static bool TransmitTxBuffer(NetworkStack stack, int frameLength)
-        => TransmitFrame(stack.GetTxBuffer(), frameLength);
+    {
+        // Phase 7: kernel loopback - frames addressed to a local address
+        // (the interface IP or 127.0.0.0/8) are delivered straight back
+        // into the stack instead of going to the NIC.
+        byte* frame = stack.GetTxBuffer();
+        if (frameLength >= 34 && frame[12] == 0x08 && frame[13] == 0x00)
+        {
+            uint destIP = ((uint)frame[30] << 24) | ((uint)frame[31] << 16) |
+                          ((uint)frame[32] << 8) | frame[33];
+            if (stack.IsLocalAddress(destIP))
+            {
+                stack.ProcessFrame(frame, frameLength);
+                return true;
+            }
+        }
+        return TransmitFrame(frame, frameLength);
+    }
 
     /// <summary>
     /// Flush any frame the stack queued for transmission (e.g. the TCP
