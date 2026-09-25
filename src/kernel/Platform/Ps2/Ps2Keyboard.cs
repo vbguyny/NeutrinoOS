@@ -107,6 +107,19 @@ public static unsafe class Ps2Keyboard
 
     private static void IrqHandler(InterruptFrame* frame)
     {
+        _ = frame;
+        HandleInterruptBody();
+        APIC.SendEoi();
+    }
+
+    /// <summary>
+    /// The IRQ1 handling body without the EOI: drains every queued scancode.
+    /// Used both by the legacy handler above and by the framework PS/2
+    /// driver (whose IDriverServices thunk sends the EOI after this
+    /// returns).
+    /// </summary>
+    public static void HandleInterruptBody()
+    {
         // One interrupt can cover several queued bytes; drain the buffer.
         int guard = 32;
         while ((CPU.InByte(StatusPort) & 0x01) != 0)
@@ -116,8 +129,6 @@ public static unsafe class Ps2Keyboard
             if (--guard <= 0)
                 break;
         }
-
-        APIC.SendEoi();
     }
 
     /// <summary>

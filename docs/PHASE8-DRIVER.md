@@ -21,8 +21,8 @@ Implementation staging (this phase):
 | Device tree + `IDeviceTree` | done |
 | Driver manager: Match → Probe → Start, ABI gate | done |
 | `IDriverServices` implementation (MMIO/DMA/IRQ/devnodes/log) | done |
-| First driver port: UART 16550 (IRQ ownership via services) | done |
-| Port PS/2, VGA, VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
+| Driver ports: UART 16550, PS/2 keyboard | done |
+| Port VGA, VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
 | PCIe hot-plug detection | deferred (see Limitations) |
 | SDK template + `scripts/build-driver.ps1` | deferred (see Limitations) |
@@ -103,6 +103,16 @@ DDK uses today.
   still covers the window before the framework initializes),
 - the interrupt body stays in `Uart16550.HandleInterruptBody()` shared with
   the boot console; the services thunk owns the EOI.
+
+`src/kernel/Drivers/Builtin/Ps2KeyboardDriver.cs` — second port:
+
+- matches the platform `ps2` node (vid 0xFFFF, did 0x8042),
+- probes for the 8042 I/O port range (0x60 + 4),
+- starts by registering IRQ 1 through `IDriverServices`; the scancode
+  drain lives in `Ps2Keyboard.HandleInterruptBody()` (EOI by the thunk).
+  The 8042 controller configuration itself stays in
+  `Ps2Keyboard.Initialize` (the console layer needs it before the
+  framework exists).
 
 ## Debugging notes (bflat constraints hit while building this)
 

@@ -61,6 +61,7 @@ public static class DriverFramework
     private static void RegisterBuiltins()
     {
         DriverManager.Register(new Builtin.Uart16550Driver());
+        DriverManager.Register(new Builtin.Ps2KeyboardDriver());
     }
 
     /// <summary>Legacy platform devices that are not on a discoverable bus.</summary>
