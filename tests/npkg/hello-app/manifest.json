@@ -1,0 +1,11 @@
+{
+  "name": "tests.hello-app",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["application"],
+  "entryPoints": {
+    "helloapp": "helloapp.dll"
+  },
+  "installPath": "/apps",
+  "signer": ""
+}

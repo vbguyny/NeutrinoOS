@@ -1,0 +1,14 @@
+{
+  "name": "tests.conflict-y",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "dependencies": {
+    "tests.libz": "=2.0.0"
+  },
+  "entryPoints": {
+    "conflict-y": "conflicty.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

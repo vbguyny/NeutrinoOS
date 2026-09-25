@@ -15,6 +15,11 @@ OUT=/root/phase5bin
 
 rsync -a --delete --exclude obj --exclude bin "$SRC/src/utilities/" "$WORK/"
 rsync -a --delete --exclude obj --exclude bin "$SRC/src/ddk/" "$WORK/ddk/"
+# Phase 8: shared NeutrinoOS.Packaging sources (compiled into the npkg utility).
+if [ -d "$SRC/src/lib/NeutrinoOS.Packaging" ]; then
+  mkdir -p "$WORK/lib"
+  rsync -a --delete --exclude obj --exclude bin "$SRC/src/lib/NeutrinoOS.Packaging/" "$WORK/lib/NeutrinoOS.Packaging/"
+fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
@@ -27,7 +32,14 @@ for dir in */; do
   # Common is the shared source directory; ddk is the reference project.
   [ "$name" = "Common" ] && continue
   [ "$name" = "ddk" ] && continue
+  [ "$name" = "lib" ] && continue
   [ -f "$name/Program.cs" ] || continue
+
+  # Phase 8: the npkg utility compiles the shared packaging sources in.
+  extra=""
+  if [ "$name" = "npkg" ]; then
+    extra='    <Compile Include="../lib/NeutrinoOS.Packaging/*.cs" />'
+  fi
 
   cat > "$name/$name.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
@@ -43,6 +55,7 @@ for dir in */; do
   <ItemGroup>
     <Compile Include="../Common/UtilCommon.cs" />
     <Compile Include="../Common/HttpCommon.cs" />
+$extra
     <ProjectReference Include="../ddk/DDK.csproj" />
   </ItemGroup>
 </Project>

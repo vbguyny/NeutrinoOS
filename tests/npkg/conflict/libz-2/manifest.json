@@ -1,0 +1,11 @@
+{
+  "name": "tests.libz",
+  "version": "2.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "entryPoints": {
+    "libz": "libz.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

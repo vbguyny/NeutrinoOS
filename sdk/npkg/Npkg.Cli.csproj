@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>npkg-host</AssemblyName>
+    <RootNamespace>NeutrinoOS.Sdk.NpkgCli</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Host-side npkg tooling.  The shared NeutrinoOS.Packaging sources and
+       the DDK crypto library are compiled in so the host tool always matches
+       the on-device packaging implementation byte-for-byte. -->
+  <ItemGroup>
+    <Compile Include="../../src/lib/NeutrinoOS.Packaging/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ddk/DDK.csproj" />
+  </ItemGroup>
+
+</Project>

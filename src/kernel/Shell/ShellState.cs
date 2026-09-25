@@ -117,7 +117,11 @@ public static class ShellState
 
     // ==================== Command resolution ====================
 
-    private static bool EndsWithDll(string name)
+    /// <summary>
+    /// Returns true when <paramref name="name"/> ends with the assembly
+    /// extension (".dll") in either case.
+    /// </summary>
+    public static bool EndsWithDll(string name)
     {
         if (name.Length < 4)
             return false;
@@ -175,5 +179,135 @@ public static class ShellState
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Phase 8: resolves a non-assembly command entry <c>&lt;dir&gt;/&lt;name&gt;</c>
+    /// (no <c>.dll</c> suffix) in $PATH. Entry points installed by the
+    /// <c>npkg</c> package manager are plain-text shell wrappers whose first
+    /// line is <c>run &lt;path.dll&gt; [args...]</c>; this finds them.
+    /// Returns null when no wrapper matches.
+    /// </summary>
+    public static string? FindWrapper(string name)
+    {
+        if (name.Length == 0 || name.IndexOf('/') >= 0 || EndsWithDll(name))
+            return null;
+
+        string pathVar = GetVar("PATH");
+        if (string.IsNullOrEmpty(pathVar))
+            pathVar = "/bin:/apps";
+
+        int start = 0;
+        while (start <= pathVar.Length)
+        {
+            int sep = pathVar.IndexOf(':', start);
+            string dir = sep < 0 ? pathVar.Substring(start) : pathVar.Substring(start, sep - start);
+            if (dir.Length > 0)
+            {
+                string candidate = dir;
+                if (candidate[candidate.Length - 1] != '/')
+                    candidate += "/";
+                candidate += name;
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            if (sep < 0)
+                break;
+            start = sep + 1;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Phase 8: parses an npkg shell wrapper. The wrapper is a small text
+    /// file whose first line is <c>run &lt;path.dll&gt; [fixed args...]</c>.
+    /// Returns false when the file does not follow the wrapper convention
+    /// (including unreadable or oversized files).
+    /// </summary>
+    public static bool TryParseWrapper(string wrapperPath, out string? target, out string[] fixedArgs)
+    {
+        target = null;
+        fixedArgs = new string[0] { };
+
+        string? text;
+        try
+        {
+            text = File.ReadAllText(wrapperPath);
+        }
+        catch
+        {
+            return false;
+        }
+        if (text == null || text.Length == 0 || text.Length > 4096)
+            return false;
+
+        int nl = text.IndexOf('\n');
+        string line = nl < 0 ? text : text.Substring(0, nl);
+        if (line.Length > 0 && line[line.Length - 1] == '\r')
+            line = line.Substring(0, line.Length - 1);
+        line = TrimSpaces(line);
+        if (line.Length < 5 || line.Substring(0, 4) != "run ")
+            return false;
+
+        string[] tokens = SplitSpaces(TrimSpaces(line.Substring(4)));
+        if (tokens.Length == 0)
+            return false;
+
+        target = tokens[0];
+        fixedArgs = new string[tokens.Length - 1];
+        for (int i = 1; i < tokens.Length; i++)
+            fixedArgs[i - 1] = tokens[i];
+        return true;
+    }
+
+    /// <summary>
+    /// Phase 8: trims leading/trailing ASCII spaces and tabs.
+    /// (String.Trim is outside the kernel-compiled subset.)
+    /// </summary>
+    private static string TrimSpaces(string s)
+    {
+        int begin = 0;
+        while (begin < s.Length && (s[begin] == ' ' || s[begin] == '\t'))
+            begin++;
+        int end = s.Length;
+        while (end > begin && (s[end - 1] == ' ' || s[end - 1] == '\t'))
+            end--;
+        if (begin == 0 && end == s.Length)
+            return s;
+        return s.Substring(begin, end - begin);
+    }
+
+    /// <summary>
+    /// Phase 8: splits a string on runs of spaces/tabs (no String.Split
+    /// in the kernel-compiled subset).
+    /// </summary>
+    private static string[] SplitSpaces(string s)
+    {
+        int count = 0;
+        bool inWord = false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            bool ws = s[i] == ' ' || s[i] == '\t';
+            if (!ws && !inWord)
+                count++;
+            inWord = !ws;
+        }
+
+        string[] result = new string[count];
+        int w = 0;
+        int start = -1;
+        for (int i = 0; i <= s.Length; i++)
+        {
+            bool ws = i >= s.Length || s[i] == ' ' || s[i] == '\t';
+            if (!ws && start < 0)
+                start = i;
+            else if (ws && start >= 0)
+            {
+                result[w++] = s.Substring(start, i - start);
+                start = -1;
+            }
+        }
+        return result;
     }
 }

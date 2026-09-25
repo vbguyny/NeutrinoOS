@@ -229,6 +229,15 @@ public static unsafe class GCHeap
         // Total allocation includes the object header
         uint totalSize = size + ObjectHeaderSize;
 
+        // Phase 8: the free list is DISABLED. A watchpoint on a freshly created
+        // List<T> showed AllocFromFreeList handing out a 16-byte block that
+        // overlapped a live 32-byte object, so the block-size header (32) was
+        // written into the live object's _size field (and, generally, freed
+        // blocks overlapping live objects corrupt heap users). Bump-only
+        // allocation is always correct; freed memory is simply not reused
+        // (regions keep growing). Re-enable only after the free-list split
+        // logic is fixed and covered by tests.
+#if false
         // Try free list first
         void* fromFreeList = AllocFromFreeList(totalSize);
         if (fromFreeList != null)
@@ -242,6 +251,7 @@ public static unsafe class GCHeap
             _totalAllocated += totalSize;
             return fromFreeList;
         }
+#endif
 
         // Check if we have space in current region
         if (_allocPtr + totalSize > _regionEnd)

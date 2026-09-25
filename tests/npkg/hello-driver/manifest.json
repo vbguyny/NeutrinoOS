@@ -1,0 +1,14 @@
+{
+  "name": "tests.hello-driver",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["driver"],
+  "installPath": "/drivers",
+  "driver": {
+    "class": "virtual",
+    "vendorIds": [],
+    "deviceIds": [],
+    "entryPoint": "hellodrv.dll"
+  },
+  "signer": ""
+}

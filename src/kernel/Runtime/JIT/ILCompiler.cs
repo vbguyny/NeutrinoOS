@@ -799,6 +799,7 @@ public unsafe struct ILCompiler
         compiler._funcletCount = 0;
         compiler._compilingFunclet = false;
         compiler._funcletCatchHandlerEntry = false;
+        compiler._funcletFrameReserve = 0;
 
         // Initialize all pointer fields to null first (required for struct initialization)
         compiler._heapBuffers = null;
@@ -2989,7 +2990,9 @@ public unsafe struct ILCompiler
         // slows first-run compiles down on slow consoles. The tracking
         // itself stays enabled so RSP-parity anomalies still surface as
         // compile-time behavior differences.
-        if (true) return;
+        // Phase 8 TEMP (npkg crash triage): re-enabled under verbose-jit so
+        // RSP-parity desyncs in app methods are pinpointed per IL opcode.
+        if (!JitDiag.VerboseJit) return;
         if (!X64Emitter.RspDeltaTracking) return;
         if (X64Emitter.RspDeltaAccumulator == _evalStackByteSize) return;
         if (_physReports >= 24) return;
@@ -6234,22 +6237,27 @@ public unsafe struct ILCompiler
             // EnsureCompiled(uint methodToken, uint assemblyId) - uses RCX, RDX
             // We need to save any args that might be in those registers
 
-            // Save the args we just set up in R10/R11 (caller-saved but not used for args)
-            // Only need to save RCX and RDX if we have args in them
+            // Save the args around the EnsureCompiled call below. The call is
+            // a native AOT function and may clobber ANY volatile register -
+            // including R10/R11 - so args are saved on the stack (a parity
+            // pad keeps the call 16-byte aligned for odd numbers of pushes).
             bool savedRcx = totalArgs >= 1;
             bool savedRdx = totalArgs >= 2;
             bool savedR8 = totalArgs >= 3;
             bool savedR9 = totalArgs >= 4;
 
             if (savedRcx)
-                X64Emitter.MovRR(ref _code, VReg.R10, VReg.R1);  // R10 = RCX
+                X64Emitter.Push(ref _code, VReg.R1);
             if (savedRdx)
-                X64Emitter.MovRR(ref _code, VReg.R11, VReg.R2);  // R11 = RDX
-            // R8 and R9 need to be saved to stack if used
+                X64Emitter.Push(ref _code, VReg.R2);
             if (savedR8)
                 X64Emitter.Push(ref _code, VReg.R3);
             if (savedR9)
                 X64Emitter.Push(ref _code, VReg.R4);
+            int savedPushCount = (savedRcx ? 1 : 0) + (savedRdx ? 1 : 0)
+                + (savedR8 ? 1 : 0) + (savedR9 ? 1 : 0);
+            if ((savedPushCount & 1) != 0)
+                X64Emitter.SubRI(ref _code, VReg.SP, 8);
 
             // Get assembly ID from registry entry
             // CompiledMethodInfo layout: Token(4) + NativeCode(8) + ArgCount(1) + ReturnKind(1) + ... + AssemblyId at offset 32
@@ -6267,15 +6275,17 @@ public unsafe struct ILCompiler
             X64Emitter.CallR(ref _code, VReg.R0);
             X64Emitter.AddRI(ref _code, VReg.SP, 32);
 
-            // Restore saved args
+            // Restore saved args (reverse push order)
+            if ((savedPushCount & 1) != 0)
+                X64Emitter.AddRI(ref _code, VReg.SP, 8);
             if (savedR9)
                 X64Emitter.Pop(ref _code, VReg.R4);
             if (savedR8)
                 X64Emitter.Pop(ref _code, VReg.R3);
             if (savedRdx)
-                X64Emitter.MovRR(ref _code, VReg.R2, VReg.R11);  // RDX = R11
+                X64Emitter.Pop(ref _code, VReg.R2);
             if (savedRcx)
-                X64Emitter.MovRR(ref _code, VReg.R1, VReg.R10);  // RCX = R10
+                X64Emitter.Pop(ref _code, VReg.R1);
 
             // Now load NativeCode from registry entry
             // Layout: CompiledMethodInfo { uint Token; void* NativeCode; ... }
@@ -7383,6 +7393,17 @@ public unsafe struct ILCompiler
         // alignment shims, so one pad suffices for the final raw call.
         int callvirtAlignPad = 0;
 
+        // Phase 8: large value-type arguments (> 8 bytes) are passed BY REFERENCE
+        // per the JIT calling convention (RCX/RDX/R8/R9 = pointer to the struct,
+        // struct bytes remain on the caller's eval stack). When arg1 is such a
+        // struct we keep it (plus the 'this' slot above it) on the machine stack,
+        // load the register args from there, and set the pointer register after
+        // the shadow space is allocated. retainedStructBytes tracks the physical
+        // bytes kept on the stack; needsStructPtrInRdx requests the deferred
+        // "LEA RDX, [RSP+32]" pointer setup.
+        int retainedStructBytes = 0;
+        bool needsStructPtrInRdx = false;
+
         if (!needsHiddenBuffer)
         {
             // No hidden buffer - use simple argument setup
@@ -7398,27 +7419,68 @@ public unsafe struct ILCompiler
             }
             else if (totalArgs == 2)
             {
-                // Two args: pop to RDX (arg1), then RCX (this)
-                X64Emitter.Pop(ref _code, VReg.R2);
-                X64Emitter.Pop(ref _code, VReg.R1);
-                PopEntry(); PopEntry();
+                // Check for a large value-type in arg1 (e.g. a struct property
+                // setter: callvirt set_X(this, struct)).
+                EvalStackEntry vArg1 = PeekEntryAt(0);  // TOS = arg1
+                if (vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8)
+                {
+                    // Pass struct byref: RCX = this (stored above the struct on
+                    // our eval stack), RDX = &struct (set after shadow space).
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, vArg1.ByteSize);
+                    retainedStructBytes = vArg1.ByteSize + 8;
+                    needsStructPtrInRdx = true;
+                    PopEntry(); PopEntry();
+                }
+                else
+                {
+                    // Two args: pop to RDX (arg1), then RCX (this)
+                    X64Emitter.Pop(ref _code, VReg.R2);
+                    X64Emitter.Pop(ref _code, VReg.R1);
+                    PopEntry(); PopEntry();
+                }
             }
             else if (totalArgs == 3)
             {
-                // Three args: pop to R8, RDX, RCX
-                X64Emitter.Pop(ref _code, VReg.R3);
-                X64Emitter.Pop(ref _code, VReg.R2);
-                X64Emitter.Pop(ref _code, VReg.R1);
-                PopEntry(); PopEntry(); PopEntry();
+                // Pop arg2 (small) first, then check arg1 for a large struct.
+                X64Emitter.Pop(ref _code, VReg.R3);    // arg2 -> R8
+                PopEntry();
+                EvalStackEntry vArg1 = PeekEntryAt(0);  // arg1 now at TOS
+                if (vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8)
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, vArg1.ByteSize);  // RCX = this
+                    retainedStructBytes = vArg1.ByteSize + 8;
+                    needsStructPtrInRdx = true;
+                    PopEntry(); PopEntry();
+                }
+                else
+                {
+                    // Three args: pop to RDX, then RCX
+                    X64Emitter.Pop(ref _code, VReg.R2);   // arg1 -> RDX
+                    X64Emitter.Pop(ref _code, VReg.R1);   // this -> RCX
+                    PopEntry(); PopEntry();
+                }
             }
             else if (totalArgs == 4)
             {
-                // Four args: pop to R9, R8, RDX, RCX
-                X64Emitter.Pop(ref _code, VReg.R4);
-                X64Emitter.Pop(ref _code, VReg.R3);
-                X64Emitter.Pop(ref _code, VReg.R2);
-                X64Emitter.Pop(ref _code, VReg.R1);
-                PopEntry(); PopEntry(); PopEntry(); PopEntry();
+                // Pop arg3 and arg2 (small) first, then check arg1 for a large struct.
+                X64Emitter.Pop(ref _code, VReg.R4);    // arg3 -> R9
+                X64Emitter.Pop(ref _code, VReg.R3);    // arg2 -> R8
+                PopEntry(); PopEntry();
+                EvalStackEntry vArg1 = PeekEntryAt(0);  // arg1 now at TOS
+                if (vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8)
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, vArg1.ByteSize);  // RCX = this
+                    retainedStructBytes = vArg1.ByteSize + 8;
+                    needsStructPtrInRdx = true;
+                    PopEntry(); PopEntry();
+                }
+                else
+                {
+                    // Four args: pop to RDX, then RCX
+                    X64Emitter.Pop(ref _code, VReg.R2);   // arg1 -> RDX
+                    X64Emitter.Pop(ref _code, VReg.R1);   // this -> RCX
+                    PopEntry(); PopEntry();
+                }
             }
             else
             {
@@ -7631,9 +7693,16 @@ public unsafe struct ILCompiler
             // it from the entry list and leave resets it), so the pad is
             // exact. The internal helper calls route through alignment shims
             // and net to zero pushes, so this single pad also fixes the final
-            // call to the resolved method.
-            callvirtAlignPad = (16 - (_evalStackByteSize & 15)) & 15;
+            // call to the resolved method. Bytes retained for by-ref value-type
+            // args remain on the stack through the call and count toward the
+            // pending byte total for the parity computation.
+            callvirtAlignPad = (16 - ((_evalStackByteSize + retainedStructBytes) & 15)) & 15;
             X64Emitter.SubRI(ref _code, VReg.SP, 32 + callvirtAlignPad);
+
+            // Deferred by-ref pointer for a large struct arg1: the struct sits
+            // directly above the shadow space once it is allocated.
+            if (needsStructPtrInRdx)
+                X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32 + callvirtAlignPad);
         }
 
         // Load target address and call
@@ -7803,8 +7872,9 @@ public unsafe struct ILCompiler
         else if (needsShadowSpace)
         {
             // Simple case: just deallocate the 32-byte shadow space
-            // (plus the ABI parity pad, when one was emitted)
-            X64Emitter.AddRI(ref _code, VReg.SP, 32 + callvirtAlignPad);
+            // (plus the ABI parity pad, when one was emitted, and any bytes
+            // retained for by-ref value-type arguments).
+            X64Emitter.AddRI(ref _code, VReg.SP, 32 + callvirtAlignPad + retainedStructBytes);
         }
         else if (stackArgs > 0 && !needsHiddenBuffer)
         {
@@ -8698,6 +8768,15 @@ public unsafe struct ILCompiler
             // the parent frame pointer (which was set from RDX). Instead, we
             // restore callee-saved registers then skip over the saved rbp.
 
+            // Undo any catch-handler frame reservation first.
+            if (_funcletFrameReserve > 0)
+            {
+                _code.EmitByte(0x48);  // add rsp, imm32
+                _code.EmitByte(0x81);
+                _code.EmitByte(0xC4);
+                _code.EmitInt32(_funcletFrameReserve);
+            }
+
             // Restore callee-saved registers (5 registers * 8 bytes = 40 bytes)
             // pop r15; pop r14; pop r13; pop r12; pop rbx
             _code.EmitByte(0x41);  // pop r15
@@ -8881,6 +8960,15 @@ public unsafe struct ILCompiler
         // When compiling inline handler, just emit 'ret'.
         if (_compilingFunclet)
         {
+            // Undo any catch-handler frame reservation first.
+            if (_funcletFrameReserve > 0)
+            {
+                _code.EmitByte(0x48);  // add rsp, imm32
+                _code.EmitByte(0x81);
+                _code.EmitByte(0xC4);
+                _code.EmitInt32(_funcletFrameReserve);
+            }
+
             // Restore callee-saved registers (5 registers)
             // pop r15; pop r14; pop r13; pop r12; pop rbx
             _code.EmitByte(0x41);  // pop r15
@@ -13314,6 +13402,14 @@ public unsafe struct ILCompiler
     // The first 'pop' instruction should be a no-op (exception is in RCX, not on stack)
     private bool _funcletCatchHandlerEntry;
 
+    /// <summary>
+    /// Bytes reserved on the stack in the CURRENT funclet prologue (catch
+    /// handlers only - see the handler prolog emission in CompileWithFunclets).
+    /// The matching funclet epilogs must add this back before popping the
+    /// callee-saved registers.
+    /// </summary>
+    private int _funcletFrameReserve;
+
     // Finally call tracking (for calls from leave instructions in main body)
     // Each entry: [patchOffset, ehClauseIndex]
     private int* _finallyCallPatches;  // [MaxFinallyCalls * 2]
@@ -13552,6 +13648,11 @@ public unsafe struct ILCompiler
                     // Record filter funclet start
                     int filterCodeStart = _code.Position;
 
+                    // Filters are invoked via call_filter_funclet on the
+                    // dispatcher's stack (not jmp'd into on the parent frame),
+                    // so they need no frame reservation.
+                    _funcletFrameReserve = 0;
+
                     // Emit filter funclet prolog
                     _code.EmitByte(0x55);              // push rbp
                     _code.EmitByte(0x48);              // mov rbp, rdx
@@ -13649,8 +13750,35 @@ public unsafe struct ILCompiler
 
                 // For catch handlers (Exception=0 or Filter=1), the exception object is passed in RCX.
                 // Push it onto the stack so IL can use it (callvirt on exception, or pop to discard).
+                _funcletFrameReserve = 0;
                 bool isCatchHandler = (flags == (int)ILExceptionClauseFlags.Exception ||
                                        flags == (int)ILExceptionClauseFlags.Filter);
+
+                // The exception dispatcher enters catch handlers with
+                // RSP = parentRbp - 0x108 (ExceptionHandling:
+                // targetRsp = Rbp - 0x100, minus 8 for the leave-target
+                // slot). That entry stack is SHALLOWER than this method's
+                // own local frame: locals live at [rbp-40-64k] down to
+                // rbp-40-localBytes. Without reserving the difference,
+                // callee frames and interrupts taken inside the catch run
+                // below RSP and can clobber the shared locals (observed:
+                // the cached exception object at [rbp-0x3A8] overwritten
+                // with garbage). Reserve the same space the main body
+                // reserved so locals stay above RSP; the funclet epilogs
+                // add it back via _funcletFrameReserve.
+                // CRITICAL: this must be emitted BEFORE the exception push
+                // below - the eval stack uses raw push/pop, so a sub between
+                // a push and its pop would break the LIFO order.
+                if (isCatchHandler && localBytes > 0x110)
+                {
+                    int reserve = (localBytes - 0x110 + 15) & ~15;
+                    _code.EmitByte(0x48);  // sub rsp, imm32
+                    _code.EmitByte(0x81);
+                    _code.EmitByte(0xEC);
+                    _code.EmitInt32(reserve);
+                    _funcletFrameReserve = reserve;
+                }
+
                 if (isCatchHandler)
                 {
                     // Push RCX (exception object) onto the physical stack
@@ -13659,7 +13787,7 @@ public unsafe struct ILCompiler
                     // Track exception on eval stack as an object reference
                     _evalStackDepth = 1;
                     _evalStackByteSize = 8;
-                    X64Emitter.RspDeltaAccumulator = 8;  // re-anchor: prolog pushed rcx
+                    X64Emitter.RspDeltaAccumulator = 8 + _funcletFrameReserve;  // re-anchor: prolog pushed rcx
                     if (_evalStack != null)
                     {
                         _evalStack[0] = EvalStackEntry.ObjRef;
@@ -13694,6 +13822,14 @@ public unsafe struct ILCompiler
 
                 // Emit funclet epilog (safety - endfinally/leave should have already emitted appropriate code)
                 // Restore callee-saved registers first, then handle RBP and return
+                // Undo any catch-handler frame reservation first.
+                if (_funcletFrameReserve > 0)
+                {
+                    _code.EmitByte(0x48);  // add rsp, imm32
+                    _code.EmitByte(0x81);
+                    _code.EmitByte(0xC4);
+                    _code.EmitInt32(_funcletFrameReserve);
+                }
                 // pop r15; pop r14; pop r13; pop r12; pop rbx
                 _code.EmitByte(0x41);  // pop r15
                 _code.EmitByte(0x5F);

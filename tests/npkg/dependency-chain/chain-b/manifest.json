@@ -1,0 +1,14 @@
+{
+  "name": "tests.chain-b",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "dependencies": {
+    "tests.chain-c": "=1.0.0"
+  },
+  "entryPoints": {
+    "chain-b": "chainb.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

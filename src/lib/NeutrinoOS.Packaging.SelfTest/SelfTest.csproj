@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>SelfTest</AssemblyName>
+    <RootNamespace>NeutrinoOS.Packaging.SelfTest</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Phase 8 host-side self test for the shared packaging library. The
+       sources under test are the exact files the on-device npkg utility
+       compiles (korlib subset); this project only adds desktop .NET test
+       code, including System.IO.Compression fixtures for the ZIP reader. -->
+  <ItemGroup>
+    <Compile Include="../NeutrinoOS.Packaging/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../ddk/DDK.csproj" />
+  </ItemGroup>
+
+</Project>

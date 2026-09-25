@@ -12,7 +12,7 @@ namespace ProtonOS.Drivers.Storage.Fat;
 /// <summary>
 /// FAT filesystem driver supporting FAT12, FAT16, and FAT32.
 /// </summary>
-public unsafe class FatFileSystem : IFileSystem
+public unsafe partial class FatFileSystem : IFileSystem
 {
     // Block device
     private IBlockDevice? _device;
@@ -1559,7 +1559,7 @@ public unsafe class FatFileSystem : IFileSystem
         if (lfnCount < 1)
             lfnCount = 1;
 
-        return CreateLongNameEntry(dirCluster, name, attr, lfnCount, out entry, out entryIndex);
+        return CreateLongNameEntrySafe(dirCluster, name, attr, lfnCount, out entry, out entryIndex);
     }
 
     /// <summary>

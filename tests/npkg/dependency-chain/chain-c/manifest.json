@@ -1,0 +1,11 @@
+{
+  "name": "tests.chain-c",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "entryPoints": {
+    "chain-c": "chainc.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

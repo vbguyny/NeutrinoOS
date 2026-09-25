@@ -1,0 +1,14 @@
+{
+  "name": "tests.conflict-x",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "dependencies": {
+    "tests.libz": "=1.0.0"
+  },
+  "entryPoints": {
+    "conflict-x": "conflictx.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

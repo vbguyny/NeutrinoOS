@@ -5004,6 +5004,19 @@ public static unsafe class AssemblyLoader
                 }
             }
         }
+        else if (extendsIdx.Table == MetadataTableId.TypeSpec)
+        {
+            // Phase 8: base class is a generic instantiation (e.g.
+            // RepoPackageList : List<RepoPackageInfo>). Resolve the TypeSpec to
+            // its instantiated MethodTable and use its size. Without this the
+            // base's fields were omitted and the subclass was allocated too
+            // small (8 bytes + minimum), so subsequent heap allocations
+            // overlapped the live object and corrupted its fields.
+            uint specToken = (uint)(0x1B000000 | extendsIdx.RowId);
+            MethodTable* baseMT = ResolveTypeSpec(asm, specToken);
+            if (baseMT != null && baseMT->_uBaseSize > 0)
+                return baseMT->_uBaseSize;
+        }
         return 8; // Default to just object header
     }
 

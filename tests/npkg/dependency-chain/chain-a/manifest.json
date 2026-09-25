@@ -1,0 +1,14 @@
+{
+  "name": "tests.chain-a",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "dependencies": {
+    "tests.chain-b": ">=1.0.0"
+  },
+  "entryPoints": {
+    "chain-a": "chaina.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

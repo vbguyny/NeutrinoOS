@@ -589,13 +589,35 @@ public static unsafe class AotMethodRegistry
             1, ReturnKind.Int32, true, false);
 
         // String.IndexOf(string) - 1 parameter, HasThis=true, returns int
-        // NOTE: IndexOf(char) overload is NOT registered because the AOT lookup
-        // can't distinguish it from IndexOf(string) (both have 1 param).
-        // Use "x".IndexOf("W") instead of "x".IndexOf('W') in JIT code.
         Register(
             "System.String", "IndexOf",
             (nint)(delegate*<string, string, int>)&StringHelpers.IndexOfString,
             1, ReturnKind.Int32, true, false);
+
+        // Phase 8: the full IndexOf overload set, resolved by exact signature
+        // hash (char vs string vs start-index forms). Regression source:
+        // npkg's parser used IndexOf(char) / IndexOf(string,int) / IndexOf(char,int),
+        // which previously failed JIT compilation ([MetaInt] Failed to resolve).
+        RegisterWithSignature(
+            "System.String", "IndexOf",
+            (nint)(delegate*<string, string, int>)&StringHelpers.IndexOfString,
+            1, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING));
+        RegisterWithSignature(
+            "System.String", "IndexOf",
+            (nint)(delegate*<string, char, int>)&StringHelpers.IndexOfChar,
+            1, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_CHAR));
+        RegisterWithSignature(
+            "System.String", "IndexOf",
+            (nint)(delegate*<string, string, int, int>)&StringHelpers.IndexOfStringFrom,
+            2, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_I4));
+        RegisterWithSignature(
+            "System.String", "IndexOf",
+            (nint)(delegate*<string, char, int, int>)&StringHelpers.IndexOfCharFrom,
+            2, ReturnKind.Int32, true, false,
+            ComputeSignatureHash(ELEMENT_TYPE_CHAR, ELEMENT_TYPE_I4));
 
         // String.StartsWith(string) - 1 parameter, HasThis=true, returns bool
         Register(
@@ -3310,6 +3332,40 @@ public static unsafe class StringHelpers
             return -1;
 
         for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == value)
+                return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Wrapper for String.IndexOf(string, int) (Phase 8).
+    /// Searches for the substring starting at <paramref name="startIndex"/>.
+    /// </summary>
+    public static int IndexOfStringFrom(string s, string value, int startIndex)
+    {
+        if (startIndex < 0)
+            startIndex = 0;
+        if (s == null)
+            return -1;
+        if (startIndex > s.Length)
+            return -1;
+        return IndexOf(s, value, startIndex);
+    }
+
+    /// <summary>
+    /// Wrapper for String.IndexOf(char, int) (Phase 8).
+    /// Searches for the character starting at <paramref name="startIndex"/>.
+    /// </summary>
+    public static int IndexOfCharFrom(string s, char value, int startIndex)
+    {
+        if (s == null)
+            return -1;
+        if (startIndex < 0)
+            startIndex = 0;
+
+        for (int i = startIndex; i < s.Length; i++)
         {
             if (s[i] == value)
                 return i;

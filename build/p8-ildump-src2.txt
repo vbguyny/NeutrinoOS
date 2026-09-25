@@ -1,0 +1,30 @@
+using System;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        using var fs = System.IO.File.OpenRead(args[0]);
+        using var pe = new PEReader(fs);
+        var md = pe.GetMetadataReader();
+        for (int a = 1; a < args.Length; a++)
+        {
+            int target = Convert.ToInt32(args[a].Replace("0x", ""), 16);
+            foreach (var h in md.MethodDefinitions)
+            {
+                int tok = MetadataTokens.GetToken(h);
+                if (tok != target) continue;
+                var m = md.GetMethodDefinition(h);
+                var t = md.GetTypeDefinition(m.GetDeclaringType());
+                Console.WriteLine("== 0x" + tok.ToString("X8") + " " + md.GetString(t.Name) + "::" + md.GetString(m.Name));
+                var body = pe.GetMethodBody(m.RelativeVirtualAddress);
+                var il = body.GetILBytes();
+                for (int i = 0; i < il.Length; i++) Console.Write(il[i].ToString("X2") + " ");
+                Console.WriteLine();
+            }
+        }
+    }
+}

@@ -378,10 +378,21 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
 
     private static void RawDiag(string label, ulong value)
     {
-        for (int i = 0; i < label.Length; i++)
-            RawDiagByte((byte)label[i]);
+        RawDiagRaw(label);
+        RawDiagHex(value);
+    }
 
-        // Hex with no padding (labels carry the "0x").
+    /// <summary>TEMP fault diagnosis: raw polled COM1 text (no newline).</summary>
+    public static void RawDiagRaw(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+            RawDiagByte((byte)text[i]);
+    }
+
+    /// <summary>TEMP fault diagnosis: raw polled COM1 hex value (no padding).</summary>
+    public static void RawDiagHex(ulong value)
+    {
+        // Hex with no padding (callers include any "0x" in labels).
         bool started = false;
         for (int shift = 60; shift >= 0; shift -= 4)
         {
@@ -391,6 +402,30 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
                 started = true;
                 RawDiagByte((byte)(nib < 10 ? '0' + nib : 'A' + nib - 10));
             }
+        }
+    }
+
+    /// <summary>TEMP fault diagnosis: raw polled COM1 newline.</summary>
+    public static void RawDiagEndLine()
+    {
+        RawDiagCrlf();
+    }
+
+    /// <summary>
+    /// TEMP fault diagnosis: raw polled COM1 dump of 'count' bytes at 'addr'
+    /// as space-separated hex pairs (used to decode the faulting instruction
+    /// at RIP).
+    /// </summary>
+    public static void RawDiagCodeBytes(ulong addr, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            byte b = *(byte*)(addr + (ulong)i);
+            int hi = (b >> 4) & 0xF;
+            int lo = b & 0xF;
+            RawDiagByte((byte)(hi < 10 ? '0' + hi : 'A' + hi - 10));
+            RawDiagByte((byte)(lo < 10 ? '0' + lo : 'A' + lo - 10));
+            RawDiagByte((byte)' ');
         }
     }
 
@@ -431,6 +466,50 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
                 RawDiag(" s=0x", v);
             }
             RawDiagCrlf();
+
+            // Register dump (TEMP crash triage): operands of the faulting
+            // instruction at RIP (InterruptFrame layout is in IDT.cs).
+            RawDiag(" rax=0x", frame->Rax);
+            RawDiag(" rbx=0x", frame->Rbx);
+            RawDiag(" rcx=0x", frame->Rcx);
+            RawDiag(" rdx=0x", frame->Rdx);
+            RawDiag(" rsi=0x", frame->Rsi);
+            RawDiag(" rdi=0x", frame->Rdi);
+            RawDiag(" rbp=0x", frame->Rbp);
+            RawDiagCrlf();
+            RawDiag(" r8=0x", frame->R8);
+            RawDiag(" r9=0x", frame->R9);
+            RawDiag(" r10=0x", frame->R10);
+            RawDiag(" r11=0x", frame->R11);
+            RawDiag(" r12=0x", frame->R12);
+            RawDiag(" r13=0x", frame->R13);
+            RawDiag(" r14=0x", frame->R14);
+            RawDiag(" r15=0x", frame->R15);
+            RawDiag(" rflags=0x", frame->Rflags);
+            RawDiagCrlf();
+
+            // Caller link (TEMP crash triage): [RBP+8] is the return address
+            // into the caller of the faulting method; dump the bytes just
+            // before it to see the call instruction that entered RIP.
+            ulong retAddr = 0;
+            if (frame->Rbp > 0x1000)
+                retAddr = *(ulong*)(frame->Rbp + 8);
+            RawDiag(" ret=0x", retAddr);
+            RawDiagCrlf();
+            if (retAddr > 0x50)
+            {
+                RawDiag(" retcode:", retAddr - 64);
+                RawDiagCodeBytes(retAddr - 64, 72);
+                RawDiagCrlf();
+            }
+
+            // Crash triage (TEMP): dump the bytes of the faulting instruction at
+            // RIP plus the JIT compiled-method table, so the method owning RIP
+            // and its callers (the stack words above) can be identified offline.
+            RawDiag(" code:", frame->Rip);
+            RawDiagCodeBytes(frame->Rip, 16);
+            RawDiagCrlf();
+            ProtonOS.Runtime.JIT.CompiledMethodRegistry.RawDumpForFault();
 
             // Try to dispatch through exception handling infrastructure
             if (ExceptionHandling.DispatchException(frame, vector))

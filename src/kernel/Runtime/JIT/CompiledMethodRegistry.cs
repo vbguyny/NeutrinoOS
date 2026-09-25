@@ -4,6 +4,7 @@
 
 using ProtonOS.Memory;
 using ProtonOS.Platform;
+using ProtonOS.X64;
 
 namespace ProtonOS.Runtime.JIT;
 
@@ -1370,6 +1371,45 @@ public static unsafe class CompiledMethodRegistry
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// TEMP fault diagnosis: raw polled COM1 dump of every registered compiled
+    /// method as "[j|0xTOKEN at 0xCODE]" lines, so a faulting RIP plus the stack
+    /// return addresses recorded by the exception handler can be mapped to
+    /// method tokens offline.
+    /// </summary>
+    public static void RawDumpForFault()
+    {
+        int dumped = 0;
+        for (int b = 0; b < _blockCount; b++)
+        {
+            MethodBlock* block = _blocks[b];
+            if (block == null || block->IsEmpty)
+                continue;
+
+            CompiledMethodInfo* entries = block->GetEntries();
+            for (int i = 0; i < MethodBlock.EntriesPerBlock; i++)
+            {
+                if (!entries[i].IsUsed)
+                    continue;
+
+                // Fully qualified: plain "Arch" binds to the ProtonOS.Arch
+                // namespace from inside ProtonOS.Runtime.JIT (enclosing
+                // namespaces win over using directives).
+                ProtonOS.X64.Arch.RawDiagRaw("[j|0x");
+                ProtonOS.X64.Arch.RawDiagHex((ulong)entries[i].Token);
+                ProtonOS.X64.Arch.RawDiagRaw(" at 0x");
+                ProtonOS.X64.Arch.RawDiagHex((ulong)entries[i].NativeCode);
+                if (!entries[i].IsCompiled)
+                    ProtonOS.X64.Arch.RawDiagRaw(" (pending)");
+                ProtonOS.X64.Arch.RawDiagEndLine();
+                dumped++;
+            }
+        }
+        ProtonOS.X64.Arch.RawDiagRaw("[j|total=");
+        ProtonOS.X64.Arch.RawDiagHex((ulong)dumped);
+        ProtonOS.X64.Arch.RawDiagEndLine();
     }
 
     // === Private helpers ===

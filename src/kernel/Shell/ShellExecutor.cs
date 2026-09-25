@@ -247,6 +247,8 @@ public static class ShellExecutor
 
         string? exe = ShellState.FindExecutable(name);
         if (exe == null)
+            exe = ShellState.FindWrapper(name);   // Phase 8: npkg entry-point wrappers
+        if (exe == null)
         {
             Console.Error.WriteLine("neutrinoos: " + name + ": command not found");
             return ExitCommandNotFound;
@@ -256,11 +258,32 @@ public static class ShellExecutor
         for (int i = 1; i < args.Length; i++)
             progArgs[i - 1] = args[i];
 
+        // Phase 8: a resolved command without the .dll suffix is an npkg
+        // wrapper (text file, first line "run <path.dll> [args...]").
+        string runTarget = exe;
+        string[] runArgs = progArgs;
+        if (!ShellState.EndsWithDll(exe))
+        {
+            string? wrapperTarget;
+            string[] wrapperArgs;
+            if (!ShellState.TryParseWrapper(exe, out wrapperTarget, out wrapperArgs))
+            {
+                Console.Error.WriteLine("neutrinoos: " + name + ": not an executable");
+                return ExitNotExecutable;
+            }
+            runTarget = wrapperTarget!;
+            runArgs = new string[wrapperArgs.Length + progArgs.Length];
+            for (int i = 0; i < wrapperArgs.Length; i++)
+                runArgs[i] = wrapperArgs[i];
+            for (int i = 0; i < progArgs.Length; i++)
+                runArgs[wrapperArgs.Length + i] = progArgs[i];
+        }
+
         InForegroundCommand = true;
         int rc;
         try
         {
-            rc = AssemblyRunner.Run(exe, progArgs);
+            rc = AssemblyRunner.Run(runTarget, runArgs);
         }
         finally
         {

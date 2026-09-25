@@ -25,18 +25,22 @@ namespace System.IO;
 /// <summary>Specifies how the operating system should open a file.</summary>
 public enum FileMode
 {
+    // Phase 8: values match the BCL (System.IO.FileMode) on purpose: code
+    // compiled against the BCL (utilities, libraries) const-folds these
+    // numeric values, so a 0-based enum here would mis-route switches and
+    // range checks at run time under the JIT.
     /// <summary>Creates a new file; if the file exists, an IOException is thrown.</summary>
-    CreateNew,
+    CreateNew = 1,
     /// <summary>Creates a new file or truncates an existing one.</summary>
-    Create,
+    Create = 2,
     /// <summary>Opens an existing file; FileNotFoundException when missing.</summary>
-    Open,
+    Open = 3,
     /// <summary>Opens an existing file or creates a new one.</summary>
-    OpenOrCreate,
+    OpenOrCreate = 4,
     /// <summary>Opens and truncates an existing file; FileNotFoundException when missing.</summary>
-    Truncate,
+    Truncate = 5,
     /// <summary>Opens a file and seeks to its end (creating it when missing); writes always append.</summary>
-    Append,
+    Append = 6,
 }
 
 /// <summary>Specifies the access allowed to a file.</summary>
