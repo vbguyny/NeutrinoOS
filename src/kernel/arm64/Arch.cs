@@ -1,0 +1,664 @@
+// ProtonOS kernel - x64 Architecture Initialization
+// Static initialization to avoid 'new' keyword issues in stdlib:zero
+// Implements IArchitecture for architecture-neutral kernel code.
+
+using System.Runtime.InteropServices;
+using ProtonOS.Platform;
+using ProtonOS.Memory;
+using ProtonOS.Threading;
+using ProtonOS.Arch;
+
+namespace ProtonOS.Arch;
+
+/// <summary>
+/// Static storage for interrupt handlers (fixed buffer wrapper)
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct HandlerStorage
+{
+    // 256 function pointers × 8 bytes = 2048 bytes
+    public fixed byte Data[256 * 8];
+}
+
+/// <summary>
+/// x64 architecture initialization.
+/// Implements IArchitecture for architecture abstraction.
+/// Note: This is a struct (not static class) to enable static abstract interface implementation,
+/// but all members remain static. Use Arch.Method() syntax as before.
+/// </summary>
+public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
+{
+    private static bool _stage1Complete;
+    private static bool _stage2Complete;
+
+    // Handler storage - function pointers for interrupt handlers (static, no heap allocation)
+    private const int VectorCount = 256;
+    private static HandlerStorage _handlerStorage;
+    private static bool _interruptsEnabled;
+
+    // ==================== IArchitecture Properties ====================
+
+    /// <summary>
+    /// Check if Stage 1 initialization is complete.
+    /// </summary>
+    public static bool IsStage1Complete => _stage1Complete;
+
+    /// <summary>
+    /// Check if Stage 2 initialization is complete.
+    /// </summary>
+    public static bool IsStage2Complete => _stage2Complete;
+
+    /// <summary>
+    /// Size of CPU context structure in bytes (CPUContext struct).
+    /// </summary>
+    public static int ContextSize => sizeof(CPUContext);
+
+    /// <summary>
+    /// Size of extended state (FPU/SSE/AVX) in bytes.
+    /// Uses XSAVE area size if available, otherwise FXSAVE (512 bytes).
+    /// </summary>
+    public static int ExtendedStateSize => CPUFeatures.ExtendedStateSize > 0 ? (int)CPUFeatures.ExtendedStateSize : 512;
+
+    // ==================== IArchitecture SMP Properties ====================
+
+    /// <summary>
+    /// Number of CPUs detected in the system.
+    /// </summary>
+    public static int CpuCount => CPUTopology.IsInitialized ? CPUTopology.CpuCount : 1;
+
+    /// <summary>
+    /// Index of the current CPU (0 to CpuCount-1).
+    /// Uses per-CPU state via GS segment base.
+    /// </summary>
+    public static int CurrentCpuIndex => PerCpu.IsInitialized ? (int)PerCpu.CpuIndex : 0;
+
+    /// <summary>
+    /// Whether the current CPU is the Bootstrap Processor.
+    /// </summary>
+    public static bool IsBsp => !PerCpu.IsInitialized || PerCpu.IsBsp;
+
+    // ==================== Initialization ====================
+
+    /// <summary>
+    /// Stage 1 initialization - Initialize x64 architecture (before heap)
+    /// </summary>
+    public static void InitStage1()
+    {
+        if (_stage1Complete) return;
+
+        DebugConsole.WriteLine("[x64] Initializing architecture...");
+
+        // Initialize GDT
+        GDT.Init();
+
+        // Clear handler storage (static storage, no heap allocation needed)
+        fixed (byte* ptr = _handlerStorage.Data)
+        {
+            for (int i = 0; i < VectorCount * sizeof(void*); i++)
+                ptr[i] = 0;
+        }
+
+        // Initialize IDT
+        IDT.Init();
+
+        // Initialize virtual memory (our own page tables)
+        VirtualMemory.Init();
+
+        _stage1Complete = true;
+        DebugConsole.WriteLine("[x64] Architecture initialized");
+    }
+
+    /// <summary>
+    /// Legacy alias for InitStage1() - maintained for backward compatibility.
+    /// </summary>
+    public static void Init() => InitStage1();
+
+    /// <summary>
+    /// Register an interrupt handler (x64-specific signature with InterruptFrame)
+    /// </summary>
+    public static void RegisterHandler(int vector, delegate*<InterruptFrame*, void> handler)
+    {
+        if (vector >= 0 && vector < VectorCount)
+        {
+            fixed (byte* ptr = _handlerStorage.Data)
+            {
+                var handlers = (delegate*<InterruptFrame*, void>*)ptr;
+                handlers[vector] = handler;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Register an interrupt handler (IArchitecture interface - generic void* signature)
+    /// </summary>
+    public static void RegisterInterruptHandler(int vector, delegate*<void*, void> handler)
+    {
+        // Cast void* handler to InterruptFrame* handler (same memory layout)
+        RegisterHandler(vector, (delegate*<InterruptFrame*, void>)handler);
+    }
+
+    /// <summary>
+    /// Unregister an interrupt handler
+    /// </summary>
+    public static void UnregisterHandler(int vector)
+    {
+        if (vector >= 0 && vector < VectorCount)
+        {
+            fixed (byte* ptr = _handlerStorage.Data)
+            {
+                var handlers = (delegate*<InterruptFrame*, void>*)ptr;
+                handlers[vector] = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Unregister an interrupt handler (IArchitecture interface)
+    /// </summary>
+    public static void UnregisterInterruptHandler(int vector) => UnregisterHandler(vector);
+
+    /// <summary>
+    /// Enable interrupts
+    /// </summary>
+    public static void EnableInterrupts()
+    {
+        _interruptsEnabled = true;
+        CPU.EnableInterrupts();
+    }
+
+    /// <summary>
+    /// Disable interrupts
+    /// </summary>
+    public static void DisableInterrupts()
+    {
+        CPU.DisableInterrupts();
+        _interruptsEnabled = false;
+    }
+
+    /// <summary>
+    /// Check if interrupts are enabled
+    /// </summary>
+    public static bool InterruptsEnabled => _interruptsEnabled;
+
+    /// <summary>
+    /// Send End-Of-Interrupt signal
+    /// </summary>
+    public static void EndOfInterrupt(int vector)
+    {
+        // TODO: Send EOI to APIC/PIC when we implement them
+    }
+
+    /// <summary>
+    /// Halt the CPU
+    /// </summary>
+    public static void Halt()
+    {
+        CPU.Halt();
+    }
+
+    /// <summary>
+    /// Trigger a breakpoint exception (for testing/debugging)
+    /// </summary>
+    public static void Breakpoint()
+    {
+        CPU.Breakpoint();
+    }
+
+    /// <summary>
+    /// Second-stage architecture initialization.
+    /// Called after heap is ready, initializes timers and enables interrupts.
+    /// </summary>
+    public static void InitStage2()
+    {
+        DebugConsole.WriteLine("[x64] Stage 2 initialization...");
+
+        // Initialize CPU topology from MADT (requires heap, so done here not in Stage1)
+        CPUTopology.Init();
+
+        // Initialize NUMA topology from SRAT/SLIT (requires CPU topology)
+        NumaTopology.Init();
+
+        // Update CPU info with NUMA node assignments
+        CPUTopology.UpdateNumaInfo();
+
+        // Initialize NUMA-aware page allocation
+        PageAllocator.InitNumaInfo();
+
+        // Initialize exception handling
+        ExceptionHandling.Init();
+
+        // Initialize HPET (for calibration)
+        if (!HPET.Init())
+        {
+            DebugConsole.WriteLine("[x64] WARNING: HPET not available, timer calibration will be inaccurate");
+        }
+
+        // Initialize RTC (for wall-clock time) - depends on HPET for elapsed time tracking
+        RTC.Init();
+
+        // Initialize Local APIC
+        if (APIC.Init())
+        {
+            // Calibrate timers using HPET if available
+            if (HPET.IsInitialized)
+            {
+                APIC.CalibrateTimer();
+                HPET.CalibrateTsc();
+            }
+
+            // Start periodic timer (1ms period = 1000Hz)
+            APIC.StartTimer(1);
+        }
+
+        // Initialize I/O APIC for external interrupt routing
+        if (CPUTopology.IOApicCount > 0)
+        {
+            if (IOAPIC.Init())
+            {
+                // Set up standard ISA IRQ routing to BSP
+                IOAPIC.SetupIsaIrqs();
+            }
+        }
+
+        // NOTE (Phase 7): AP startup (SMP.Init) intentionally does NOT run
+        // here. Starting APs this early deadlocked 2-vCPU boots: an early
+        // trampoline-era AP fault entered the exception machinery before
+        // the JIT-registration / exception-table / console locks had an
+        // established order, leaving ExceptionHandling._lock held while
+        // both CPUs spun on it. The kernel calls SMP.Init() from
+        // Kernel.Main once early subsystems are up (see SMP._apsReleased).
+
+        // Enable interrupts
+        EnableInterrupts();
+
+        _stage2Complete = true;
+        DebugConsole.WriteLine("[x64] Stage 2 complete, interrupts enabled");
+    }
+
+    // ==================== IArchitecture Timer Methods ====================
+
+    /// <summary>
+    /// Get the current timer tick count (from APIC timer).
+    /// </summary>
+    public static ulong GetTickCount()
+    {
+        return APIC.TickCount;
+    }
+
+    /// <summary>
+    /// Get the timer frequency in Hz (APIC timer frequency).
+    /// </summary>
+    public static ulong GetTimerFrequency()
+    {
+        return APIC.TimerFrequency;
+    }
+
+    /// <summary>
+    /// Busy-wait for the specified number of nanoseconds.
+    /// </summary>
+    public static void BusyWaitNs(ulong nanoseconds)
+    {
+        if (HPET.IsInitialized)
+        {
+            HPET.BusyWaitNs(nanoseconds);
+        }
+        else
+        {
+            // Fallback: rough spin loop (very inaccurate)
+            ulong loops = nanoseconds / 10;  // Rough estimate
+            for (ulong i = 0; i < loops; i++)
+                CPU.Pause();
+        }
+    }
+
+    /// <summary>
+    /// Busy-wait for the specified number of milliseconds.
+    /// </summary>
+    public static void BusyWaitMs(ulong milliseconds)
+    {
+        BusyWaitNs(milliseconds * 1_000_000);
+    }
+
+    // ==================== IArchitecture Exception Handling ====================
+
+    /// <summary>
+    /// Get function pointer to the throw exception routine.
+    /// </summary>
+    public static delegate*<void*, void> GetThrowExceptionFuncPtr()
+    {
+        return CPU.GetThrowExFuncPtr();
+    }
+
+    /// <summary>
+    /// Get function pointer to the rethrow routine.
+    /// </summary>
+    public static delegate*<void> GetRethrowFuncPtr()
+    {
+        return CPU.GetRethrowFuncPtr();
+    }
+
+    // ==================== Interrupt Dispatch ====================
+
+    /// <summary>
+    /// Entry point from kernel ISR stubs
+    /// </summary>
+    [UnmanagedCallersOnly(EntryPoint = "InterruptDispatch")]
+    public static void DispatchInterrupt(InterruptFrame* frame)
+    {
+        int vector = (int)frame->InterruptNumber;
+
+        fixed (byte* ptr = _handlerStorage.Data)
+        {
+            var handlers = (delegate*<InterruptFrame*, void>*)ptr;
+            var handler = handlers[vector];
+            if (handler != null)
+            {
+                handler(frame);
+                return;
+            }
+        }
+
+        // Default handling for unhandled interrupts
+        DefaultHandler(frame);
+    }
+
+    // Bitmask of IRQ vectors (32-79) for which the "unhandled interrupt"
+    // notice has already been printed (one line per vector, not per event).
+    private static ulong _unhandledIrqNoticed;
+
+    // ==================== temporary raw COM1 debug output ====================
+    // Polled writes to COM1 that bypass the console abstraction layer; used
+    // while diagnosing boot-time faults in the JIT->AOT bridge.
+
+    private static void RawDiagCrlf()
+    {
+        RawDiagByte(13);
+        RawDiagByte(10);
+    }
+
+    private static void RawDiag(string label, ulong value)
+    {
+        RawDiagRaw(label);
+        RawDiagHex(value);
+    }
+
+    /// <summary>TEMP fault diagnosis: raw polled COM1 text (no newline).</summary>
+    public static void RawDiagRaw(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+            RawDiagByte((byte)text[i]);
+    }
+
+    /// <summary>TEMP fault diagnosis: raw polled COM1 hex value (no padding).</summary>
+    public static void RawDiagHex(ulong value)
+    {
+        // Hex with no padding (callers include any "0x" in labels).
+        bool started = false;
+        for (int shift = 60; shift >= 0; shift -= 4)
+        {
+            int nib = (int)((value >> shift) & 0xF);
+            if (nib != 0 || started || shift == 0)
+            {
+                started = true;
+                RawDiagByte((byte)(nib < 10 ? '0' + nib : 'A' + nib - 10));
+            }
+        }
+    }
+
+    /// <summary>TEMP fault diagnosis: raw polled COM1 newline.</summary>
+    public static void RawDiagEndLine()
+    {
+        RawDiagCrlf();
+    }
+
+    /// <summary>
+    /// TEMP fault diagnosis: raw polled COM1 dump of 'count' bytes at 'addr'
+    /// as space-separated hex pairs (used to decode the faulting instruction
+    /// at RIP).
+    /// </summary>
+    public static void RawDiagCodeBytes(ulong addr, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            byte b = *(byte*)(addr + (ulong)i);
+            int hi = (b >> 4) & 0xF;
+            int lo = b & 0xF;
+            RawDiagByte((byte)(hi < 10 ? '0' + hi : 'A' + hi - 10));
+            RawDiagByte((byte)(lo < 10 ? '0' + lo : 'A' + lo - 10));
+            RawDiagByte((byte)' ');
+        }
+    }
+
+    private static void RawDiagByte(byte b)
+    {
+        int spins = 0;
+        while ((CPU.InByte(0x3FD) & 0x20) == 0 && spins++ < 2_000_000) { }
+        CPU.OutByte(0x3F8, b);
+    }
+
+    private static void DefaultHandler(InterruptFrame* frame)
+    {
+        int vector = (int)frame->InterruptNumber;
+
+        // CPU exceptions (0-31) - try SEH dispatch first
+        if (vector < 32)
+        {
+            // Temporary boot-debug diagnostic: raw polled COM1 dump of the
+            // faulting vector/RIP (bypasses the console CAL and interrupts,
+            // which may itself be the broken path).
+            RawDiag("!!! RAWV v=0x", (ulong)vector);
+            RawDiag(" rip=0x", frame->Rip);
+            RawDiag(" err=0x", (ulong)frame->ErrorCode);
+            RawDiag(" rsp=0x", frame->Rsp);
+            // Page faults: CR2 is the faulting linear address - it tells an
+            // unmapped page inside the active stack region apart from a
+            // runaway probe target outside it.
+            if (vector == 14)
+                RawDiag(" cr2=0x", CPU.ReadCr2());
+            RawDiagCrlf();
+
+            // Crash triage: dump the first 24 stack words. Return addresses
+            // into the kernel AOT image (0x8xxxxxx) or JIT code
+            // (0x2000xxxxx) let us reconstruct the call chain offline.
+            for (int i = 0; i < 24; i++)
+            {
+                ulong v = *(ulong*)(frame->Rsp + (ulong)(i * 8));
+                RawDiag(" s=0x", v);
+            }
+            RawDiagCrlf();
+
+            // Register dump (TEMP crash triage): operands of the faulting
+            // instruction at RIP (InterruptFrame layout is in IDT.cs).
+            RawDiag(" rax=0x", frame->Rax);
+            RawDiag(" rbx=0x", frame->Rbx);
+            RawDiag(" rcx=0x", frame->Rcx);
+            RawDiag(" rdx=0x", frame->Rdx);
+            RawDiag(" rsi=0x", frame->Rsi);
+            RawDiag(" rdi=0x", frame->Rdi);
+            RawDiag(" rbp=0x", frame->Rbp);
+            RawDiagCrlf();
+            RawDiag(" r8=0x", frame->R8);
+            RawDiag(" r9=0x", frame->R9);
+            RawDiag(" r10=0x", frame->R10);
+            RawDiag(" r11=0x", frame->R11);
+            RawDiag(" r12=0x", frame->R12);
+            RawDiag(" r13=0x", frame->R13);
+            RawDiag(" r14=0x", frame->R14);
+            RawDiag(" r15=0x", frame->R15);
+            RawDiag(" rflags=0x", frame->Rflags);
+            RawDiagCrlf();
+
+            // Caller link (TEMP crash triage): [RBP+8] is the return address
+            // into the caller of the faulting method; dump the bytes just
+            // before it to see the call instruction that entered RIP.
+            ulong retAddr = 0;
+            if (frame->Rbp > 0x1000)
+                retAddr = *(ulong*)(frame->Rbp + 8);
+            RawDiag(" ret=0x", retAddr);
+            RawDiagCrlf();
+            if (retAddr > 0x50)
+            {
+                RawDiag(" retcode:", retAddr - 64);
+                RawDiagCodeBytes(retAddr - 64, 72);
+                RawDiagCrlf();
+            }
+
+            // Crash triage (TEMP): dump the bytes of the faulting instruction at
+            // RIP plus the JIT compiled-method table, so the method owning RIP
+            // and its callers (the stack words above) can be identified offline.
+            RawDiag(" code:", frame->Rip);
+            RawDiagCodeBytes(frame->Rip, 16);
+            RawDiagCrlf();
+            ProtonOS.Runtime.JIT.CompiledMethodRegistry.RawDumpForFault();
+
+            // Try to dispatch through exception handling infrastructure
+            if (ExceptionHandling.DispatchException(frame, vector))
+            {
+                // Exception was handled, return to continue execution
+                return;
+            }
+
+            // Unhandled exception - display info and halt
+            DebugConsole.WriteLine();
+            DebugConsole.Write("!!! EXCEPTION ");
+            DebugConsole.WriteHex((ushort)vector);
+            DebugConsole.Write(": ");
+            DebugConsole.WriteLine(GetExceptionName(vector));
+
+            DebugConsole.Write("    Error Code: 0x");
+            DebugConsole.WriteHex(frame->ErrorCode);
+            DebugConsole.WriteLine();
+
+            DebugConsole.Write("    RIP: 0x");
+            DebugConsole.WriteHex(frame->Rip);
+            DebugConsole.WriteLine();
+
+            DebugConsole.Write("    RSP: 0x");
+            DebugConsole.WriteHex(frame->Rsp);
+            DebugConsole.WriteLine();
+
+            DebugConsole.Write("    CS:  0x");
+            DebugConsole.WriteHex((ushort)frame->Cs);
+            DebugConsole.Write("  SS: 0x");
+            DebugConsole.WriteHex((ushort)frame->Ss);
+            DebugConsole.WriteLine();
+
+            if (vector == 14) // Page fault
+            {
+                DebugConsole.Write("    CR2: 0x");
+                DebugConsole.WriteHex(CPU.ReadCr2());
+                DebugConsole.WriteLine();
+            }
+
+            // Halt - can't continue from unhandled exception
+            DebugConsole.WriteLine("!!! SYSTEM HALTED");
+            CPU.HaltForever();
+        }
+
+        // IRQs (32-47) and the DDK IRQ pool (48-79): acknowledge and ignore
+        // if no handler is registered. The EOI is CRITICAL: without it the
+        // vector stays in service in the LAPIC and blocks the timer (and
+        // everything else at <= its priority) forever, so the next HLT
+        // never wakes.
+        if (vector >= 32)
+        {
+            if (vector <= 79)
+            {
+                ulong bit = 1UL << (vector - 32);
+                if ((_unhandledIrqNoticed & bit) == 0)
+                {
+                    _unhandledIrqNoticed |= bit;
+                    DebugConsole.Write("[IRQ] Unhandled interrupt vector ");
+                    DebugConsole.WriteDecimal(vector);
+                    DebugConsole.WriteLine(" (acknowledged and ignored)");
+                }
+            }
+
+            if (APIC.IsInitialized)
+            {
+                APIC.SendEoi();
+            }
+        }
+    }
+
+    private static string GetExceptionName(int vector)
+    {
+        return vector switch
+        {
+            0 => "Divide by Zero",
+            1 => "Debug",
+            2 => "NMI",
+            3 => "Breakpoint",
+            4 => "Overflow",
+            5 => "Bound Range Exceeded",
+            6 => "Invalid Opcode",
+            7 => "Device Not Available",
+            8 => "Double Fault",
+            9 => "Coprocessor Segment Overrun",
+            10 => "Invalid TSS",
+            11 => "Segment Not Present",
+            12 => "Stack Segment Fault",
+            13 => "General Protection Fault",
+            14 => "Page Fault",
+            16 => "x87 FPU Error",
+            17 => "Alignment Check",
+            18 => "Machine Check",
+            19 => "SIMD Floating Point",
+            20 => "Virtualization Exception",
+            21 => "Control Protection",
+            _ => "Unknown Exception",
+        };
+    }
+
+    // ==================== IArchitecture SMP Methods ====================
+
+    /// <summary>
+    /// Initialize a secondary CPU after it has been started.
+    /// Called by each AP after startup to complete initialization.
+    /// </summary>
+    /// <param name="cpuIndex">The CPU index being initialized</param>
+    public static void InitSecondaryCpu(int cpuIndex)
+    {
+        // Called by SMP.ApEntry after AP completes trampoline
+        // The per-CPU state and GS base are already set by SMP
+        // Scheduler.InitSecondaryCpu creates the idle thread for this CPU
+        Scheduler.InitSecondaryCpu();
+    }
+
+    /// <summary>
+    /// Start all secondary CPUs.
+    /// Uses INIT-SIPI-SIPI sequence via SMP.Init().
+    /// </summary>
+    public static void StartSecondaryCpus()
+    {
+        if (CPUTopology.CpuCount > 1)
+        {
+            SMP.Init();
+            Scheduler.EnableSmp();
+        }
+    }
+
+    /// <summary>
+    /// Send an IPI (Inter-Processor Interrupt) to a specific CPU.
+    /// </summary>
+    /// <param name="targetCpu">CPU index to send to</param>
+    /// <param name="vector">Interrupt vector number</param>
+    public static void SendIpi(int targetCpu, int vector)
+    {
+        // Convert CPU index to APIC ID
+        var cpuInfo = CPUTopology.GetCpu(targetCpu);
+        if (cpuInfo != null)
+        {
+            APIC.SendIpi(cpuInfo->ApicId, (uint)vector);
+        }
+    }
+
+    /// <summary>
+    /// Broadcast an IPI to all CPUs except the current one.
+    /// </summary>
+    /// <param name="vector">Interrupt vector number</param>
+    public static void BroadcastIpi(int vector)
+    {
+        APIC.BroadcastIpi((uint)vector);
+    }
+}

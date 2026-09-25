@@ -48,11 +48,15 @@ public static unsafe class DebugConsole
     /// </summary>
     public static bool IsDataAvailable()
     {
+#if ARCH_ARM64
+        return Pl011.IsDataAvailable();
+#else
         if (Uart16550.InterruptsEnabled)
             return Uart16550.BytesAvailable > 0;
 
         // Polled mode (early boot): LSR bit 0 = Data Ready
         return (inb(COM1_LSR) & 0x01) != 0;
+#endif
     }
 
     /// <summary>

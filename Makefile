@@ -359,13 +359,16 @@ endif
 ifeq ($(ARCH),arm64)
 # ARM64: single-stage boot - the kernel itself is the EFI application
 # (BOOTAA64.EFI in the ESP). No NASM loader and no JIT payloads yet.
+# startup.nsh auto-launches the app under the UEFI Shell fallback.
 image: $(BUILD_DIR)/$(EFI_NAME)
 	@echo "Creating ARM64 boot image..."
-	dd if=/dev/zero of=$(IMG) bs=1M count=16 status=none
+	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
 	mmd -i $(IMG) ::/EFI
 	mmd -i $(IMG) ::/EFI/BOOT
 	mcopy -i $(IMG) $(BUILD_DIR)/$(EFI_NAME) ::/EFI/BOOT/$(EFI_NAME)
+	printf 'fs0:/EFI/BOOT/BOOTAA64.EFI\r\n' > $(BUILD_DIR)/startup.nsh
+	mcopy -i $(IMG) $(BUILD_DIR)/startup.nsh ::/startup.nsh
 	@echo "Boot image: $(IMG)"
 	@mdir -i $(IMG) ::/
 else
@@ -469,7 +472,9 @@ run-qemu-arm64: image
 	qemu-system-aarch64 -machine virt -cpu cortex-a72 -m 2G -smp 1 \
 		-drive if=pflash,format=raw,readonly=on,file=/usr/share/AAVMF/AAVMF_CODE.fd \
 		-drive if=pflash,format=raw,file=$(BUILD_DIR)/AAVMF_VARS.fd \
-		-drive file=$(IMG),format=raw,if=virtio \
+		-drive id=hd0,if=none,format=raw,file=$(IMG) \
+		-device virtio-blk-pci,drive=hd0,bootindex=1 \
+		-nic none \
 		-display none -serial stdio -no-reboot -no-shutdown
 
 # Phase 2: boot with the serial console attached to the terminal.

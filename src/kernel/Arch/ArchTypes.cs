@@ -19,11 +19,13 @@ global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
 
 #elif ARCH_ARM64
 
-// Future: ARM64 implementation
-// global using CurrentArch = ProtonOS.Arm64.Arch;
-// global using CurrentCpu = ProtonOS.Arm64.Cpu;
-// global using CurrentVMem = ProtonOS.Arm64.VirtualMemory;
-// global using CurrentEmitter = ProtonOS.Arm64.Arm64Emitter;
+global using CurrentArch = ProtonOS.Arch.Arch;
+global using CurrentCpu = ProtonOS.Arch.CPU;
+global using CurrentVMem = ProtonOS.Arch.VirtualMemory;
+// No ARM64 code emitter yet: JIT compilation is x64-only for now, so the
+// alias points at the x64 emitter (the type only matters where JIT code
+// paths are compiled; the ARM64 kernel does not execute them).
+global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
 
 #else
 

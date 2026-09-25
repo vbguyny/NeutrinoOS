@@ -40,7 +40,9 @@ namespace Internal.Runtime.CompilerHelpers
         {
             // First thing: write the kernel's load address for GDB debugging
             // This must happen before ANY other code runs so GDB can catch it early
+#if !ARCH_ARM64
             WriteGdbDebugMarker(imageHandle, systemTable);
+#endif
 
             SetEfiSystemTable(systemTable);
             ManagedMain(0, null);

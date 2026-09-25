@@ -149,6 +149,14 @@ public static unsafe class Uart16550
     /// </summary>
     public static bool Initialize(uint baudRate, int portIndex = 0)
     {
+#if ARCH_ARM64
+        // ARM64: the QEMU virt PL011 at 0x09000000 replaces COM1.
+        _portIndex = 0;
+        BaudRate = baudRate;
+        _interruptsEnabled = false;
+        _initialized = Pl011.Initialize(baudRate);
+        return _initialized;
+#else
         if (portIndex < 0 || portIndex > 3)
             return false;
 
@@ -195,6 +203,7 @@ public static unsafe class Uart16550
         _interruptsEnabled = false;
         _initialized = true;
         return true;
+#endif
     }
 
     /// <summary>
@@ -401,6 +410,12 @@ public static unsafe class Uart16550
     /// </summary>
     public static void WriteByte(byte b)
     {
+#if ARCH_ARM64
+        if (!_initialized)
+            return;
+        Pl011.WriteByte(b);
+        return;
+#else
         if (!_initialized)
             return;
 
@@ -434,6 +449,7 @@ public static unsafe class Uart16550
         }
 
         PolledWriteByte(b);
+#endif
     }
 
     private static void PolledWriteByte(byte b)
@@ -453,6 +469,12 @@ public static unsafe class Uart16550
     /// </summary>
     public static bool TryWriteByte(byte b)
     {
+#if ARCH_ARM64
+        if (!_initialized)
+            return true;
+        Pl011.WriteByte(b);
+        return true;
+#else
         if (!_initialized)
             return true;
 
@@ -466,6 +488,7 @@ public static unsafe class Uart16550
             return false;
         EnableThreInterrupt();
         return true;
+#endif
     }
 
     /// <summary>
@@ -499,6 +522,9 @@ public static unsafe class Uart16550
     /// <summary>Non-blocking read of one byte from the RX ring buffer.</summary>
     public static bool TryReadByte(out byte b)
     {
+#if ARCH_ARM64
+        return Pl011.TryReadByte(out b);
+#else
         if (_interruptsEnabled)
             return TryDequeueRx(out b);
 
@@ -510,6 +536,7 @@ public static unsafe class Uart16550
         }
         b = 0;
         return false;
+#endif
     }
 
     /// <summary>
