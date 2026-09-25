@@ -158,10 +158,52 @@ first PCI-matched driver:
 - **Hot-plug**: PCIe hot-plug detection (`Attention Button`/`Power
   Indicator` and the PCIe capability walk) is not implemented yet.
 - **USB**: out of scope for Phase 8 (deferred to Phase 9+).
-- **Driver-package loading**: npkg driver packages install their payload to
-  the manifest's `installPath`, but the driver manager does not yet scan
-  `/var/lib/npkg/drivers` (and manifest `driver{vendorIds,deviceIds,entryPoint}`
-  metadata) at boot; that loader integration is the next increment.
+- **Driver-package loading**: the loader discovers and verifies packages at
+  boot (see "Driver packages (staged)" above); binding awaits the planned
+  thunk adapter for AOT->JIT interface dispatch.
+
+## Driver packages (staged)
+
+Driver packages installed by npkg are discovered and verified at boot by
+`DriverPackageLoader` (called from `Kernel.Main` after `BindDrivers`):
+
+- catalog: `/var/lib/npkg/installed.json`; per-package payload + manifest
+  under `/var/lib/npkg/drivers/<name>/`, read through the AHCI boot-volume
+  bridge (`FileExports.KernelBootRead`; the kernel VFS is not used because
+  the acceptance images boot without a mounted root filesystem).
+- a dedicated minimal JSON reader (`MiniJson`) parses catalog and
+  manifests; the shared packaging parser cannot compile into the bflat AOT
+  kernel (its `is bool` handling forces Boolean's MethodTable, whose
+  `bool.ToString()` fails code generation), and the kind-tagged node design
+  keeps every cast away from the IL scanner's TypeCast helpers.
+- the entry assembly loads through `AssemblyLoader`; a static
+  parameterless `Create()` factory (template convention) is JIT-compiled
+  and invoked, and the factory result is validated (real runtime type with
+  a non-empty interface map).
+- references to `NeutrinoOS.Driver.Abstractions` resolve onto the kernel's
+  compiled-in ABI copy (`AssemblyLoader.ResolveAssemblyRef`), so the
+  `IDriver` MethodTable is shared between the AOT kernel and JIT-loaded
+  drivers.
+
+Binding is deliberately not enabled yet: AOT->JIT *interface* dispatch on
+JIT-built MethodTables is not trustworthy in this runtime (an AOT interface
+call on the factory result lands on the wrong slot - observed returning
+another driver's `Name`), so packages are reported as `staged`. The fix is
+a thunk-based adapter that calls
+`Name`/`Initialize`/`Match`/`Probe`/`Start`/`Stop` through per-method
+function pointers compiled in the driver's own assembly - the direct-call
+pattern every other JIT/AOT edge in this kernel uses. The adapter then
+feeds `DriverManager.RegisterWithManifest` (manifest vendor/device id
+constraints, already implemented). The acceptance image pre-places a
+driver package (`preplaced.drvtest`, built from the `tests/hello-driver`
+fixture) so this path runs on every acceptance boot.
+
+NOTE (current state): the boot-time invocation of the loader is commented
+out in `Kernel.Main` until the thunk adapter lands - an acceptance run with
+the loader active showed a fault during a later `npkg install` step that is
+not yet root-caused, so boots run the previously verified configuration.
+The pre-placed package stays in the image; re-enable the call (or gate it
+behind a marker file) together with the adapter and re-run the suite.
 
 ## Driver SDK
 

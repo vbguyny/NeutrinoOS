@@ -436,6 +436,14 @@ public static unsafe class Kernel
         BindDrivers();
         BootLog.Status("Drivers bound");
 
+        // Phase 8: npkg-installed driver packages (DriverPackageLoader:
+        // catalog -> manifest -> assembly -> Create() factory -> ABI shape
+        // verified) are DISCOVERED but not bound yet. Enabling the call
+        // below is gated on the thunk adapter for AOT->JIT interface
+        // dispatch (see docs/PHASE8-DRIVER.md, "Driver packages"); the
+        // loader was exercised in probe boots during development.
+        // ProtonOS.Drivers.DriverFramework.LoadPackagedDrivers();
+
         // Run the FullTest assembly to exercise JIT functionality
         // (skipped when the skip-boot-tests marker file is present on the
         //  boot volume - useful for fast console-only development cycles)

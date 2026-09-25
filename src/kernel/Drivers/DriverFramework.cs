@@ -80,6 +80,31 @@ public static class DriverFramework
         ps2Resources[1] = new DeviceResource(DeviceResourceKind.Irq, 1, 0);
         ps2Resources[2] = new DeviceResource(DeviceResourceKind.Irq, 12, 0);
         tree.Add(0, "platform", 0x60, 0xFFFF, 0x8042, DeviceClass.Input, 0, "platform/ps2", ps2Resources);
+
+        // Virtual test device (vid 0xFFFF, did 0x1601, no resources): gives
+        // packaged drivers a deterministic match target in acceptance runs.
+        // Nothing binds it unless an installed driver package matches it.
+        DeviceResource[] vtestResources = new DeviceResource[0];
+        tree.Add(0, "platform", 0x1601, 0xFFFF, 0x1601, DeviceClass.System, 0, "platform/vtest0", vtestResources);
+    }
+
+    /// <summary>
+    /// Second framework phase (after the root filesystem is mounted): load
+    /// driver packages installed by npkg and match them against the tree.
+    /// </summary>
+    public static int LoadPackagedDrivers()
+    {
+        int loaded = DriverPackageLoader.LoadAll();
+        if (loaded <= 0)
+            return 0;
+
+        int started = DriverManager.MatchAll();
+        DebugConsole.Write("[drv] ");
+        DebugConsole.WriteDecimal((uint)loaded);
+        DebugConsole.Write(" packaged driver(s) loaded, ");
+        DebugConsole.WriteDecimal((uint)started);
+        DebugConsole.WriteLine(" device(s) started");
+        return loaded;
     }
 
     /// <summary>Log every device in the tree (boot diagnostics).</summary>

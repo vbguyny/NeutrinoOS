@@ -5853,6 +5853,18 @@ public static unsafe class AssemblyLoader
     /// <summary>
     /// Resolve an AssemblyRef row to a loaded assembly ID.
     /// </summary>
+    /// <summary>True for the driver ABI assembly name (compiled into the kernel).</summary>
+    private static bool IsDriverAbiAssembly(byte* name)
+    {
+        const string abi = "NeutrinoOS.Driver.Abstractions";
+        for (int i = 0; i < abi.Length; i++)
+        {
+            if (name[i] != (byte)abi[i])
+                return false;
+        }
+        return name[abi.Length] == 0;
+    }
+
     private static uint ResolveAssemblyRef(LoadedAssembly* sourceAsm, uint assemblyRefRow)
     {
         if (assemblyRefRow == 0)
@@ -5906,6 +5918,27 @@ public static unsafe class AssemblyLoader
                         sourceAsm->DependencyCount = (ushort)assemblyRefRow;
                 }
                 return korlib->AssemblyId;
+            }
+        }
+
+        // Phase 8: the driver ABI assembly (NeutrinoOS.Driver.Abstractions) is
+        // compiled into the kernel (Makefile DRIVER_ABI_SRC). Mapping driver
+        // references onto the kernel's own TypeDefs makes the IDriver
+        // MethodTable identical across the AOT kernel and JIT-loaded drivers,
+        // so interface dispatch and castclass work directly on driver
+        // objects handed to the kernel driver manager.
+        if (target == null && IsDriverAbiAssembly(name))
+        {
+            LoadedAssembly* kernelAbi = GetAssembly(KernelAssemblyId);
+            if (kernelAbi != null)
+            {
+                if (assemblyRefRow <= LoadedAssembly.MaxDependencies)
+                {
+                    sourceAsm->Dependencies[assemblyRefRow - 1] = KernelAssemblyId;
+                    if (assemblyRefRow > sourceAsm->DependencyCount)
+                        sourceAsm->DependencyCount = (ushort)assemblyRefRow;
+                }
+                return KernelAssemblyId;
             }
         }
         if (target == null)

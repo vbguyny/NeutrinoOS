@@ -30,6 +30,16 @@ namespace MyDriver
         public int AbiMajor => DriverAbi.Major;
         public int AbiMinor => DriverAbi.Minor;
 
+        /// <summary>
+        /// Kernel driver-package loader convention: installed drivers are
+        /// instantiated through this static parameterless factory (it runs
+        /// in the driver's own assembly, so `new` happens JIT-side).
+        /// </summary>
+        public static IDriver Create()
+        {
+            return new MyDeviceDriver();
+        }
+
         /// <summary>Store the host-injected kernel services instance.</summary>
         public void Initialize(IDriverServices services)
         {

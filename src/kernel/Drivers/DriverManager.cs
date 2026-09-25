@@ -17,6 +17,12 @@ public sealed class DriverRegistration
     public IDriver Driver;
     public DeviceInfo BoundDevice;
     public bool Started;
+
+    // Phase 8: match constraints from a package manifest's driver block.
+    // Null/empty = unconstrained (built-in drivers rely on Match()).
+    public uint[] VendorIds;
+    public uint[] DeviceIds;
+    public string ClassName;
 }
 
 /// <summary>Matches drivers to devices and tracks bindings.</summary>
@@ -54,6 +60,20 @@ public static class DriverManager
     /// </summary>
     public static bool Register(IDriver driver)
     {
+        return RegisterInternal(driver, null, null, null);
+    }
+
+    /// <summary>
+    /// Register a packaged driver with the manifest's match constraints
+    /// (vendor/device id lists from the package's driver block).
+    /// </summary>
+    public static bool RegisterWithManifest(IDriver driver, uint[] vendorIds, uint[] deviceIds, string className)
+    {
+        return RegisterInternal(driver, vendorIds, deviceIds, className);
+    }
+
+    private static bool RegisterInternal(IDriver driver, uint[] vendorIds, uint[] deviceIds, string className)
+    {
         if (!_initialized || driver == null)
             return false;
         if (_driverCount >= MaxDrivers)
@@ -76,6 +96,9 @@ public static class DriverManager
         reg.Driver = driver;
         reg.BoundDevice = null;
         reg.Started = false;
+        reg.VendorIds = vendorIds;
+        reg.DeviceIds = deviceIds;
+        reg.ClassName = className;
         _drivers[_driverCount] = reg;
         _driverCount++;
 
@@ -83,6 +106,30 @@ public static class DriverManager
         // services implementation before any lifecycle call.
         driver.Initialize(KernelDriverServices.Instance);
         return true;
+    }
+
+    /// <summary>
+    /// Manifest match constraints: vendor/device id lists narrow which
+    /// devices a packaged driver may see. The class name is informational
+    /// in ABI 1.0 (drivers still decide in Match()/Probe()).
+    /// </summary>
+    private static bool ConstraintsAllow(DriverRegistration reg, DeviceInfo device)
+    {
+        if (reg.VendorIds != null && reg.VendorIds.Length > 0 && !Contains(reg.VendorIds, device.VendorId))
+            return false;
+        if (reg.DeviceIds != null && reg.DeviceIds.Length > 0 && !Contains(reg.DeviceIds, device.DeviceId))
+            return false;
+        return true;
+    }
+
+    private static bool Contains(uint[] values, uint value)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] == value)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -107,6 +154,9 @@ public static class DriverManager
                 DriverRegistration reg = _drivers[d];
                 if (reg.Started)
                     continue;   // single bind per driver instance for now
+
+                if (!ConstraintsAllow(reg, device))
+                    continue;
 
                 if (!reg.Driver.Match(device))
                     continue;

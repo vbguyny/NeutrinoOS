@@ -6,8 +6,8 @@
   "installPath": "/drivers",
   "driver": {
     "class": "virtual",
-    "vendorIds": [],
-    "deviceIds": [],
+    "vendorIds": ["FFFF"],
+    "deviceIds": ["1601"],
     "entryPoint": "hellodrv.dll"
   },
   "signer": ""

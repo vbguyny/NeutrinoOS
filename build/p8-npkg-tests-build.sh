@@ -107,6 +107,14 @@ PY
     <GenerateDependencyFile>false</GenerateDependencyFile>
     <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Fixtures compile against the real driver ABI. Private=false: the
+         kernel provides the assembly at driver load time, it must never
+         ship in a package payload. -->
+    <ProjectReference Include="/root/neutrino/src/lib/NeutrinoOS.Driver.Abstractions/NeutrinoOS.Driver.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
 </Project>
 EOF
 

@@ -54,6 +54,38 @@ timeout -s KILL 20 mcopy -i "$IMG" "$TMP/skip-boot-tests" "::/skip-boot-tests"
 # printf '1' > "$TMP/verbose-jit"
 # timeout -s KILL 20 mcopy -i "$IMG" "$TMP/verbose-jit" "::/verbose-jit"
 
+# --- Pre-placed driver package -------------------------------------------
+# The kernel driver-package loader reads /var/lib/npkg/installed.json and
+# loads packages under /var/lib/npkg/drivers/<name>/. Pre-place the
+# hello-driver payload under a distinct name so the loader is exercised on
+# the very first boot (the acceptance suite later installs tests.hello-driver
+# itself, unchanged, and final-list tolerates extra packages).
+mk_dir var
+mk_dir var/lib
+mk_dir var/lib/npkg
+mk_dir var/lib/npkg/drivers
+mk_dir var/lib/npkg/drivers/preplaced.drvtest
+
+PLACE="$TMP/preplaced"
+rm -rf "$PLACE"
+mkdir -p "$PLACE"
+python3 - "$REPO/tests.hello-driver-1.0.0.npkg" "$PLACE" <<'PY'
+import os, sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+out = sys.argv[2]
+z.extract("manifest.json", out)
+z.extract("payload/hellodrv.dll", out)
+os.replace(os.path.join(out, "payload", "hellodrv.dll"),
+           os.path.join(out, "hellodrv.dll"))
+os.rmdir(os.path.join(out, "payload"))
+PY
+timeout -s KILL 20 mcopy -i "$IMG" "$PLACE/hellodrv.dll" "$PLACE/manifest.json" "::/var/lib/npkg/drivers/preplaced.drvtest/"
+
+cat > "$TMP/installed.json" <<'EOF'
+{"format":"npkg-db/1","packages":[{"name":"preplaced.drvtest","version":"1.0.0","architecture":"any","signer":"65b60673","description":"pre-placed driver package (loader acceptance)","installPath":"/var/lib/npkg/drivers/preplaced.drvtest","provides":["driver"],"dependencies":{},"scripts":{},"entryPoints":{},"files":["/var/lib/npkg/drivers/preplaced.drvtest/hellodrv.dll","/var/lib/npkg/drivers/preplaced.drvtest/manifest.json"],"dirs":["/var/lib/npkg/drivers/preplaced.drvtest"]}]}
+EOF
+timeout -s KILL 20 mcopy -i "$IMG" "$TMP/installed.json" "::/var/lib/npkg/installed.json"
+
 cp "$IMG" "$SRC/build/npkgtest.img"
 
 echo "=== NPKG IMAGE OK ==="
