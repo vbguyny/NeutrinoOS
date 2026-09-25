@@ -22,7 +22,7 @@ using ProtonOS.Platform;
 using ProtonOS.Threading;
 using ProtonOS.Runtime;
 using ProtonOS.Runtime.JIT;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Memory;
 
@@ -819,7 +819,7 @@ public static unsafe class GC
 
         _gcInProgress = true;
         _collectionsPerformed++;
-        ulong pauseStartTicks = ProtonOS.X64.HPET.IsInitialized ? ProtonOS.X64.HPET.ReadCounter() : 0;
+        ulong pauseStartTicks = ProtonOS.Arch.HPET.IsInitialized ? ProtonOS.Arch.HPET.ReadCounter() : 0;
         DebugConsole.WriteLine("[GC] Starting mark-only collection...");
 
         StopTheWorld();
@@ -850,8 +850,8 @@ public static unsafe class GC
         // Phase 7: record the pause duration (HPET-backed).
         if (pauseStartTicks != 0)
         {
-            ulong delta = ProtonOS.X64.HPET.ReadCounter() - pauseStartTicks;
-            LastPauseMs = ProtonOS.X64.HPET.TicksToNanoseconds(delta) / 1_000_000;
+            ulong delta = ProtonOS.Arch.HPET.ReadCounter() - pauseStartTicks;
+            LastPauseMs = ProtonOS.Arch.HPET.TicksToNanoseconds(delta) / 1_000_000;
             TotalPauseMs += LastPauseMs;
         }
 

@@ -132,7 +132,7 @@ public static unsafe class VirtualDevices
         sw.Write("   bytes out: ");
         sw.WriteLine((long)bytesOut);
         sw.Write("[netstats] uptime ms: ");
-        sw.WriteLine((long)ProtonOS.X64.APIC.TickCount);
+        sw.WriteLine((long)ProtonOS.Arch.APIC.TickCount);
         sw.WriteLine("[netstats] protocol counters (TCP/UDP/ICMP): run `netstat -s`");
         _netstatsText = sw.ToString();
     }

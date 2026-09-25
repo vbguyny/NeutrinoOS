@@ -66,16 +66,16 @@ public static unsafe class Tier0JIT
     /// <returns>JIT compilation result.</returns>
     public static JitResult CompileMethod(uint assemblyId, uint methodToken)
     {
-        bool timed = _compileNestingLevel == 0 && ProtonOS.X64.HPET.IsInitialized;
+        bool timed = _compileNestingLevel == 0 && ProtonOS.Arch.HPET.IsInitialized;
         ulong startNs = 0;
         if (timed)
-            startNs = ProtonOS.X64.HPET.TicksToNanoseconds(ProtonOS.X64.HPET.ReadCounter());
+            startNs = ProtonOS.Arch.HPET.TicksToNanoseconds(ProtonOS.Arch.HPET.ReadCounter());
 
         JitResult result = CompileMethodCore(assemblyId, methodToken);
 
         if (timed)
         {
-            ulong elapsed = ProtonOS.X64.HPET.TicksToNanoseconds(ProtonOS.X64.HPET.ReadCounter()) - startNs;
+            ulong elapsed = ProtonOS.Arch.HPET.TicksToNanoseconds(ProtonOS.Arch.HPET.ReadCounter()) - startNs;
             ProtonOS.Profiling.JitStats.Record(assemblyId, methodToken, elapsed, result.Success, result.CodeSize);
         }
         return result;

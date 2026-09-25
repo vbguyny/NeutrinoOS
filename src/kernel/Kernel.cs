@@ -2,7 +2,7 @@
 // EfiEntry (native.asm) saves UEFI params, then calls korlib's EfiMain, which calls Main()
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.PAL;
 using ProtonOS.Memory;
 using ProtonOS.Threading;
@@ -481,10 +481,10 @@ public static unsafe class Kernel
         // VirtualBox). APs then park in SMP.ApEntry until ReleaseAps().
         if (Platform.CPUTopology.CpuCount > 1)
         {
-            X64.SMP.Init();
+            Arch.SMP.Init();
             Scheduler.EnableSmp();
         }
-        X64.SMP.ReleaseAps();
+        Arch.SMP.ReleaseAps();
 
         // Note: execve tests are available via:
         // - Process.NetExecutable.TestExecHelloApp() - Main() returns 42

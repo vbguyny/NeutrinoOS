@@ -6036,7 +6036,7 @@ public static unsafe class UnsafeHelpers
     /// </summary>
     public static void InitBlock(void* startAddress, byte value, uint byteCount)
     {
-        ProtonOS.X64.CPU.MemSet(startAddress, value, byteCount);
+        ProtonOS.Arch.CPU.MemSet(startAddress, value, byteCount);
     }
 
     /// <summary>
@@ -6045,6 +6045,6 @@ public static unsafe class UnsafeHelpers
     /// </summary>
     public static void CopyBlock(void* destination, void* source, uint byteCount)
     {
-        ProtonOS.X64.CPU.MemCopy(destination, source, byteCount);
+        ProtonOS.Arch.CPU.MemCopy(destination, source, byteCount);
     }
 }

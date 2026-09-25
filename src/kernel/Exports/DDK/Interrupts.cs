@@ -2,7 +2,7 @@
 // Exposes interrupt management operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.Platform;
 
 namespace ProtonOS.Exports.DDK;
@@ -29,7 +29,7 @@ public static unsafe class InterruptExports
         if (handler == null)
             return false;
 
-        ProtonOS.X64.Arch.RegisterInterruptHandler(vector, handler);
+        ProtonOS.Arch.Arch.RegisterInterruptHandler(vector, handler);
         return true;
     }
 
@@ -39,7 +39,7 @@ public static unsafe class InterruptExports
     [UnmanagedCallersOnly(EntryPoint = "Kernel_UnregisterInterruptHandler")]
     public static void UnregisterInterruptHandler(byte vector)
     {
-        ProtonOS.X64.Arch.UnregisterInterruptHandler(vector);
+        ProtonOS.Arch.Arch.UnregisterInterruptHandler(vector);
     }
 
     /// <summary>

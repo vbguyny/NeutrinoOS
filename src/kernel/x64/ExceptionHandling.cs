@@ -9,7 +9,7 @@ using ProtonOS.Memory;
 using ProtonOS.Threading;
 using ProtonOS.Runtime;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// Exception codes (Win32 compatible)

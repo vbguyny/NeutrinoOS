@@ -5,7 +5,7 @@
 using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// RTC (Real-Time Clock) driver for reading wall-clock time from CMOS.

@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 using ProtonOS.Threading;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.PAL;
 

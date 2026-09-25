@@ -6,7 +6,7 @@ using ProtonOS.Platform;
 using ProtonOS.Memory;
 using ProtonOS.Threading;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// CPU intrinsics for x64 - all native function imports in one place.

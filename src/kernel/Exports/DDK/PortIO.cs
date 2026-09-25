@@ -2,7 +2,7 @@
 // Exposes x86 I/O port operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Exports.DDK;
 

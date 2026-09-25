@@ -7,7 +7,7 @@ using ProtonOS.Platform;
 using ProtonOS.Memory;
 using ProtonOS.Threading;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// HPET memory-mapped register block.

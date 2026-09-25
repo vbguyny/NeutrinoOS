@@ -27,7 +27,6 @@ ifeq ($(ARCH),x64)
 else ifeq ($(ARCH),arm64)
     EFI_NAME := BOOTAA64.EFI
     KERNEL_NAME := KERNEL.BIN
-    $(error ARM64 not yet implemented)
 endif
 
 # Bootloader
@@ -45,7 +44,11 @@ BFLAT := dotnet $(CURDIR)/tools/bflat/src/bflat/bin/Release/net10.0/bflat.dll
 
 # Tool flags
 NASM_FLAGS := -f $(NASM_FORMAT)
-LD_FLAGS := -subsystem:efi_application -entry:EfiEntry
+ifeq ($(ARCH),arm64)
+    LD_FLAGS := -subsystem:efi_application -entry:EfiEntry -machine:arm64
+else
+    LD_FLAGS := -subsystem:efi_application -entry:EfiEntry
+endif
 
 BFLAT_FLAGS := \
 	--os:uefi \
@@ -70,13 +73,25 @@ endif
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
 # Source files
-NATIVE_SRC := $(wildcard $(KERNEL_DIR)/$(ARCH)/*.asm)
+# x64 native layer: NASM (.asm); ARM64: clang integrated assembler (.s).
+ifeq ($(ARCH),arm64)
+    NATIVE_SRC := $(wildcard $(KERNEL_DIR)/$(ARCH)/*.s)
+else
+    NATIVE_SRC := $(wildcard $(KERNEL_DIR)/$(ARCH)/*.asm)
+endif
+# The non-active architecture directory is excluded so both ports can live
+# in the tree without duplicate type definitions.
+ifeq ($(ARCH),arm64)
+    KERNEL_ARCH_EXCLUDE := $(KERNEL_DIR)/x64/%
+else
+    KERNEL_ARCH_EXCLUDE := $(KERNEL_DIR)/arm64/%
+endif
 # Filter out obj/ and bin/ directories from korlib (dotnet build artifacts).
 # NOTE: in GNU make filter-out patterns only the FIRST '%' is a wildcard;
 # a second '%' is literal, so '%/obj/%' matches nothing. Use one '%' per
 # pattern, anchored at the directory prefix.
 KORLIB_SRC := $(filter-out $(KORLIB_DIR)/obj/% $(KORLIB_DIR)/bin/%,$(call rwildcard,$(KORLIB_DIR),*.cs))
-KERNEL_SRC := $(filter-out $(KERNEL_DIR)/obj/% $(KERNEL_DIR)/bin/%,$(call rwildcard,$(KERNEL_DIR),*.cs))
+KERNEL_SRC := $(filter-out $(KERNEL_DIR)/obj/% $(KERNEL_DIR)/bin/% $(KERNEL_ARCH_EXCLUDE),$(call rwildcard,$(KERNEL_DIR),*.cs))
 
 # Driver ABI sources (NeutrinoOS.Driver.Abstractions) are compiled into the
 # kernel: drivers reference the same types by name, and the JIT resolves them
@@ -165,9 +180,17 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 # Assemble native code
+ifeq ($(ARCH),arm64)
+CLANG := clang
+CLANG_TARGET := aarch64-pc-windows-msvc
+$(NATIVE_OBJ): $(NATIVE_SRC) | $(BUILD_DIR)
+	@echo "CLANG $<"
+	$(CLANG) --target=$(CLANG_TARGET) -c -o $@ $<
+else
 $(NATIVE_OBJ): $(NATIVE_SRC) | $(BUILD_DIR)
 	@echo "NASM $<"
 	$(NASM) $(NASM_FLAGS) $< -o $@ -l $(BUILD_DIR)/native.lst
+endif
 
 native: $(NATIVE_OBJ)
 
@@ -327,10 +350,25 @@ $(BUILD_DIR)/$(EFI_NAME): $(NATIVE_OBJ) $(KERNEL_OBJ)
 	@echo "LINK $@"
 	$(LD) $(LD_FLAGS) -debug -out:$@ $^
 	@file $@
+ifeq ($(ARCH),x64)
 	@echo "Generating GDB-compatible symbols from PDB..."
 	@python3 tools/gen_elf_syms.py $(BUILD_DIR)/BOOTX64.pdb $(BUILD_DIR)/kernel_syms.elf
+endif
 
 # Create boot image
+ifeq ($(ARCH),arm64)
+# ARM64: single-stage boot - the kernel itself is the EFI application
+# (BOOTAA64.EFI in the ESP). No NASM loader and no JIT payloads yet.
+image: $(BUILD_DIR)/$(EFI_NAME)
+	@echo "Creating ARM64 boot image..."
+	dd if=/dev/zero of=$(IMG) bs=1M count=16 status=none
+	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
+	mmd -i $(IMG) ::/EFI
+	mmd -i $(IMG) ::/EFI/BOOT
+	mcopy -i $(IMG) $(BUILD_DIR)/$(EFI_NAME) ::/EFI/BOOT/$(EFI_NAME)
+	@echo "Boot image: $(IMG)"
+	@mdir -i $(IMG) ::/
+else
 image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
@@ -363,6 +401,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	@echo "Boot image: $(IMG)"
 	@echo "Contents:"
 	@mdir -i $(IMG) ::/
+endif
 
 clean:
 	rm -rf build/
@@ -421,6 +460,17 @@ run: image
 # OVMF (pflash) + neutrinoos.img on virtio, no graphics, serial on stdio
 run-qemu: image
 	./tools/run-qemu.sh
+
+# Phase 8: ARM64 console under QEMU 'virt' with the AAVMF firmware.
+# The PL011 UART at 0x09000000 carries the serial console.
+run-qemu-arm64: image
+	@test -f $(BUILD_DIR)/AAVMF_VARS.fd || cp /usr/share/AAVMF/AAVMF_VARS.fd $(BUILD_DIR)/AAVMF_VARS.fd
+	@echo "NeutrinoOS ARM64 serial console (Ctrl+A X quits QEMU)"
+	qemu-system-aarch64 -machine virt -cpu cortex-a72 -m 2G -smp 1 \
+		-drive if=pflash,format=raw,readonly=on,file=/usr/share/AAVMF/AAVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=$(BUILD_DIR)/AAVMF_VARS.fd \
+		-drive file=$(IMG),format=raw,if=virtio \
+		-display none -serial stdio -no-reboot -no-shutdown
 
 # Phase 2: boot with the serial console attached to the terminal.
 # Interactive shell (neutrinoos>) with echo, editing, history, colors.

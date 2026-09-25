@@ -5,7 +5,7 @@
 using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 using ProtonOS.Runtime;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Runtime.JIT;
 

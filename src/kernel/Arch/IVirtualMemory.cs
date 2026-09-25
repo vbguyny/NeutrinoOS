@@ -7,7 +7,7 @@ namespace ProtonOS.Arch;
 /// Page protection flags (architecture-neutral).
 /// Each architecture maps these to its specific page table bits.
 /// </summary>
-public enum PageFlags : ulong
+public enum ArchPageFlags : ulong
 {
     None = 0,
 
@@ -133,7 +133,7 @@ public unsafe interface IVirtualMemory<TSelf> where TSelf : IVirtualMemory<TSelf
     /// <param name="physAddr">Physical address (must be page-aligned)</param>
     /// <param name="flags">Page protection flags</param>
     /// <returns>true if successful</returns>
-    static abstract bool MapPage(ulong virtAddr, ulong physAddr, PageFlags flags);
+    static abstract bool MapPage(ulong virtAddr, ulong physAddr, ArchPageFlags flags);
 
     /// <summary>
     /// Map a large page (2MB).
@@ -142,7 +142,7 @@ public unsafe interface IVirtualMemory<TSelf> where TSelf : IVirtualMemory<TSelf
     /// <param name="physAddr">Physical address (must be 2MB-aligned)</param>
     /// <param name="flags">Page protection flags</param>
     /// <returns>true if successful</returns>
-    static abstract bool MapLargePage(ulong virtAddr, ulong physAddr, PageFlags flags);
+    static abstract bool MapLargePage(ulong virtAddr, ulong physAddr, ArchPageFlags flags);
 
     /// <summary>
     /// Unmap a page at the given virtual address.
@@ -163,7 +163,7 @@ public unsafe interface IVirtualMemory<TSelf> where TSelf : IVirtualMemory<TSelf
     /// <param name="virtAddr">Virtual address</param>
     /// <param name="newFlags">New protection flags</param>
     /// <returns>Old flags, or 0 if page was not mapped</returns>
-    static abstract PageFlags ChangeProtection(ulong virtAddr, PageFlags newFlags);
+    static abstract ArchPageFlags ChangeProtection(ulong virtAddr, ArchPageFlags newFlags);
 
     // ==================== TLB Management ====================
 

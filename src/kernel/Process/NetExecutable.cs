@@ -9,7 +9,7 @@ using ProtonOS.Runtime;
 using ProtonOS.Runtime.JIT;
 using ProtonOS.IO;
 using ProtonOS.Threading;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Process;
 

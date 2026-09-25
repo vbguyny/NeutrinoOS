@@ -13,7 +13,7 @@
 // mode behave identically on both consoles by construction.
 
 using System;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 

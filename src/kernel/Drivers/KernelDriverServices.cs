@@ -9,7 +9,7 @@ using System;
 using NeutrinoOS.Drivers;
 using ProtonOS.Memory;
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Drivers;
 
@@ -139,8 +139,8 @@ public sealed unsafe class KernelDriverServices : IDriverServices
         {
             // Legacy IRQ n is delivered on vector 32 + n (remapped PIC/IOAPIC).
             // Fully qualify: inside ProtonOS.Drivers, plain "Arch" binds to
-            // the ProtonOS.Arch namespace, not the ProtonOS.X64.Arch class.
-            ProtonOS.X64.Arch.RegisterHandler(32 + irq, &IrqThunk);
+            // the ProtonOS.Arch namespace, not the ProtonOS.Arch.Arch class.
+            ProtonOS.Arch.Arch.RegisterHandler(32 + irq, &IrqThunk);
             _irqInstalled[irq] = 1;
         }
         return true;

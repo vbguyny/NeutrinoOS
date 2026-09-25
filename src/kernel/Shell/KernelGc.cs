@@ -8,7 +8,7 @@
 
 using System;
 using ProtonOS.Memory;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Shell;
 

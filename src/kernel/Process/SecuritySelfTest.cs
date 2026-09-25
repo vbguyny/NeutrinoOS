@@ -18,7 +18,7 @@
 
 using ProtonOS.Memory;
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Process;
 

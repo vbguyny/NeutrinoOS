@@ -20,7 +20,7 @@
 //
 // Memory model: single VGA head, static state (one text console).
 
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 

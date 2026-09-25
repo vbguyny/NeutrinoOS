@@ -7,7 +7,7 @@ using ProtonOS.Platform;
 using ProtonOS.IO;
 using ProtonOS.Process;
 using ProtonOS.Memory;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Syscall;
 
@@ -2755,9 +2755,9 @@ public static unsafe class SyscallDispatch
             p[i] = 0;
 
         // Uptime in seconds
-        if (X64.HPET.IsInitialized)
+        if (Arch.HPET.IsInitialized)
         {
-            ulong nanoseconds = X64.HPET.TicksToNanoseconds(X64.HPET.ReadCounter());
+            ulong nanoseconds = Arch.HPET.TicksToNanoseconds(Arch.HPET.ReadCounter());
             info->uptime = (long)(nanoseconds / 1_000_000_000);
         }
 
@@ -2830,18 +2830,18 @@ public static unsafe class SyscallDispatch
             case ClockId.CLOCK_MONOTONIC_COARSE:
             case ClockId.CLOCK_BOOTTIME:
                 // Return time since boot using HPET
-                if (!X64.HPET.IsInitialized)
+                if (!Arch.HPET.IsInitialized)
                     return -Errno.ENODEV;
-                nanoseconds = X64.HPET.TicksToNanoseconds(X64.HPET.ReadCounter());
+                nanoseconds = Arch.HPET.TicksToNanoseconds(Arch.HPET.ReadCounter());
                 break;
 
             case ClockId.CLOCK_REALTIME:
             case ClockId.CLOCK_REALTIME_COARSE:
                 // For now, return monotonic time (no RTC support yet)
                 // TODO: Add RTC support for wall-clock time
-                if (!X64.HPET.IsInitialized)
+                if (!Arch.HPET.IsInitialized)
                     return -Errno.ENODEV;
-                nanoseconds = X64.HPET.TicksToNanoseconds(X64.HPET.ReadCounter());
+                nanoseconds = Arch.HPET.TicksToNanoseconds(Arch.HPET.ReadCounter());
                 break;
 
             case ClockId.CLOCK_PROCESS_CPUTIME_ID:
@@ -2915,10 +2915,10 @@ public static unsafe class SyscallDispatch
         if (!UserAccess.Valid(tv, 16))
             return -Errno.EFAULT;
 
-        if (!X64.HPET.IsInitialized)
+        if (!Arch.HPET.IsInitialized)
             return -Errno.ENODEV;
 
-        ulong nanoseconds = X64.HPET.TicksToNanoseconds(X64.HPET.ReadCounter());
+        ulong nanoseconds = Arch.HPET.TicksToNanoseconds(Arch.HPET.ReadCounter());
 
         tv[0] = (long)(nanoseconds / 1_000_000_000);          // tv_sec
         tv[1] = (long)((nanoseconds % 1_000_000_000) / 1000); // tv_usec
@@ -2942,7 +2942,7 @@ public static unsafe class SyscallDispatch
         if (req->tv_sec < 0)
             return -Errno.EINVAL;
 
-        if (!X64.HPET.IsInitialized)
+        if (!Arch.HPET.IsInitialized)
             return -Errno.ENODEV;
 
         // Calculate total nanoseconds to sleep
@@ -2950,7 +2950,7 @@ public static unsafe class SyscallDispatch
 
         // Use HPET busy-wait for sleep
         // TODO: Use scheduler sleep instead of busy-wait for better efficiency
-        X64.HPET.BusyWaitNs(totalNs);
+        Arch.HPET.BusyWaitNs(totalNs);
 
         // Since we don't have signals yet, sleep always completes fully
         // Set remaining time to zero if rem is provided
@@ -3013,9 +3013,9 @@ public static unsafe class SyscallDispatch
             return -Errno.EFAULT;
 
         // Mix in current time for additional entropy
-        if (X64.HPET.IsInitialized)
+        if (Arch.HPET.IsInitialized)
         {
-            ulong hpet = X64.HPET.ReadCounter();
+            ulong hpet = Arch.HPET.ReadCounter();
             _prngState ^= hpet;
         }
 

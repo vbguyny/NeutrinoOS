@@ -4,7 +4,7 @@
 
 using System.Runtime.InteropServices;
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Memory;
 

@@ -7,14 +7,14 @@
 //   CurrentEmitter.EmitPrologue(ref code, 16);
 // Instead of:
 //   #if ARCH_X64
-//   ProtonOS.X64.CPU.DisableInterrupts();
+//   ProtonOS.Arch.CPU.DisableInterrupts();
 //   #endif
 
 #if ARCH_X64
 
-global using CurrentArch = ProtonOS.X64.Arch;
-global using CurrentCpu = ProtonOS.X64.CPU;
-global using CurrentVMem = ProtonOS.X64.VirtualMemory;
+global using CurrentArch = ProtonOS.Arch.Arch;
+global using CurrentCpu = ProtonOS.Arch.CPU;
+global using CurrentVMem = ProtonOS.Arch.VirtualMemory;
 global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
 
 #elif ARCH_ARM64

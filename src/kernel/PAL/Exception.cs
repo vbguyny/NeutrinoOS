@@ -2,7 +2,7 @@
 // Win32-compatible exception handling APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.Platform;
 using ProtonOS.Threading;
 

@@ -18,7 +18,7 @@ using ProtonOS.Runtime;
 using ProtonOS.Runtime.JIT;
 using ProtonOS.Memory;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// Enumerates GC roots from the stack using GCInfo.

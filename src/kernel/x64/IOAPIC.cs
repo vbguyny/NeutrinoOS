@@ -4,7 +4,7 @@
 using ProtonOS.Platform;
 using ProtonOS.Memory;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// I/O APIC register offsets (accessed via IOREGSEL/IOWIN)

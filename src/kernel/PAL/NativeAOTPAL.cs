@@ -5,7 +5,7 @@
 using System.Runtime.InteropServices;
 using ProtonOS.Threading;
 using ProtonOS.Memory;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.Platform;
 
 namespace ProtonOS.PAL;

@@ -1,7 +1,7 @@
 // ProtonOS kernel - PAL Interlocked APIs
 // Win32-compatible interlocked operations for PAL compatibility.
 
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.PAL;
 

@@ -6,7 +6,7 @@
 // clearing, and the prompt-tail tracking used by line redraws.
 
 using System;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 

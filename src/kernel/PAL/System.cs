@@ -2,7 +2,7 @@
 // Win32-compatible system information, timing, and debug APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.Platform;
 
 namespace ProtonOS.PAL;

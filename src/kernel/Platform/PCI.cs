@@ -3,7 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 

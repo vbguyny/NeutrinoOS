@@ -7,7 +7,7 @@
 // quality caveat is documented in docs/PHASE6-CRYPTO.md.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Exports.DDK;
 

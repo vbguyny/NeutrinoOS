@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 using ProtonOS.Memory;
 using ProtonOS.Threading;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// Static storage for interrupt handlers (fixed buffer wrapper)

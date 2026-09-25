@@ -3,7 +3,7 @@
 // Code pages are mapped without the NX (No-Execute) bit.
 
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 using ProtonOS.Threading;
 
 namespace ProtonOS.Memory;

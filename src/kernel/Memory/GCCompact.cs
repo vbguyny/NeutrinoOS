@@ -13,7 +13,7 @@ using System;
 using ProtonOS.Platform;
 using ProtonOS.Threading;
 using ProtonOS.Runtime;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Memory;
 

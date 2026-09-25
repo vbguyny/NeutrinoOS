@@ -2,7 +2,7 @@
 // Exposes atomic operations for System.Threading.Interlocked in korlib.
 
 using System.Runtime.InteropServices;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Exports.DDK;
 

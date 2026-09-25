@@ -3,7 +3,7 @@
 
 using ProtonOS.Platform;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// CR0 register bit definitions

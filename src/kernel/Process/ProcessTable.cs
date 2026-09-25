@@ -6,7 +6,7 @@ using ProtonOS.Threading;
 using ProtonOS.Memory;
 using ProtonOS.Platform;
 using ProtonOS.IO;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Process;
 

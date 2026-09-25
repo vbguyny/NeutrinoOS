@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 using ProtonOS.Memory;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Exports.DDK;
 

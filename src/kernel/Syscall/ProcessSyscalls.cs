@@ -8,7 +8,7 @@ using ProtonOS.Platform;
 using ProtonOS.Memory;
 using ProtonOS.IO;
 using ProtonOS.Process;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Syscall;
 

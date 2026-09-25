@@ -4,7 +4,7 @@
 
 using ProtonOS.Memory;
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Runtime.JIT;
 
@@ -1397,19 +1397,19 @@ public static unsafe class CompiledMethodRegistry
                 // Fully qualified: plain "Arch" binds to the ProtonOS.Arch
                 // namespace from inside ProtonOS.Runtime.JIT (enclosing
                 // namespaces win over using directives).
-                ProtonOS.X64.Arch.RawDiagRaw("[j|0x");
-                ProtonOS.X64.Arch.RawDiagHex((ulong)entries[i].Token);
-                ProtonOS.X64.Arch.RawDiagRaw(" at 0x");
-                ProtonOS.X64.Arch.RawDiagHex((ulong)entries[i].NativeCode);
+                ProtonOS.Arch.Arch.RawDiagRaw("[j|0x");
+                ProtonOS.Arch.Arch.RawDiagHex((ulong)entries[i].Token);
+                ProtonOS.Arch.Arch.RawDiagRaw(" at 0x");
+                ProtonOS.Arch.Arch.RawDiagHex((ulong)entries[i].NativeCode);
                 if (!entries[i].IsCompiled)
-                    ProtonOS.X64.Arch.RawDiagRaw(" (pending)");
-                ProtonOS.X64.Arch.RawDiagEndLine();
+                    ProtonOS.Arch.Arch.RawDiagRaw(" (pending)");
+                ProtonOS.Arch.Arch.RawDiagEndLine();
                 dumped++;
             }
         }
-        ProtonOS.X64.Arch.RawDiagRaw("[j|total=");
-        ProtonOS.X64.Arch.RawDiagHex((ulong)dumped);
-        ProtonOS.X64.Arch.RawDiagEndLine();
+        ProtonOS.Arch.Arch.RawDiagRaw("[j|total=");
+        ProtonOS.Arch.Arch.RawDiagHex((ulong)dumped);
+        ProtonOS.Arch.Arch.RawDiagEndLine();
     }
 
     // === Private helpers ===

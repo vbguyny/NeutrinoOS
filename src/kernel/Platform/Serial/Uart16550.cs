@@ -15,7 +15,7 @@
 
 using System.Runtime.InteropServices;
 using ProtonOS.Threading;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 
@@ -208,7 +208,7 @@ public static unsafe class Uart16550
         if (!_initialized || _interruptsEnabled)
             return;
 
-        ProtonOS.X64.Arch.RegisterHandler(IrqVectorAt(_portIndex), &SerialIrqHandler);
+        ProtonOS.Arch.Arch.RegisterHandler(IrqVectorAt(_portIndex), &SerialIrqHandler);
         byte ier = IER_RX_AVAILABLE | IER_RX_STATUS;
         if (TxPending())
             ier |= IER_THRE;

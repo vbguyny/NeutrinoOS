@@ -5,7 +5,7 @@
 // and appears "stuck" without periodic status output.
 
 using ProtonOS.Platform;
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS;
 

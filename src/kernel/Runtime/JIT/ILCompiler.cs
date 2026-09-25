@@ -2,7 +2,6 @@
 // Compiles IL bytecode to x64 machine code using naive stack-based approach.
 
 using ProtonOS.Platform;
-using ProtonOS.X64;
 using ProtonOS.Arch;
 using ProtonOS.Memory;
 

@@ -17,7 +17,7 @@
 // always delivers scancode set 1 regardless of the keyboard's native
 // set (matches the QEMU and VirtualBox emulation defaults).
 
-using ProtonOS.X64;
+using ProtonOS.Arch;
 
 namespace ProtonOS.Platform;
 
@@ -93,7 +93,7 @@ public static unsafe class Ps2Keyboard
         WriteCommand(0xAE);         // re-enable keyboard
         Uart16550.Write("[PS2-4]");
 
-        ProtonOS.X64.Arch.RegisterHandler(IrqVector, &IrqHandler);
+        ProtonOS.Arch.Arch.RegisterHandler(IrqVector, &IrqHandler);
         Uart16550.Write("[PS2-5]");
         IOAPIC.UnmaskIrq(1);
         Uart16550.Write("[PS2-6]");

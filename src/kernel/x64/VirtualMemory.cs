@@ -6,9 +6,9 @@ using ProtonOS.Platform;
 using ProtonOS.Memory;
 using ProtonOS.Threading;
 
-using ArchPageFlags = ProtonOS.Arch.PageFlags;
+using ArchPageFlags = ProtonOS.Arch.ArchPageFlags;
 
-namespace ProtonOS.X64;
+namespace ProtonOS.Arch;
 
 /// <summary>
 /// Page table entry flags for x64 4-level paging

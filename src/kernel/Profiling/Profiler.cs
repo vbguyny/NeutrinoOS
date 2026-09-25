@@ -208,7 +208,7 @@ public static class Profiler
     private static ulong UptimeMs()
     {
         // APIC tick count is 1 ms resolution; avoid HPET MMIO in Format loops.
-        return ProtonOS.X64.APIC.TickCount;
+        return ProtonOS.Arch.APIC.TickCount;
     }
 
     private static string Hex(ulong value)

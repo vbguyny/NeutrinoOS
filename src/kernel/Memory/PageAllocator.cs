@@ -609,9 +609,9 @@ public static unsafe class PageAllocator
         _freePages++;
         UpdateNodeStatsOnFree(pageNum);
 
-        if (PoisonOnFree && X64.VirtualMemory.IsInitialized)
+        if (PoisonOnFree && Arch.VirtualMemory.IsInitialized)
         {
-            byte* p = (byte*)X64.VirtualMemory.PhysToVirt(physicalAddress);
+            byte* p = (byte*)Arch.VirtualMemory.PhysToVirt(physicalAddress);
             if (p != null)
             {
                 for (int i = 0; i < (int)PageSize; i++)
