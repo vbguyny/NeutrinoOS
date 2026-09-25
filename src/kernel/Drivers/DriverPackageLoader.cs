@@ -12,10 +12,12 @@
 // templates/NeutrinoDriver). The factory runs as JIT-compiled code, so the
 // instance is allocated on the JIT heap with the driver assembly's own
 // MethodTable; its NeutrinoOS.Driver.Abstractions references resolve to the
-// kernel's compiled-in ABI copy (AssemblyLoader.ResolveAssemblyRef), which
-// makes the IDriver MethodTable identical on both sides, so the AOT manager
-// can treat the instance as a first-class IDriver (interface calls and
-// castclass work directly).
+// kernel's compiled-in ABI copy (AssemblyLoader.ResolveAssemblyRef), so the
+// ABI is shared. Calls into the instance never use interface dispatch from
+// AOT code - they go through PackagedDriverAdapter thunks (per-method
+// function pointers compiled in the driver's own assembly), because
+// AOT->JIT interface dispatch on JIT-built MethodTables is not reliable in
+// this runtime.
 
 using System;
 using NeutrinoOS.Drivers;
@@ -127,7 +129,8 @@ public static unsafe class DriverPackageLoader
             return false;
         }
 
-        uint createToken = FindCreateFactory(asmId);
+        uint typeToken;
+        uint createToken = FindCreateFactory(asmId, out typeToken);
         if (createToken == 0)
         {
             LogSkip(name, "no static Create() factory");
@@ -158,34 +161,68 @@ public static unsafe class DriverPackageLoader
             return false;
         }
 
-        // Registration is staged: the whole pipeline above (catalog ->
-        // manifest -> payload -> AssemblyLoader -> JIT-compiled factory ->
-        // ABI validation) is verified working. Binding the instance into
-        // the manager is still pending because AOT->JIT *interface*
-        // dispatch is not trustworthy for JIT-built MethodTables yet (an
-        // AOT interface call on the factory result lands on the wrong
-        // slot; the kernel's IDriver MethodTable is not found in the JIT
-        // MT's interface map). The fix is a thunk-based adapter that calls
-        // the driver through per-method function pointers compiled in the
-        // driver's own assembly (the pattern every other JIT/AOT edge in
-        // this kernel uses). Until then, packages are reported as staged.
-        //
-        // NOTE for the adapter work: driver.Name / Initialize / Match /
-        // Probe / Start / Stop must all go through thunks; nothing here may
-        // call an interface method on the factory result.
+        // Compile the direct-call thunks: nothing here may call an
+        // interface method on the factory result (see PackagedDriverAdapter
+        // for why). All nine IDriver members go through function pointers
+        // compiled in the driver's own assembly.
+        void* tName; void* tVersion; void* tAbiMajor; void* tAbiMinor;
+        void* tInit; void* tMatch; void* tProbe; void* tStart; void* tStop;
+        if (!CompileThunk(asmId, typeToken, "get_Name", out tName)) { LogSkip(name, "no Name thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "get_Version", out tVersion)) { LogSkip(name, "no Version thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "get_AbiMajor", out tAbiMajor)) { LogSkip(name, "no AbiMajor thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "get_AbiMinor", out tAbiMinor)) { LogSkip(name, "no AbiMinor thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "Initialize", out tInit)) { LogSkip(name, "no Initialize thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "Match", out tMatch)) { LogSkip(name, "no Match thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "Probe", out tProbe)) { LogSkip(name, "no Probe thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "Start", out tStart)) { LogSkip(name, "no Start thunk"); return false; }
+        if (!CompileThunk(asmId, typeToken, "Stop", out tStop)) { LogSkip(name, "no Stop thunk"); return false; }
+
+        PackagedDriverAdapter adapter = new PackagedDriverAdapter();
+        adapter.Bind(raw, tName, tVersion, tAbiMajor, tAbiMinor, tInit, tMatch, tProbe, tStart, tStop);
+
+        uint[] vendorIds = ParseHexList(drv, "vendorIds");
+        uint[] deviceIds = ParseHexList(drv, "deviceIds");
+        string className = drv.GetString("class");
+
+        if (!DriverManager.RegisterWithManifest(adapter, vendorIds, deviceIds, className))
+        {
+            LogSkip(name, "registration refused");
+            return false;
+        }
+
         DebugConsole.Write("[drv] package '");
         DebugConsole.Write(name);
-        DebugConsole.Write("' staged: assembly + Create() factory + ABI shape verified (binding pending, see docs/PHASE8-DRIVER.md)");
-        DebugConsole.WriteLine();
-        return false;
+        DebugConsole.Write("' -> driver '");
+        DebugConsole.Write(adapter.Name);
+        DebugConsole.WriteLine("' registered");
+        return true;
+    }
+
+    /// <summary>
+    /// JIT-compile one driver method for direct thunk calls; false when the
+    /// method is missing or will not compile.
+    /// </summary>
+    private static bool CompileThunk(uint asmId, uint typeToken, string methodName, out void* thunk)
+    {
+        thunk = null;
+        uint token = AssemblyLoader.FindMethodDefByName(asmId, typeToken, methodName);
+        if (token == 0)
+            return false;
+        var jit = Tier0JIT.CompileMethod(asmId, token);
+        if (!jit.Success || jit.CodeAddress == null)
+            return false;
+        thunk = jit.CodeAddress;
+        return true;
     }
 
     /// <summary>
     /// Find the first public static parameterless "Create" method in the
-    /// assembly and return its MethodDef token (0 when absent).
+    /// assembly; returns its MethodDef token (0 when absent) and the
+    /// declaring type's TypeDef token (for thunk lookups).
     /// </summary>
-    private static uint FindCreateFactory(uint asmId)
+    private static uint FindCreateFactory(uint asmId, out uint typeToken)
     {
+        typeToken = 0;
         LoadedAssembly* asm = AssemblyLoader.GetAssembly(asmId);
         if (asm == null)
             return 0;
@@ -221,7 +258,8 @@ public static unsafe class DriverPackageLoader
                 if (sig.ParamCount != 0)
                     continue;
 
-                return 0x06000000u | methodRow;   // MethodDef token
+                typeToken = 0x02000000u | typeRow;   // TypeDef token
+                return 0x06000000u | methodRow;      // MethodDef token
             }
         }
         return 0;

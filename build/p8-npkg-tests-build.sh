@@ -120,7 +120,12 @@ EOF
 
   rm -rf "$payload"
   mkdir -p "$payload"
-  dotnet build "$fdir/P8Fixture.csproj" -c Release -o "$payload" --nologo -v q
+  # Build without -o: `dotnet build -o` would also dump the referenced
+  # projects' outputs (the driver ABI assembly + friends) into the payload
+  # dir; Private=false only suppresses copy-local, not the -o redirection.
+  # Stage exactly the fixture's own assembly instead.
+  dotnet build "$fdir/P8Fixture.csproj" -c Release --nologo -v q
+  cp "$fdir/bin/Release/net10.0/$asm.dll" "$payload/"
 
   if [ "$PAYLOAD_ONLY" != 1 ]; then
     "$HOST" pack --manifest "$fdir/manifest.json" --payload-dir "$payload" \

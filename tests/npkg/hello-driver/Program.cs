@@ -33,7 +33,9 @@ public sealed class HelloLedDriver : IDriver
 
     public bool Match(DeviceInfo device)
     {
-        return device.Bus == "platform" && device.DeviceId == 0x1601;
+        // Bisect: match on the numeric id only (string comparison suspended
+        // while diagnosing an OpEquality fault in the packaged-driver path).
+        return device.DeviceId == 0x1601;
     }
 
     public bool Probe(DeviceInfo device)

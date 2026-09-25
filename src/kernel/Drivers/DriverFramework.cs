@@ -34,6 +34,13 @@ public static class DriverFramework
         DebugConsole.Write("[drv] framework init, ABI ");
         DebugConsole.WriteLine(DriverAbi.VersionString);
 
+        // The driver ABI assembly ships on the image (/lib) and the JIT
+        // resolves driver MemberRefs (device.Bus, ...) against its IL, so
+        // no AOT bridges are needed. Kept compiled but disabled pending
+        // review: registering them changed resolution to the AOT path and
+        // introduced a string-equality fault (cr2=0x10 in OpEquality).
+        // DriverAbiBridges.Register();
+
         KernelDeviceTree tree = KernelDeviceTree.Instance;
 
         int pciCount = PciBusEnumerator.Enumerate();

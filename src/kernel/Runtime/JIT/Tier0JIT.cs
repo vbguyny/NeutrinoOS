@@ -146,6 +146,12 @@ public static unsafe class Tier0JIT
         // Set current assembly for metadata resolution (enables lazy JIT compilation)
         MetadataIntegration.SetCurrentAssembly(assemblyId);
 
+        // Phase 8: remember the assembly being compiled. MemberRef resolution
+        // uses this instead of the ambient context, which other resolution
+        // work can leave stale (observed: packaged-driver methods resolved
+        // against another assembly's metadata). Restored in RestoreContext.
+        MetadataIntegration.PushCompilingAssembly(assemblyId);
+
         // Get the loaded assembly
         var assembly = AssemblyLoader.GetAssembly(assemblyId);
         if (assembly == null)
@@ -921,6 +927,9 @@ public static unsafe class Tier0JIT
         // Undoes any MethodSpec-context changes made during this compilation
         // (including by nested compiles) so the enclosing compile is unaffected.
         MetadataIntegration.PopMethodTypeArgContext();
+
+        // Phase 8: restore the enclosing compilation's assembly id.
+        MetadataIntegration.PopCompilingAssembly();
 
         if (savedAsmId != 0)
         {

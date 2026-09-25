@@ -70,7 +70,14 @@ else
 
   step "help"            "npkg"                             "usage: npkg"                     240
   step "repo-add"        "npkg repo add local /repo"       "added repository local"           90
-  step "list-empty"      "npkg list"                       "no packages installed"            90
+  # The npkg acceptance runs on baseline images (P8_PREPLACE=off): the first
+  # list must be empty. On driver-loader images (P8_PREPLACE=full) the
+  # pre-placed fixture appears instead - set P8_EXPECT_PREPLACED=1 there.
+  if [ "${P8_EXPECT_PREPLACED:-0}" = "1" ]; then
+    step "list-baseline" "npkg list"                       "preplaced.drvtest"                90
+  else
+    step "list-empty"    "npkg list"                       "no packages installed"            90
+  fi
   step "search"          "npkg search hello"               "tests.hello-utility"              90
   step "install-utility" "npkg install tests.hello-utility" "installed tests.hello-utility 1.0.0" 120
   step "run-utility"     "helloutil"                        "hello-utility ok"                90

@@ -385,8 +385,9 @@ public sealed class Installer
             NpkgPaths.DeleteTree(stagingRoot);
             Console.WriteLine("installed " + name + " " + version);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine("install error: " + ex.GetType().Name + ": " + ex.Message);
             RollbackInMemory(txn, added, backups, createdDirs);
             Journal.MarkRolledBack(txn);
             NpkgPaths.DeleteTree(stagingRoot);
@@ -471,10 +472,14 @@ public sealed class Installer
 
     private static string DefaultInstallPath(string kind, string name, NpkgManifest manifest)
     {
+        // Drivers always live in the npkg driver store: the kernel
+        // driver-package loader reads DriversDir/<name>/<entryPoint>, so a
+        // manifest (or the packer's default) cannot place the payload
+        // elsewhere.
+        if (kind == "driver") return NpkgPaths.DriversDir + "/" + name;
         if (manifest.InstallPath != null && manifest.InstallPath.Length > 0)
             return manifest.InstallPath;
         if (kind == "application") return "/apps/" + name;
-        if (kind == "driver") return NpkgPaths.DriversDir + "/" + name;
         if (kind == "library") return "/lib";
         return "/bin";
     }

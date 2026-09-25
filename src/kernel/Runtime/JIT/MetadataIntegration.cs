@@ -326,13 +326,42 @@ public static unsafe class MetadataIntegration
     }
 
     /// <summary>
+    /// Assembly whose method is currently being compiled (set at
+    /// Tier0JIT.CompileMethod entry, restored on exit). Unlike the ambient
+    /// save/restore context, this stack is never disturbed by lazy nested
+    /// compiles, so MemberRef resolution during a compile always sees the
+    /// innermost compilation's assembly - the ambient context can be left
+    /// stale by other resolution work (observed: packaged-driver methods
+    /// resolved against another assembly's metadata, producing a bogus
+    /// "TypeRef not found in &lt;asm&gt;" failure).
+    /// </summary>
+    public static uint CompilingAssemblyId;
+
+    private static readonly uint[] _compilingAsmStack = new uint[32];
+    private static int _compilingAsmDepth;
+
+    /// <summary>Enter a compilation: remember the previous assembly id.</summary>
+    public static void PushCompilingAssembly(uint assemblyId)
+    {
+        if (_compilingAsmDepth < _compilingAsmStack.Length)
+            _compilingAsmStack[_compilingAsmDepth++] = CompilingAssemblyId;
+        CompilingAssemblyId = assemblyId;
+    }
+
+    /// <summary>Leave a compilation: restore the enclosing assembly id.</summary>
+    public static void PopCompilingAssembly()
+    {
+        if (_compilingAsmDepth > 0)
+            CompilingAssemblyId = _compilingAsmStack[--_compilingAsmDepth];
+    }
+
+    /// <summary>
     /// Set the current assembly ID for resolution.
     /// Call this before compiling methods from a specific assembly.
     /// </summary>
     public static void SetCurrentAssembly(uint assemblyId)
     {
         _currentAssemblyId = assemblyId;
-
         // Also update the metadata context from the assembly
         // Note: asm is already a pointer, so we get field addresses directly
         var asm = AssemblyLoader.GetAssembly(assemblyId);
@@ -3286,15 +3315,17 @@ public static unsafe class MetadataIntegration
             }
         }
 
-        // Fall back to JIT assembly resolution
-        if (!AssemblyLoader.ResolveMemberRefMethod(_currentAssemblyId, token,
+        // Fall back to JIT assembly resolution. Use the assembly whose
+        // method is being compiled (the ambient context may be stale).
+        uint resolvingAsmId = CompilingAssemblyId != 0 ? CompilingAssemblyId : _currentAssemblyId;
+        if (!AssemblyLoader.ResolveMemberRefMethod(resolvingAsmId, token,
                                                     out uint methodToken, out uint targetAsmId))
         {
             DebugConsole.Write("[MetaInt] Failed to resolve MemberRef method 0x");
             DebugConsole.WriteHex(token);
             DebugConsole.Write(" name=");
             {
-                LoadedAssembly* dbgAsm = AssemblyLoader.GetAssembly(_currentAssemblyId);
+                LoadedAssembly* dbgAsm = AssemblyLoader.GetAssembly(resolvingAsmId);
                 if (dbgAsm != null)
                 {
                     uint dbgRow = token & 0x00FFFFFF;

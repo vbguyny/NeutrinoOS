@@ -2182,8 +2182,10 @@ public static unsafe class AotMethodRegistry
 
     /// <summary>
     /// Register an AOT method (legacy overload for backwards compatibility).
+    /// Public so kernel subsystems outside this class (e.g. the driver ABI
+    /// bridges) can expose AOT methods to JIT-compiled code.
     /// </summary>
-    private static void Register(string typeName, string methodName, nint nativeCode,
+    public static void Register(string typeName, string methodName, nint nativeCode,
                                   byte argCount, ReturnKind returnKind, bool hasThis, bool isVirtual,
                                   ushort returnStructSize = 0)
     {

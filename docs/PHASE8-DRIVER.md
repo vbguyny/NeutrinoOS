@@ -22,6 +22,8 @@ Implementation staging (this phase):
 | Driver manager: Match → Probe → Start, ABI gate | done |
 | `IDriverServices` implementation (MMIO/DMA/IRQ/devnodes/log) | done |
 | Driver ports: UART 16550, PS/2 keyboard, VGA text (PCI) | done |
+| npkg driver packages: catalog, manifests, Create() factory, thunk adapter | done |
+| Packaged drivers reading device properties (JIT/AOT layout) | pending (see Driver packages) |
 | Port VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
 | PCIe hot-plug detection | deferred (see Limitations) |
@@ -158,11 +160,11 @@ first PCI-matched driver:
 - **Hot-plug**: PCIe hot-plug detection (`Attention Button`/`Power
   Indicator` and the PCIe capability walk) is not implemented yet.
 - **USB**: out of scope for Phase 8 (deferred to Phase 9+).
-- **Driver-package loading**: the loader discovers and verifies packages at
-  boot (see "Driver packages (staged)" above); binding awaits the planned
-  thunk adapter for AOT->JIT interface dispatch.
+- **Driver-package loading**: the pipeline through registration is done
+  (see "Driver packages" above); packaged drivers reading device
+  properties awaits the JIT/AOT layout alignment noted there.
 
-## Driver packages (staged)
+## Driver packages
 
 Driver packages installed by npkg are discovered and verified at boot by
 `DriverPackageLoader` (called from `Kernel.Main` after `BindDrivers`):
@@ -185,25 +187,46 @@ Driver packages installed by npkg are discovered and verified at boot by
   `IDriver` MethodTable is shared between the AOT kernel and JIT-loaded
   drivers.
 
-Binding is deliberately not enabled yet: AOT->JIT *interface* dispatch on
-JIT-built MethodTables is not trustworthy in this runtime (an AOT interface
-call on the factory result lands on the wrong slot - observed returning
-another driver's `Name`), so packages are reported as `staged`. The fix is
-a thunk-based adapter that calls
-`Name`/`Initialize`/`Match`/`Probe`/`Start`/`Stop` through per-method
-function pointers compiled in the driver's own assembly - the direct-call
-pattern every other JIT/AOT edge in this kernel uses. The adapter then
-feeds `DriverManager.RegisterWithManifest` (manifest vendor/device id
-constraints, already implemented). The acceptance image pre-places a
-driver package (`preplaced.drvtest`, built from the `tests/hello-driver`
-fixture) so this path runs on every acceptance boot.
+Binding goes through `PackagedDriverAdapter`: AOT code never calls an
+interface method on the JIT object (AOT->JIT interface dispatch on
+JIT-built MethodTables is not reliable here - an interface call on the
+factory result landed on the wrong slot, observed returning another
+driver's `Name`). Every `IDriver` member is invoked through a per-method
+thunk: the driver method is JIT-compiled and called as an unmanaged
+function pointer with the instance as the first argument (the same
+direct-call pattern the kernel uses for AhciEntry helpers). Verified
+working end-to-end at boot: catalog -> manifest -> payload -> assembly
+load -> `Create()` factory -> `get_Name`/`get_Version`/`get_AbiMajor`/
+`get_AbiMinor`/`Initialize` thunks -> ABI gate -> registration (the
+`[drv] package '...' -> driver 'hello-driver' registered` line comes from
+the driver's own `Name`).
 
-NOTE (current state): the boot-time invocation of the loader is commented
-out in `Kernel.Main` until the thunk adapter lands - an acceptance run with
-the loader active showed a fault during a later `npkg install` step that is
-not yet root-caused, so boots run the previously verified configuration.
-The pre-placed package stays in the image; re-enable the call (or gate it
-behind a marker file) together with the adapter and re-run the suite.
+The driver's `NeutrinoOS.Driver.Abstractions` references resolve to the
+copy shipped on the image at `/lib/NeutrinoOS.Driver.Abstractions.dll`
+(the packer's own assembly; the resolver lazy-loads it like any other
+`/lib` assembly), and the driver's IL is JIT-compiled against it.
+
+Open limitation (next increment): a packaged driver's *device property
+reads* are not yet correct across the JIT/AOT boundary. `Match()` compiles
+and runs through thunks, but the field offsets the JIT uses for the
+`/lib` copy of `DeviceInfo` do not match the kernel AOT layout: a string
+comparison (`device.Bus == "platform"`) faults inside AOT
+`StringHelpers.OpEquality` (cr2=0x10), and a numeric comparison
+(`device.DeviceId == 0x1601`) simply reads a wrong value and returns
+false (diagnostics in `PackagedDriverAdapter.Match` show the adapter
+passing the correct device). `DriverAbiBridges` (AOT getter bridges
+registered in `AotMethodRegistry`) was built for this and is currently
+disabled: registration did not change which path resolution took. Next
+step: make the JIT's layout model for the ABI classes match the bflat AOT
+layout (or make the bridge entries win resolution for ABI-typed
+MemberRefs), then the fixture's full `Match()` should bind
+`platform/vtest0`.
+
+The acceptance image pre-places a driver package (`preplaced.drvtest`,
+built from the `tests/hello-driver` fixture) so this path runs on every
+acceptance boot; the npkg acceptance itself runs on baseline images
+(`P8_PREPLACE=off`) and the end-to-end flow (npkg install `tests.hello-driver`
+in boot 1, loader in boot 2) is covered by `build/p8-drv-e2e.sh`.
 
 ## Driver SDK
 

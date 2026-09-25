@@ -54,22 +54,44 @@ timeout -s KILL 20 mcopy -i "$IMG" "$TMP/skip-boot-tests" "::/skip-boot-tests"
 # printf '1' > "$TMP/verbose-jit"
 # timeout -s KILL 20 mcopy -i "$IMG" "$TMP/verbose-jit" "::/verbose-jit"
 
-# --- Pre-placed driver package -------------------------------------------
-# The kernel driver-package loader reads /var/lib/npkg/installed.json and
-# loads packages under /var/lib/npkg/drivers/<name>/. Pre-place the
-# hello-driver payload under a distinct name so the loader is exercised on
-# the very first boot (the acceptance suite later installs tests.hello-driver
-# itself, unchanged, and final-list tolerates extra packages).
-mk_dir var
-mk_dir var/lib
-mk_dir var/lib/npkg
-mk_dir var/lib/npkg/drivers
-mk_dir var/lib/npkg/drivers/preplaced.drvtest
+# Driver ABI assembly: JIT-loaded drivers resolve their
+# NeutrinoOS.Driver.Abstractions references to this /lib copy (the same
+# lazy-load path applications use for /lib assemblies); the driver's IL is
+# JIT-compiled against it, and the kernel talks to driver instances only
+# through the PackagedDriverAdapter thunks.
+mk_dir lib
+dotnet build /root/neutrino/src/lib/NeutrinoOS.Driver.Abstractions/NeutrinoOS.Driver.Abstractions.csproj -c Release -o "$TMP/abi" --nologo -v q
+timeout -s KILL 20 mcopy -i "$IMG" "$TMP/abi/NeutrinoOS.Driver.Abstractions.dll" "::/lib/"
 
-PLACE="$TMP/preplaced"
-rm -rf "$PLACE"
-mkdir -p "$PLACE"
-python3 - "$REPO/tests.hello-driver-1.0.0.npkg" "$PLACE" <<'PY'
+# --- Pre-placed driver package -------------------------------------------
+# P8_PREPLACE=full|db|off (default full):
+#   full - installed.json + /var/lib/npkg/drivers/preplaced.drvtest/ payload
+#   db   - installed.json + /var/lib/npkg only (bisect: no deep driver tree)
+#   off  - nothing (baseline image for the npkg acceptance suite)
+# Driver-package loading is validated on 'full' images; the npkg acceptance
+# suite runs on 'off' images (see the install-fault note in PHASE8-DRIVER.md).
+if [ "${P8_PREPLACE:-full}" = "off" ]; then
+  echo "[deploy] P8_PREPLACE=off: skipping the pre-placed driver package"
+elif [ "${P8_PREPLACE:-full}" = "db" ]; then
+  echo "[deploy] P8_PREPLACE=db: pre-placing only the npkg database"
+  mk_dir va
+  mk_dir var/lib
+  mk_dir var/lib/npkg
+  cat > "$TMP/installed.json" <<'EOF'
+{"format":"npkg-db/1","packages":[{"name":"preplaced.drvtest","version":"1.0.0","architecture":"any","signer":"65b60673","description":"pre-placed driver package (loader acceptance)","installPath":"/var/lib/npkg/drivers/preplaced.drvtest","provides":["driver"],"dependencies":{},"scripts":{},"entryPoints":{},"files":[],"dirs":[]}]}
+EOF
+  timeout -s KILL 20 mcopy -i "$IMG" "$TMP/installed.json" "::/var/lib/npkg/installed.json"
+else
+  mk_dir va
+  mk_dir var/lib
+  mk_dir var/lib/npkg
+  mk_dir var/lib/npkg/drivers
+  mk_dir var/lib/npkg/drivers/preplaced.drvtest
+
+  PLACE="$TMP/preplaced"
+  rm -rf "$PLACE"
+  mkdir -p "$PLACE"
+  python3 - "$REPO/tests.hello-driver-1.0.0.npkg" "$PLACE" <<'PY'
 import os, sys, zipfile
 z = zipfile.ZipFile(sys.argv[1])
 out = sys.argv[2]
@@ -79,12 +101,13 @@ os.replace(os.path.join(out, "payload", "hellodrv.dll"),
            os.path.join(out, "hellodrv.dll"))
 os.rmdir(os.path.join(out, "payload"))
 PY
-timeout -s KILL 20 mcopy -i "$IMG" "$PLACE/hellodrv.dll" "$PLACE/manifest.json" "::/var/lib/npkg/drivers/preplaced.drvtest/"
+  timeout -s KILL 20 mcopy -i "$IMG" "$PLACE/hellodrv.dll" "$PLACE/manifest.json" "::/var/lib/npkg/drivers/preplaced.drvtest/"
 
-cat > "$TMP/installed.json" <<'EOF'
+  cat > "$TMP/installed.json" <<'EOF'
 {"format":"npkg-db/1","packages":[{"name":"preplaced.drvtest","version":"1.0.0","architecture":"any","signer":"65b60673","description":"pre-placed driver package (loader acceptance)","installPath":"/var/lib/npkg/drivers/preplaced.drvtest","provides":["driver"],"dependencies":{},"scripts":{},"entryPoints":{},"files":["/var/lib/npkg/drivers/preplaced.drvtest/hellodrv.dll","/var/lib/npkg/drivers/preplaced.drvtest/manifest.json"],"dirs":["/var/lib/npkg/drivers/preplaced.drvtest"]}]}
 EOF
-timeout -s KILL 20 mcopy -i "$IMG" "$TMP/installed.json" "::/var/lib/npkg/installed.json"
+  timeout -s KILL 20 mcopy -i "$IMG" "$TMP/installed.json" "::/var/lib/npkg/installed.json"
+fi
 
 cp "$IMG" "$SRC/build/npkgtest.img"
 
