@@ -122,9 +122,56 @@ namespace NeutrinoOS.Drivers
 
         private static readonly DeviceResource[] EmptyResources = new DeviceResource[0];
 
+        /// <summary>
+        /// Phase 8 marshal helper: base device copy for packaged drivers.
+        /// Kept at four parameters (and without static reads) so the Tier-0
+        /// JIT can compile the construction; see DeviceMarshal.cs. Resources
+        /// stay null here and are treated as empty by TryGetResource.
+        /// </summary>
+        public DeviceInfo(int id, int parentId, string path, string bus)
+        {
+            Id = id;
+            ParentId = parentId;
+            Path = path;
+            Bus = bus;
+            Address = 0;
+            VendorId = 0xFFFF;
+            DeviceId = 0;
+            Class = DeviceClass.Unknown;
+            ClassCode = 0;
+            Resources = null;
+            Status = DeviceStatus.Discovered;
+        }
+
+        /// <summary>
+        /// Phase 8 marshal helper: match-filled copy for packaged drivers.
+        /// vendorDeviceClass packs vendorId (bits 48-63), deviceId (bits
+        /// 32-47) and class (bits 24-31); addressClassCode packs address
+        /// (bits 0-31) and classCode (bits 32-63). See DeviceMarshal.cs.
+        /// </summary>
+        public DeviceInfo(DeviceInfo source, ulong vendorDeviceClass, ulong addressClassCode)
+        {
+            Id = source.Id;
+            ParentId = source.ParentId;
+            Path = source.Path;
+            Bus = source.Bus;
+            Address = (uint)addressClassCode;
+            VendorId = (ushort)(vendorDeviceClass >> 48);
+            DeviceId = (ushort)(vendorDeviceClass >> 32);
+            Class = (DeviceClass)(int)((vendorDeviceClass >> 24) & 0xFF);
+            ClassCode = (uint)(addressClassCode >> 32);
+            Resources = null;
+            Status = DeviceStatus.Discovered;
+        }
+
         /// <summary>Find the first resource of the given kind, or null.</summary>
         public bool TryGetResource(DeviceResourceKind kind, out DeviceResource resource)
         {
+            if (Resources == null)
+            {
+                resource = default;
+                return false;
+            }
             for (int i = 0; i < Resources.Length; i++)
             {
                 if (Resources[i].Kind == kind)

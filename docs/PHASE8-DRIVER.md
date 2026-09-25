@@ -23,8 +23,8 @@ Implementation staging (this phase):
 | `IDriverServices` implementation (MMIO/DMA/IRQ/devnodes/log) | done |
 | Driver ports: UART 16550, PS/2 keyboard, VGA text (PCI) | done |
 | npkg driver packages: catalog, manifests, Create() factory, thunk adapter | done |
-| Packaged drivers reading device properties (JIT/AOT layout) | pending (see Driver packages) |
-| Port VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
+| Packaged drivers: device marshal + kernel services bridges (full lifecycle) | done |
+| Port VirtIO-Net/Blk, E1000, AHCI onto the framework | done (legacy transports keep I/O) |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
 | PCIe hot-plug detection | deferred (see Limitations) |
 | SDK: `templates/NeutrinoDriver` + `scripts/build-driver.ps1` | done |
@@ -130,6 +130,34 @@ first PCI-matched driver:
   framework ownership of the display device and verifies the PCI MMIO
   mapping path.
 
+## Built-in drivers follow-ups: the PCI and VirtIO ports
+
+`src/kernel/Drivers/Builtin/E1000Driver.cs` — fourth port (PCI network):
+
+- matches the Intel 8254x PCI ids (0x8086:0x10D3, plus the
+  0x100E/0x100F/0x15A3 family), probes for the 128 KiB BAR0 register
+  window, starts by mapping BAR0 through `IDriverServices.MapMmio` and
+  logs the mapping. Packet I/O keeps running through the legacy kernel
+  network path until the full port moves it behind the framework.
+
+`src/kernel/Drivers/Builtin/AhciDriver.cs` — fifth port (storage):
+
+- matches PCI SATA AHCI controllers (class 0x0106 masked over the prog-if),
+  logs the framework handoff on start. The controller, ports and filesystem
+  engine stay on the legacy AHCI path (the JIT'd `ProtonOS.Drivers.Ahci`
+  assembly mounted the volumes before the framework starts); taking the
+  ABAR behind the framework is the follow-up.
+
+`src/kernel/Drivers/Builtin/VirtioNetDriver.cs` and
+`VirtioBlkDriver.cs` — sixth and seventh ports (VirtIO children):
+
+- match the `virtio` child nodes the enumerator adds (vendor 0x1AF4,
+  device type flattened into `ClassCode`: 1 = net, 2 = blk); the start
+  handlers log the handoff. The virtqueue transport keeps running through
+  the legacy JIT'd VirtIO drivers until the full port. Verified on a probe
+  VM with `virtio-blk-pci` + `virtio-net-pci` attached: `7 driver(s)
+  registered, 7 device(s) started`, both child nodes bound.
+
 ## Debugging notes (bflat constraints hit while building this)
 
 - `bool[]` arrays make bflat fail with "Code generation failed for method
@@ -149,20 +177,19 @@ first PCI-matched driver:
   transport into isolated hosts later does not change driver code. This is
   the main deviation from the Fuchsia model and is expected to be revisited
   in a later phase.
-- **Porting**: UART 16550, PS/2 keyboard and VGA text are on the framework.
-  The remaining drivers (VirtIO-Net/Blk, E1000, AHCI) still run through
-  their legacy kernel paths; they port incrementally (each port keeps the
-  legacy path until verified).
-- **Loading from packages**: drivers in `/var/lib/npkg/drivers/` (npkg driver
-  packages carry `driver{class,vendorIds,deviceIds,entryPoint}` manifest
-  metadata) are not auto-loaded yet; the loader integration is the next
-  increment after the remaining ports.
+- **Porting**: all seven drivers are on the framework (UART 16550, PS/2
+  keyboard, VGA text, E1000, AHCI, VirtIO-Net, VirtIO-BlK). The storage and
+  network ports currently assert framework ownership and logging while the
+  data paths keep running through the legacy kernel/JIT transports; moving
+  each transport behind `IDriverServices` is incremental follow-up work.
+- **Loading from packages**: done. Driver packages in
+  `/var/lib/npkg/drivers/<name>/` (manifest `driver{class,vendorIds,
+  deviceIds,entryPoint}`) are discovered and loaded at boot, and the full
+  packaged lifecycle (match, probe, start, services) is verified - see
+  "Driver packages" above.
 - **Hot-plug**: PCIe hot-plug detection (`Attention Button`/`Power
   Indicator` and the PCIe capability walk) is not implemented yet.
 - **USB**: out of scope for Phase 8 (deferred to Phase 9+).
-- **Driver-package loading**: the pipeline through registration is done
-  (see "Driver packages" above); packaged drivers reading device
-  properties awaits the JIT/AOT layout alignment noted there.
 
 ## Driver packages
 
@@ -206,21 +233,28 @@ copy shipped on the image at `/lib/NeutrinoOS.Driver.Abstractions.dll`
 (the packer's own assembly; the resolver lazy-loads it like any other
 `/lib` assembly), and the driver's IL is JIT-compiled against it.
 
-Open limitation (next increment): a packaged driver's *device property
-reads* are not yet correct across the JIT/AOT boundary. `Match()` compiles
-and runs through thunks, but the field offsets the JIT uses for the
-`/lib` copy of `DeviceInfo` do not match the kernel AOT layout: a string
-comparison (`device.Bus == "platform"`) faults inside AOT
-`StringHelpers.OpEquality` (cr2=0x10), and a numeric comparison
-(`device.DeviceId == 0x1601`) simply reads a wrong value and returns
-false (diagnostics in `PackagedDriverAdapter.Match` show the adapter
-passing the correct device). `DriverAbiBridges` (AOT getter bridges
-registered in `AotMethodRegistry`) was built for this and is currently
-disabled: registration did not change which path resolution took. Next
-step: make the JIT's layout model for the ABI classes match the bflat AOT
-layout (or make the bridge entries win resolution for ABI-typed
-MemberRefs), then the fixture's full `Match()` should bind
-`platform/vtest0`.
+Device property reads across the JIT/AOT boundary are solved by the ABI's
+`DeviceInfoMarshal` (`src/lib/NeutrinoOS.Driver.Abstractions/DeviceMarshal.cs`):
+the kernel adapter builds a driver-world `DeviceInfo` *copy* for every
+lifecycle call by invoking two marshal factories through JIT-compiled
+thunks (`Create` + `WithMatch`; the ABI adds small-argument constructors
+used by the copies, staying inside the Tier-0 JIT's `newobj` limit).
+Every field read inside the driver therefore uses the driver's own layout;
+kernel strings inside the copy stay safe (handing kernel strings to JIT'd
+code is the proven direction). The earlier AOT-getter-bridge experiment
+(`DriverAbiBridges`) is superseded and deleted.
+
+Driver -> kernel *services* calls (`_services.Log(...)`) hit the same
+cross-world wall: `KernelDriverServices` is AOT with no JIT-visible
+metadata, so the interface dispatch landed on a zero target. The fix
+follows the StringHelpers bridge pattern: `DriverServicesBridges`
+registers a tiny AOT forwarder for each `IDriverServices` method keyed by
+the *interface* full name, and `JitStubs.ResolveInterfaceMethodByName`
+falls back to that registry (via `AotMethodRegistry.TryLookupEx`, matched
+by method name and parameter count) when the metadata-based hierarchy
+search finds nothing. Verified end-to-end at boot: `Match` -> marshal ->
+bind, `Start` logs through the kernel services bridge, `[drv] 1 packaged
+driver(s) loaded, 1 device(s) started`, zero faults.
 
 The acceptance image pre-places a driver package (`preplaced.drvtest`,
 built from the `tests/hello-driver` fixture) so this path runs on every

@@ -34,12 +34,13 @@ public static class DriverFramework
         DebugConsole.Write("[drv] framework init, ABI ");
         DebugConsole.WriteLine(DriverAbi.VersionString);
 
-        // The driver ABI assembly ships on the image (/lib) and the JIT
-        // resolves driver MemberRefs (device.Bus, ...) against its IL, so
-        // no AOT bridges are needed. Kept compiled but disabled pending
-        // review: registering them changed resolution to the AOT path and
-        // introduced a string-equality fault (cr2=0x10 in OpEquality).
-        // DriverAbiBridges.Register();
+        // Device property reads in packaged drivers go through the ABI's
+        // marshal factories (see the ABI's DeviceMarshal.cs), so no
+        // DeviceInfo bridges are needed. Kernel services are different:
+        // KernelDriverServices is AOT with no JIT-visible metadata, so its
+        // IDriverServices methods are exposed through AOT bridges keyed by
+        // the interface full name (see DriverServicesBridges).
+        DriverServicesBridges.Register();
 
         KernelDeviceTree tree = KernelDeviceTree.Instance;
 
@@ -62,14 +63,19 @@ public static class DriverFramework
 
     /// <summary>
     /// Register kernel built-in drivers. The ported drivers (UART, PS/2,
-    /// VGA, VirtIO family) hook in here as they are moved onto the
-    /// framework; until then the legacy kernel paths keep them working.
+    /// VGA, E1000, AHCI, VirtIO family) hook in here; their device I/O
+    /// keeps running through the legacy kernel paths until each port moves
+    /// the transport behind the framework.
     /// </summary>
     private static void RegisterBuiltins()
     {
         DriverManager.Register(new Builtin.Uart16550Driver());
         DriverManager.Register(new Builtin.Ps2KeyboardDriver());
         DriverManager.Register(new Builtin.VgaTextConsoleDriver());
+        DriverManager.Register(new Builtin.E1000Driver());
+        DriverManager.Register(new Builtin.AhciDriver());
+        DriverManager.Register(new Builtin.VirtioNetDriver());
+        DriverManager.Register(new Builtin.VirtioBlkDriver());
     }
 
     /// <summary>Legacy platform devices that are not on a discoverable bus.</summary>

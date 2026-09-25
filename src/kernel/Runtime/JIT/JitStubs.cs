@@ -827,6 +827,43 @@ public static unsafe class JitStubs
     }
 
     /// <summary>
+    /// Interface-implementation fallback for kernel AOT classes: derive the
+    /// interface's "namespace.name" from metadata and look for a registered
+    /// AOT bridge with the same method name and parameter count. Used when
+    /// the metadata-based hierarchy search cannot see the implementation
+    /// (kernel classes are not JIT-compilable and carry no JIT metadata).
+    /// </summary>
+    private static nint LookupAotInterfaceBridge(uint ifaceAsmId, uint ifaceToken, byte* methodName, int paramCount)
+    {
+        LoadedAssembly* asm = AssemblyLoader.GetAssembly(ifaceAsmId);
+        if (asm == null)
+            return 0;
+
+        uint row = ifaceToken & 0x00FFFFFF;
+        uint nsIdx = MetadataReader.GetTypeDefNamespace(ref asm->Tables, ref asm->Sizes, row);
+        byte* ns = MetadataReader.GetString(ref asm->Metadata, nsIdx);
+        byte* name = Reflection.ReflectionRuntime.GetTypeName(ifaceAsmId, ifaceToken);
+        if (ns == null || name == null)
+            return 0;
+
+        // Metadata names are ASCII; build "ns.name" in a stack buffer.
+        byte* full = stackalloc byte[256];
+        int pos = 0;
+        for (byte* p = ns; *p != 0 && pos < 250; p++)
+            full[pos++] = *p;
+        if (pos > 0)
+            full[pos++] = (byte)'.';
+        for (byte* p = name; *p != 0 && pos < 254; p++)
+            full[pos++] = *p;
+        full[pos] = 0;
+
+        AotMethodEntry entry;
+        if (AotMethodRegistry.TryLookupEx(full, methodName, (byte)paramCount, 0, 0, out entry))
+            return entry.NativeCode;
+        return 0;
+    }
+
+    /// <summary>
     /// Resolve an interface method by NAME against the object's class hierarchy.
     /// Fallback for JIT-created types whose MethodTable lacks a usable interface
     /// map (e.g. freshly instantiated generics created outside a compile):
@@ -878,7 +915,14 @@ public static unsafe class JitStubs
         }
 
         if (implToken == 0)
-            return 0;
+        {
+            // Kernel AOT classes carry no JIT-visible metadata, so the class
+            // hierarchy search above cannot see their interface
+            // implementations. Bridges for such interfaces register in the
+            // AOT method registry keyed by the interface's full name (see
+            // DriverServicesBridges); try that before giving up.
+            return LookupAotInterfaceBridge(ifaceAsmId, ifaceToken, methodName, paramCount);
+        }
 
         // Fast path: already compiled.
         CompiledMethodInfo* existing = CompiledMethodRegistry.Lookup(implToken, implAsmId);

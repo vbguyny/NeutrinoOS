@@ -180,6 +180,15 @@ public static unsafe class DriverPackageLoader
         PackagedDriverAdapter adapter = new PackagedDriverAdapter();
         adapter.Bind(raw, tName, tVersion, tAbiMajor, tAbiMinor, tInit, tMatch, tProbe, tStart, tStop);
 
+        // Device-marshal thunks from the driver ABI copy on the image: they
+        // build driver-world DeviceInfo copies so every field read inside
+        // the driver matches its own layout (see the ABI's DeviceMarshal.cs).
+        if (!BindDeviceMarshal(adapter))
+        {
+            LogSkip(name, "device marshal unavailable (ABI /lib copy not loaded?)");
+            return false;
+        }
+
         uint[] vendorIds = ParseHexList(drv, "vendorIds");
         uint[] deviceIds = ParseHexList(drv, "deviceIds");
         string className = drv.GetString("class");
@@ -196,6 +205,45 @@ public static unsafe class DriverPackageLoader
         DebugConsole.Write(adapter.Name);
         DebugConsole.WriteLine("' registered");
         return true;
+    }
+
+    /// <summary>
+    /// Compile and wire the DeviceInfoMarshal factories from the driver ABI
+    /// copy that shipped on the image (/lib/NeutrinoOS.Driver.Abstractions).
+    /// </summary>
+    private static bool BindDeviceMarshal(PackagedDriverAdapter adapter)
+    {
+        uint abiAsmId = FindLoadedAssemblyByName("NeutrinoOS.Driver.Abstractions");
+        if (abiAsmId == 0)
+            return false;
+
+        uint marshalType = AssemblyLoader.FindTypeDefByFullName(abiAsmId, "NeutrinoOS.Drivers", "DeviceInfoMarshal");
+        if (marshalType == 0)
+            return false;
+
+        void* createThunk;
+        void* matchThunk;
+        if (!CompileThunk(abiAsmId, marshalType, "Create", out createThunk))
+            return false;
+        if (!CompileThunk(abiAsmId, marshalType, "WithMatch", out matchThunk))
+            return false;
+
+        adapter.BindMarshal(createThunk, matchThunk);
+        return true;
+    }
+
+    /// <summary>Loaded assembly id by simple name, or 0 when not loaded.</summary>
+    private static uint FindLoadedAssemblyByName(string name)
+    {
+        for (uint id = 1; id <= 64; id++)
+        {
+            LoadedAssembly* asm = AssemblyLoader.GetAssembly(id);
+            if (asm == null || asm->Name == null)
+                continue;
+            if (ByteNameIs(asm->Name, name))
+                return id;
+        }
+        return 0;
     }
 
     /// <summary>
@@ -270,10 +318,9 @@ public static unsafe class DriverPackageLoader
     /// be a real type from the loaded driver assembly (LookupTypeInfo must
     /// resolve) and its interface map must not contradict the IDriver
     /// contract. Entries the runtime does not expose (JIT-built maps can
-    /// read back as null here) are tolerated: the assembly-ref mapping that
-    /// binds NeutrinoOS.Driver.Abstractions to the kernel copy is what
-    /// guarantees the ABI identity, and the lifecycle calls that follow are
-    /// the real proof.
+    /// read back as null here) are tolerated: the driver's calls bind to
+    /// the ABI copy shipped at /lib by construction, and the lifecycle
+    /// calls through thunks that follow are the real proof.
     /// </summary>
     private static bool ImplementsKernelIDriver(nint raw)
     {

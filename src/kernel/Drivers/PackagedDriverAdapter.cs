@@ -37,6 +37,12 @@ public sealed unsafe class PackagedDriverAdapter : IDriver
     private void* _start;
     private void* _stop;
 
+    // Device-marshal thunks (ABI DeviceInfoMarshal, compiled from the /lib
+    // copy): build a driver-world DeviceInfo copy per call so every field
+    // read inside the driver uses its own layout (see DeviceMarshal.cs).
+    private void* _marshalCreate;
+    private void* _marshalMatch;
+
     private string _name;
     private string _version;
 
@@ -84,6 +90,50 @@ public sealed unsafe class PackagedDriverAdapter : IDriver
         _version = RawToString(((delegate* unmanaged<nint, nint>)getVersion)(instance));
     }
 
+    /// <summary>Wire the device-marshal factories (from the ABI /lib copy).</summary>
+    internal void BindMarshal(void* create, void* withMatch)
+    {
+        _marshalCreate = create;
+        _marshalMatch = withMatch;
+    }
+
+    /// <summary>
+    /// Build a driver-world DeviceInfo copy for one call: base fields via
+    /// DeviceInfoMarshal.Create, match fields via DeviceInfoMarshal.WithMatch
+    /// (both JIT-compiled in the ABI copy). Returns 0 when unavailable.
+    /// </summary>
+    private nint MakeJitDevice(DeviceInfo d)
+    {
+        if (_marshalCreate == null || _marshalMatch == null)
+            return 0;
+
+        nint pathPtr = 0;
+        if (d.Path != null)
+        {
+            object pathObj = d.Path;
+            pathPtr = System.Runtime.CompilerServices.Unsafe.As<object, nint>(ref pathObj);
+        }
+        nint busPtr = 0;
+        if (d.Bus != null)
+        {
+            object busObj = d.Bus;
+            busPtr = System.Runtime.CompilerServices.Unsafe.As<object, nint>(ref busObj);
+        }
+
+        nint shell = ((delegate* unmanaged<int, int, nint, nint, nint>)_marshalCreate)(
+            d.Id, d.ParentId, pathPtr, busPtr);
+        if (shell == 0)
+            return 0;
+
+        ulong vendorDeviceClass = ((ulong)d.VendorId << 48)
+            | ((ulong)d.DeviceId << 32)
+            | ((ulong)(int)d.Class << 24);
+        ulong addressClassCode = ((ulong)d.ClassCode << 32) | d.Address;
+
+        return ((delegate* unmanaged<nint, ulong, ulong, nint>)_marshalMatch)(
+            shell, vendorDeviceClass, addressClassCode);
+    }
+
     public void Initialize(IDriverServices services)
     {
         if (_initialize == null)
@@ -98,18 +148,20 @@ public sealed unsafe class PackagedDriverAdapter : IDriver
         if (_match == null)
             return false;
 
-        // TEMP diagnostics: what does the adapter hand to the driver?
-        DebugConsole.Write("[drv] adapter.Match dev=0x");
-        DebugConsole.WriteHex((ulong)RefOf(device));
-        DebugConsole.Write(" did=0x");
-        DebugConsole.WriteHex(device.DeviceId);
-        DebugConsole.Write(" bus=");
-        DebugConsole.Write(device.Bus);
-        DebugConsole.WriteLine();
+        nint jitDevice = MakeJitDevice(device);
+        if (jitDevice == 0)
+        {
+            DebugConsole.Write("[drv] adapter.Match: device marshal unavailable for ");
+            DebugConsole.Write(device.Path);
+            DebugConsole.WriteLine();
+            return false;
+        }
 
-        byte result = ((delegate* unmanaged<nint, nint, byte>)_match)(_instance, RefOf(device));
+        byte result = ((delegate* unmanaged<nint, nint, byte>)_match)(_instance, jitDevice);
 
-        DebugConsole.Write("[drv] adapter.Match -> ");
+        DebugConsole.Write("[drv] adapter.Match ");
+        DebugConsole.Write(device.Path);
+        DebugConsole.Write(" -> ");
         DebugConsole.WriteDecimal((uint)result);
         DebugConsole.WriteLine();
         return result != 0;
@@ -119,21 +171,30 @@ public sealed unsafe class PackagedDriverAdapter : IDriver
     {
         if (_probe == null)
             return false;
-        return ((delegate* unmanaged<nint, nint, byte>)_probe)(_instance, RefOf(device)) != 0;
+        nint jitDevice = MakeJitDevice(device);
+        if (jitDevice == 0)
+            return false;
+        return ((delegate* unmanaged<nint, nint, byte>)_probe)(_instance, jitDevice) != 0;
     }
 
     public bool Start(DeviceInfo device)
     {
         if (_start == null)
             return false;
-        return ((delegate* unmanaged<nint, nint, byte>)_start)(_instance, RefOf(device)) != 0;
+        nint jitDevice = MakeJitDevice(device);
+        if (jitDevice == 0)
+            return false;
+        return ((delegate* unmanaged<nint, nint, byte>)_start)(_instance, jitDevice) != 0;
     }
 
     public void Stop(DeviceInfo device)
     {
         if (_stop == null)
             return;
-        ((delegate* unmanaged<nint, nint, void>)_stop)(_instance, RefOf(device));
+        nint jitDevice = MakeJitDevice(device);
+        if (jitDevice == 0)
+            return;
+        ((delegate* unmanaged<nint, nint, void>)_stop)(_instance, jitDevice);
     }
 
     private static nint RefOf(object obj)
