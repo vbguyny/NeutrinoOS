@@ -427,6 +427,11 @@ public static unsafe class Kernel
         Platform.PCI.EnumerateAndPrint();
         BootLog.Status("PCI enumerated");
 
+        // Driver framework: build the device tree (PCI/VirtIO/platform)
+        // and run the ABI-gated driver match pass.
+        ProtonOS.Drivers.DriverFramework.Initialize();
+        BootLog.Status("Driver framework initialized");
+
         // Bind drivers to detected PCI devices
         BindDrivers();
         BootLog.Status("Drivers bound");

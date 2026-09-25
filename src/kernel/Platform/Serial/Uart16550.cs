@@ -306,6 +306,19 @@ public static unsafe class Uart16550
     /// </summary>
     private static void SerialIrqHandler(InterruptFrame* frame)
     {
+        _ = frame;
+        HandleInterruptBody();
+        APIC.SendEoi();
+    }
+
+    /// <summary>
+    /// The IRQ handling body without the EOI: loops until the UART reports
+    /// no pending interrupt. Used both by the legacy handler above and by
+    /// the framework UART driver (whose IDriverServices thunk sends the EOI
+    /// after this returns).
+    /// </summary>
+    public static void HandleInterruptBody()
+    {
         // Loop until the UART reports "no interrupt pending" (IIR bit 0 set)
         while (true)
         {
@@ -351,8 +364,6 @@ public static unsafe class Uart16550
                     break;
             }
         }
-
-        APIC.SendEoi();
     }
 
     private static void DrainRxFifo()

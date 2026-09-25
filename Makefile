@@ -78,6 +78,12 @@ NATIVE_SRC := $(wildcard $(KERNEL_DIR)/$(ARCH)/*.asm)
 KORLIB_SRC := $(filter-out $(KORLIB_DIR)/obj/% $(KORLIB_DIR)/bin/%,$(call rwildcard,$(KORLIB_DIR),*.cs))
 KERNEL_SRC := $(filter-out $(KERNEL_DIR)/obj/% $(KERNEL_DIR)/bin/%,$(call rwildcard,$(KERNEL_DIR),*.cs))
 
+# Driver ABI sources (NeutrinoOS.Driver.Abstractions) are compiled into the
+# kernel: drivers reference the same types by name, and the JIT resolves them
+# to the kernel's AOT copies (same pattern as the DDK exports).
+DRIVER_ABI_DIR := src/lib/NeutrinoOS.Driver.Abstractions
+DRIVER_ABI_SRC := $(filter-out $(DRIVER_ABI_DIR)/obj/% $(DRIVER_ABI_DIR)/bin/%,$(call rwildcard,$(DRIVER_ABI_DIR),*.cs))
+
 # Object files
 NATIVE_OBJ := $(BUILD_DIR)/native.obj
 KERNEL_OBJ := $(BUILD_DIR)/kernel.obj
@@ -177,11 +183,11 @@ $(BOOTLOADER_EFI): $(BOOTLOADER_OBJ)
 
 bootloader: $(BOOTLOADER_EFI)
 
-# Compile kernel (korlib + kernel C# sources together)
-$(KERNEL_OBJ): $(KORLIB_SRC) $(KERNEL_SRC) | $(BUILD_DIR)
+# Compile kernel (korlib + kernel C# sources + driver ABI together)
+$(KERNEL_OBJ): $(KORLIB_SRC) $(KERNEL_SRC) $(DRIVER_ABI_SRC) | $(BUILD_DIR)
 	@echo "BFLAT kernel"
 	rm -rf $(KORLIB_DIR)/obj $(KORLIB_DIR)/bin
-	$(BFLAT) build $(BFLAT_FLAGS) -c -o $@ $(KORLIB_SRC) $(KERNEL_SRC)
+	$(BFLAT) build $(BFLAT_FLAGS) -c -o $@ $(KORLIB_SRC) $(KERNEL_SRC) $(DRIVER_ABI_SRC)
 
 kernel: $(KERNEL_OBJ)
 
