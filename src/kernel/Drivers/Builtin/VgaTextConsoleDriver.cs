@@ -28,6 +28,12 @@ public sealed class VgaTextConsoleDriver : IDriver
 
     public int AbiMinor => DriverAbi.Minor;
 
+    /// <summary>Stores the kernel services instance injected by the manager.</summary>
+    public void Initialize(IDriverServices services)
+    {
+        _services = services;
+    }
+
     /// <summary>Matches PCI VGA-compatible display controllers.</summary>
     public bool Match(DeviceInfo device)
     {
@@ -46,7 +52,8 @@ public sealed class VgaTextConsoleDriver : IDriver
     /// <summary>Start: map the framebuffer BAR through the services ABI.</summary>
     public bool Start(DeviceInfo device)
     {
-        _services = KernelDriverServices.Instance;
+        if (_services == null)
+            return false;
 
         DeviceResource mmio;
         if (!device.TryGetResource(DeviceResourceKind.Mmio, out mmio))

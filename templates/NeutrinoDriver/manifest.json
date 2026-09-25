@@ -1,0 +1,15 @@
+{
+  "name": "example.mydriver",
+  "version": "1.0.0",
+  "architecture": "any",
+  "description": "Example NeutrinoOS driver package (edit me).",
+  "provides": ["driver"],
+  "installPath": "/drivers",
+  "driver": {
+    "class": "custom",
+    "vendorIds": ["8086"],
+    "deviceIds": ["10D3"],
+    "entryPoint": "MyDriver.dll"
+  },
+  "signer": ""
+}

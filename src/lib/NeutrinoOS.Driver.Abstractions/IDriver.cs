@@ -26,6 +26,13 @@ namespace NeutrinoOS.Drivers
         int AbiMinor { get; }
 
         /// <summary>
+        /// Inject the kernel services implementation. Called once by the
+        /// driver's host before the first Match/Probe/Start; the driver
+        /// must store the instance and use it for all kernel authority.
+        /// </summary>
+        void Initialize(IDriverServices services);
+
+        /// <summary>
         /// Cheap match test: can this driver handle the device? Called for
         /// every device in the tree; must not touch hardware.
         /// </summary>

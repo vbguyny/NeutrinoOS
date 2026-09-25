@@ -26,6 +26,12 @@ public sealed class Uart16550Driver : IDriver
 
     public int AbiMinor => DriverAbi.Minor;
 
+    /// <summary>Stores the kernel services instance injected by the manager.</summary>
+    public void Initialize(IDriverServices services)
+    {
+        _services = services;
+    }
+
     /// <summary>Matches the platform uart0 device (vid 0xFFFF, did 0x1650).</summary>
     public bool Match(DeviceInfo device)
     {
@@ -48,7 +54,8 @@ public sealed class Uart16550Driver : IDriver
     /// </summary>
     public bool Start(DeviceInfo device)
     {
-        _services = KernelDriverServices.Instance;
+        if (_services == null)
+            return false;
 
         DeviceResource irqRes;
         if (device.TryGetResource(DeviceResourceKind.Irq, out irqRes))

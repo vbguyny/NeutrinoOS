@@ -78,6 +78,10 @@ public static class DriverManager
         reg.Started = false;
         _drivers[_driverCount] = reg;
         _driverCount++;
+
+        // The manager acts as the driver's host: inject the kernel
+        // services implementation before any lifecycle call.
+        driver.Initialize(KernelDriverServices.Instance);
         return true;
     }
 

@@ -26,6 +26,12 @@ public sealed class Ps2KeyboardDriver : IDriver
 
     public int AbiMinor => DriverAbi.Minor;
 
+    /// <summary>Stores the kernel services instance injected by the manager.</summary>
+    public void Initialize(IDriverServices services)
+    {
+        _services = services;
+    }
+
     /// <summary>Matches the platform ps2 device (vid 0xFFFF, did 0x8042).</summary>
     public bool Match(DeviceInfo device)
     {
@@ -47,7 +53,8 @@ public sealed class Ps2KeyboardDriver : IDriver
     /// </summary>
     public bool Start(DeviceInfo device)
     {
-        _services = KernelDriverServices.Instance;
+        if (_services == null)
+            return false;
 
         DeviceResource irqRes;
         if (device.TryGetResource(DeviceResourceKind.Irq, out irqRes))

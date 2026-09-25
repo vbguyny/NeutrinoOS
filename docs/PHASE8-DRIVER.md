@@ -25,7 +25,7 @@ Implementation staging (this phase):
 | Port VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
 | PCIe hot-plug detection | deferred (see Limitations) |
-| SDK template + `scripts/build-driver.ps1` | deferred (see Limitations) |
+| SDK: `templates/NeutrinoDriver` + `scripts/build-driver.ps1` | done |
 
 ## Device model
 
@@ -50,7 +50,9 @@ to driver projects) contains:
   Drivers whose major differs, or whose minor is newer, are refused by the
   driver manager.
 - `IDriver` — `Name`, `Version`, `AbiMajor/AbiMinor`, lifecycle
-  `Match(DeviceInfo) → Probe(DeviceInfo) → Start(DeviceInfo) → Stop(DeviceInfo)`.
+  `Initialize(services) → Match(DeviceInfo) → Probe(DeviceInfo) → Start(DeviceInfo) → Stop(DeviceInfo)`.
+  `Initialize` is called once by the driver's host (the driver manager, or a
+  future separated host) to inject the `IDriverServices` instance.
 - `IDriverServices` — the only hardware/kernel authority a driver has:
   `MapMmio`, `UnmapMmio`, `AllocateDma`, `FreeDma`,
   `RegisterInterrupt(irq, callback)`, `UnregisterInterrupt`,
@@ -145,10 +147,10 @@ first PCI-matched driver:
   transport into isolated hosts later does not change driver code. This is
   the main deviation from the Fuchsia model and is expected to be revisited
   in a later phase.
-- **Porting**: only UART 16550 is on the framework so far. The other drivers
-  (PS/2, VGA text, VirtIO-Net/Blk, E1000, AHCI) still run through their
-  legacy kernel paths; they port incrementally (each port keeps the legacy
-  path until verified).
+- **Porting**: UART 16550, PS/2 keyboard and VGA text are on the framework.
+  The remaining drivers (VirtIO-Net/Blk, E1000, AHCI) still run through
+  their legacy kernel paths; they port incrementally (each port keeps the
+  legacy path until verified).
 - **Loading from packages**: drivers in `/var/lib/npkg/drivers/` (npkg driver
   packages carry `driver{class,vendorIds,deviceIds,entryPoint}` manifest
   metadata) are not auto-loaded yet; the loader integration is the next
@@ -156,5 +158,23 @@ first PCI-matched driver:
 - **Hot-plug**: PCIe hot-plug detection (`Attention Button`/`Power
   Indicator` and the PCIe capability walk) is not implemented yet.
 - **USB**: out of scope for Phase 8 (deferred to Phase 9+).
-- **SDK/template/build-driver.ps1**: pending; the ABI assembly is already
-  packaged for reuse (`NeutrinoOS.Driver.Abstractions.csproj`).
+- **Driver-package loading**: npkg driver packages install their payload to
+  the manifest's `installPath`, but the driver manager does not yet scan
+  `/var/lib/npkg/drivers` (and manifest `driver{vendorIds,deviceIds,entryPoint}`
+  metadata) at boot; that loader integration is the next increment.
+
+## Driver SDK
+
+- `templates/NeutrinoDriver/` — a ready-to-build driver project:
+  `NeutrinoDriver.csproj` (references `NeutrinoOS.Driver.Abstractions` with
+  `Private=false`: the ABI assembly is provided by the OS, never shipped in
+  the package payload), `MyDriver.cs` (annotated `IDriver` skeleton),
+  `manifest.json` (package + `driver` block) and a README with the build,
+  pack and install steps.
+- `scripts/build-driver.ps1` — Windows 11 (PowerShell 5.1) driver packager:
+  builds the project, stages only the entry assembly, locates or builds the
+  `npkg-host` CLI (`sdk/npkg`), then packs and signs
+  (`npkg-host pack --manifest … --payload-dir … --out … --key …`); with
+  `-RepoDir` it also copies the `.npkg` into a repository and refreshes the
+  signed index. Verified end-to-end (build → pack → `npkg-host verify`
+  PASS) against the template with the test key.

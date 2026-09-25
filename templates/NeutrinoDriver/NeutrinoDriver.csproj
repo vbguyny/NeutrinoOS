@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <OutputType>Library</OutputType>
+    <AssemblyName>MyDriver</AssemblyName>
+    <RootNamespace>MyDriver</RootNamespace>
+    <!-- Match the fixture payload style: dll only, no apphost/pdb/deps. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The driver ABI. When copying this template outside the NeutrinoOS
+         tree, point this at your checkout of src/lib/NeutrinoOS.Driver.Abstractions
+         (or the NuGet form of the package once published).
+         Private=false: the ABI assembly is provided by the OS at load time,
+         so it is not copied into the package payload. -->
+    <ProjectReference Include="../../src/lib/NeutrinoOS.Driver.Abstractions/NeutrinoOS.Driver.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>
