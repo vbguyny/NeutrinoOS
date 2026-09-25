@@ -21,8 +21,8 @@ Implementation staging (this phase):
 | Device tree + `IDeviceTree` | done |
 | Driver manager: Match → Probe → Start, ABI gate | done |
 | `IDriverServices` implementation (MMIO/DMA/IRQ/devnodes/log) | done |
-| Driver ports: UART 16550, PS/2 keyboard | done |
-| Port VGA, VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
+| Driver ports: UART 16550, PS/2 keyboard, VGA text (PCI) | done |
+| Port VirtIO-Net/Blk, E1000, AHCI onto the framework | incremental |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
 | PCIe hot-plug detection | deferred (see Limitations) |
 | SDK template + `scripts/build-driver.ps1` | deferred (see Limitations) |
@@ -113,6 +113,18 @@ DDK uses today.
   The 8042 controller configuration itself stays in
   `Ps2Keyboard.Initialize` (the console layer needs it before the
   framework exists).
+
+`src/kernel/Drivers/Builtin/VgaTextConsoleDriver.cs` — third port, and the
+first PCI-matched driver:
+
+- matches PCI VGA-compatible display controllers (class code 0x030000),
+- probes for the framebuffer MMIO BAR,
+- starts by mapping the BAR through `IDriverServices.MapMmio` (identity
+  map) and logs the mapping. NOTE: the text console still renders via the
+  legacy identity-mapped text window at 0xB8000; moving the console to a
+  linear-mode mapped framebuffer is a follow-up. The driver provides
+  framework ownership of the display device and verifies the PCI MMIO
+  mapping path.
 
 ## Debugging notes (bflat constraints hit while building this)
 
