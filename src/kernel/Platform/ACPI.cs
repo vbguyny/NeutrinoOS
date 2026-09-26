@@ -100,6 +100,71 @@ public unsafe struct ACPIHPET
     public byte PageProtection;
 }
 
+/// <summary>
+/// ACPI Fixed ACPI Description Table (FADT, signature "FACP", Phase 9).
+/// Field offsets follow the ACPI specification: PM blocks at 0x38-0x54,
+/// PM1_CNT_LEN at 0x59, the reset register at 0x74 (RESET_VALUE at 0x80),
+/// and the 64-bit X_* variants from 0x84 (X_DSDT at 0x8C,
+/// X_PM1a_CNT_BLK at 0xAC, X_PM1b_CNT_BLK at 0xB8).
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public unsafe struct ACPIFADT
+{
+    public ACPITableHeader Header;      // 0x00
+    public uint FirmwareCtrl;           // 0x24
+    public uint Dsdt;                   // 0x28 (32-bit DSDT physical address)
+    public byte Reserved1;              // 0x2C
+    public byte PreferredPmProfile;     // 0x2D
+    public ushort SciInt;               // 0x2E
+    public uint SmiCmd;                 // 0x30
+    public byte AcpiEnable;             // 0x34
+    public byte AcpiDisable;            // 0x35
+    public byte S4BiosReq;              // 0x36
+    public byte PStateCnt;              // 0x37
+    public uint Pm1aEvtBlk;             // 0x38
+    public uint Pm1bEvtBlk;             // 0x3C
+    public uint Pm1aCntBlk;             // 0x40
+    public uint Pm1bCntBlk;             // 0x44
+    public uint Pm2CntBlk;              // 0x48
+    public uint PmTmrBlk;               // 0x4C
+    public uint Gpe0Blk;                // 0x50
+    public uint Gpe1Blk;                // 0x54
+    public byte Pm1EvtLen;              // 0x58
+    public byte Pm1CntLen;              // 0x59
+    public byte Pm2CntLen;              // 0x5A
+    public byte PmTmrLen;               // 0x5B
+    public byte Gpe0BlkLen;             // 0x5C
+    public byte Gpe1BlkLen;             // 0x5D
+    public byte Gpe1Base;               // 0x5E
+    public byte CstCnt;                 // 0x5F
+    public ushort PLevel2Lat;           // 0x60
+    public ushort PLevel3Lat;           // 0x62
+    public ushort FlushSize;            // 0x64
+    public ushort FlushStride;          // 0x66
+    public byte DutyOffset;             // 0x68
+    public byte DutyWidth;              // 0x69
+    public byte DayAlarm;               // 0x6A
+    public byte MonAlarm;               // 0x6B
+    public byte Century;                // 0x6C
+    public ushort IapcBootArch;         // 0x6D
+    public byte Reserved2;              // 0x6F
+    public uint Flags;                  // 0x70
+    public ACPIGenericAddress ResetReg; // 0x74
+    public byte ResetValue;             // 0x80
+    public ushort ArmBootArch;          // 0x81
+    public byte FadtMinorVersion;       // 0x83
+    public ulong XFirmwareCtrl;         // 0x84
+    public ulong XDsdt;                 // 0x8C
+    public ACPIGenericAddress XPm1aEvtBlk;  // 0x94
+    public ACPIGenericAddress XPm1bEvtBlk;  // 0xA0
+    public ACPIGenericAddress XPm1aCntBlk;  // 0xAC
+    public ACPIGenericAddress XPm1bCntBlk;  // 0xB8
+    public ACPIGenericAddress XPm2CntBlk;   // 0xC4
+    public ACPIGenericAddress XPmTmrBlk;    // 0xD0
+    public ACPIGenericAddress XGpe0Blk;     // 0xDC
+    public ACPIGenericAddress XGpe1Blk;     // 0xE8
+}
+
 // ============================================================================
 // MADT (Multiple APIC Description Table) Structures - for SMP support
 // ============================================================================
@@ -483,6 +548,16 @@ public static unsafe class ACPI
     public static ACPIHPET* FindHpet()
     {
         return (ACPIHPET*)FindTable((byte)'H', (byte)'P', (byte)'E', (byte)'T');
+    }
+
+    /// <summary>
+    /// Find the FADT (Fixed ACPI Description Table, signature "FACP").
+    /// Phase 9: source of the PM1 control blocks and the reset register
+    /// for ACPI power management.
+    /// </summary>
+    public static ACPIFADT* FindFadt()
+    {
+        return (ACPIFADT*)FindTable((byte)'F', (byte)'A', (byte)'C', (byte)'P');
     }
 
     /// <summary>

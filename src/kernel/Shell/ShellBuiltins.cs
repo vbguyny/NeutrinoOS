@@ -64,6 +64,8 @@ public static class ShellBuiltins
             case "gcstats": return true && RunGcStats(args, out exitCode);
             case "perf": return true && RunPerf(args, out exitCode);
             case "version": return true && RunVersion(args, out exitCode);
+            case "poweroff": return true && RunPoweroff(args, out exitCode);
+            case "reboot": return true && RunReboot(args, out exitCode);
             default: return false;
         }
     }
@@ -447,7 +449,7 @@ public static class ShellBuiltins
 
         Console.WriteLine("NeutrinoOS shell (Phase 5) - built-in commands:");
         Console.WriteLine("  cd pwd exit logout export unset history alias unalias source");
-        Console.WriteLine("  jobs fg bg help run true false gc");
+        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot");
         Console.WriteLine();
         Console.WriteLine("External utilities resolve through $PATH (default /bin:/apps):");
         Console.WriteLine("  ls cat echo mkdir rm cp mv touch head tail wc grep find");
@@ -493,6 +495,8 @@ public static class ShellBuiltins
             case "gcstats": return "usage: gcstats - heap and pause statistics for the garbage collector";
             case "perf": return "usage: perf start|stop|reset|dump - kernel sampling profiler (see /dev/profiler)";
             case "version": return "usage: version - print the NeutrinoOS version string";
+            case "poweroff": return "usage: poweroff - shut down the system via ACPI S5 (Phase 9)";
+            case "reboot": return "usage: reboot - reset the system via ACPI/PCI reset (Phase 9)";
             default: return null;
         }
     }
@@ -549,6 +553,61 @@ public static class ShellBuiltins
     {
         exitCode = 0;
         Console.WriteLine(ProtonOS.Exports.DDK.SystemInfoExports.VersionString);
+        return true;
+    }
+
+    // ==================== Phase 9: poweroff / reboot ====================
+
+    /// <summary>
+    /// Shuts the machine down via ACPI S5 (Phase 9). Prints the detection
+    /// summary, writes PM1_CNT and never returns; exit code 1 with a
+    /// message when the platform has no ACPI S5 mechanism.
+    /// </summary>
+    private static bool RunPoweroff(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: poweroff");
+            Console.WriteLine("  Shut down the system via ACPI S5 (PM1_CNT write with");
+            Console.WriteLine("  the \\\\_S5 SLP_TYP values from the DSDT).");
+            return true;
+        }
+
+        Console.WriteLine("Shutting down NeutrinoOS (ACPI S5)...");
+        if (!ProtonOS.Platform.PowerManagement.IsAvailable)
+        {
+            ProtonOS.Platform.PowerManagement.Initialize();
+            if (!ProtonOS.Platform.PowerManagement.IsAvailable)
+            {
+                Console.Error.WriteLine("poweroff: ACPI S5 is not available on this machine");
+                exitCode = 1;
+                return true;
+            }
+        }
+        ProtonOS.Platform.PowerManagement.PowerOff();
+        exitCode = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Resets the machine (Phase 9): FADT reset register, then 0xCF9,
+    /// then the keyboard-controller reset. Does not return.
+    /// </summary>
+    private static bool RunReboot(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: reboot");
+            Console.WriteLine("  Reset the system: ACPI FADT reset register when present,");
+            Console.WriteLine("  otherwise the 0xCF9 PCI reset and the 8042 pulse.");
+            return true;
+        }
+
+        Console.WriteLine("Rebooting NeutrinoOS...");
+        ProtonOS.Platform.PowerManagement.Reboot();
+        exitCode = 0;
         return true;
     }
 

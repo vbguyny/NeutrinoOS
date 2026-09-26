@@ -758,7 +758,23 @@ EfiMain:
     add rdi, rdx                    ; Skip optional header
     ; RDI now points to first section header
 
-    ; Copy headers first
+    ; Zero the entire kernel image region *before* copying anything.
+    ;
+    ; The section copy below writes only SizeOfRawData bytes per section,
+    ; so any section tail with VirtualSize > SizeOfRawData (BSS: zero-
+    ; initialized C# statics) is never written by the loader. Cold boots
+    ; historically survived only because OVMF hands out zeroed memory.
+    ; A warm reset (QEMU system_reset, reset port 0xCF9, legacy 0xCF9
+    ; triple-fault paths) preserves RAM: stale statics from the previous
+    ; boot (e.g. ConsoleAbstractionLayer.IsInitialized / _devices) then
+    ; crash the kernel on the second boot. Zeroing first makes every
+    ; boot deterministic.
+    mov rdi, [rel KernelBase]
+    mov rcx, r12                    ; SizeOfImage (fits in 8MB region)
+    xor eax, eax
+    rep stosb
+
+    ; Copy headers
     mov rsi, [rel KernelBuffer]
     mov rdi, [rel KernelBase]
     mov rcx, r13                    ; SizeOfHeaders

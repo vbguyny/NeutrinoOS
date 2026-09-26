@@ -436,6 +436,10 @@ public static unsafe class Kernel
         Platform.PCI.EnumerateAndPrint();
         BootLog.Status("PCI enumerated");
 
+        // Phase 9: ACPI power management (FADT + \_S5 evaluation) so
+        // poweroff/reboot report their mechanism at boot.
+        Platform.PowerManagement.Initialize();
+
         // Driver framework: build the device tree (PCI/VirtIO/platform)
         // and run the ABI-gated driver match pass.
         ProtonOS.Drivers.DriverFramework.Initialize();
