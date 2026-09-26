@@ -45,6 +45,7 @@ namespace Internal.Runtime.CompilerHelpers
 #endif
 
             SetEfiSystemTable(systemTable);
+            SetEfiImageHandle((void*)imageHandle);
             ManagedMain(0, null);
 
             while (true) ;

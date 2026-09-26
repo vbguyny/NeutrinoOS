@@ -93,10 +93,17 @@ public static unsafe class SystemInfoExports
     /// Must be const: bflat's TypePreinit pass rejects static string
     /// field initializers in the kernel assembly.
     /// </summary>
+#if ARCH_ARM64
+    public const string VersionString = "NeutrinoOS 1.0.0 aarch64";
+
+    /// <summary>Human banner line (kept in sync with VersionString).</summary>
+    public const string VersionBanner = "NeutrinoOS v1.0.0 (AArch64 UEFI)";
+#else
     public const string VersionString = "NeutrinoOS 1.0.0 x86_64";
 
     /// <summary>Human banner line (kept in sync with VersionString).</summary>
     public const string VersionBanner = "NeutrinoOS v1.0.0 (x86-64 UEFI)";
+#endif
 
     /// <summary>
     /// Copies the NeutrinoOS version string ("NeutrinoOS &lt;version&gt;

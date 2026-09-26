@@ -383,6 +383,7 @@ public unsafe struct EFISystemTable
     public void* StdErr;
     public void* RuntimeServices;
     public EFIBootServices* BootServices;
+    // Real UEFI order (UefiSpec.h): entry COUNT first, then the table pointer.
     public ulong NumberOfTableEntries;
     public void* ConfigurationTable;
 }

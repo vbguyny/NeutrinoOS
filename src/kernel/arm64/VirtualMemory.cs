@@ -108,101 +108,41 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
     public static bool IsInitialized => _initialized;
 
     /// <summary>
-    /// Convert a physical address to its higher-half virtual address
+    /// Convert a physical address to a usable kernel address. ARM64 keeps
+    /// the firmware's identity mappings (see Init), so this is identity.
     /// </summary>
-    public static ulong PhysToVirt(ulong physAddr) => physAddr + PhysicalMapBase;
+    public static ulong PhysToVirt(ulong physAddr) => physAddr;
 
     /// <summary>
-    /// Convert a higher-half virtual address to its physical address
+    /// Convert a kernel virtual address to physical (identity map).
     /// </summary>
-    public static ulong VirtToPhys(ulong virtAddr) => virtAddr - PhysicalMapBase;
+    public static ulong VirtToPhys(ulong virtAddr) => virtAddr;
+
+    /// <summary>Identity conversion (see PhysToVirt).</summary>
+    public static T* PhysToVirt<T>(T* physPtr) where T : unmanaged => physPtr;
+
+    /// <summary>Identity conversion (see VirtToPhys).</summary>
+    public static T* VirtToPhys<T>(T* virtPtr) where T : unmanaged => virtPtr;
 
     /// <summary>
-    /// Convert a physical pointer to a higher-half virtual pointer
-    /// </summary>
-    public static T* PhysToVirt<T>(T* physPtr) where T : unmanaged
-        => (T*)((ulong)physPtr + PhysicalMapBase);
-
-    /// <summary>
-    /// Convert a higher-half virtual pointer to a physical pointer
-    /// </summary>
-    public static T* VirtToPhys<T>(T* virtPtr) where T : unmanaged
-        => (T*)((ulong)virtPtr - PhysicalMapBase);
-
-    /// <summary>
-    /// Initialize virtual memory with identity mapping for kernel.
-    /// Must be called after PageAllocator is initialized.
+    /// ARM64: the firmware (AAVMF) already configured the MMU with an
+    /// identity map covering RAM and device MMIO, and this increment keeps
+    /// using that map. Init captures the current translation base for
+    /// reporting and deliberately does NOT build x64 page tables or write
+    /// TTBR0 (the x64 table walkers below are dormant on ARM64).
     /// </summary>
     public static bool Init()
     {
         if (_initialized)
             return true;
 
-        if (!PageAllocator.IsInitialized)
-        {
-            DebugConsole.WriteLine("[VMem] PageAllocator not initialized!");
-            return false;
-        }
-
-        DebugConsole.WriteLine("[VMem] Initializing virtual memory...");
-
-        // Allocate PML4
-        _pml4PhysAddr = PageAllocator.AllocatePage();
-        if (_pml4PhysAddr == 0)
-        {
-            DebugConsole.WriteLine("[VMem] Failed to allocate PML4!");
-            return false;
-        }
-
-        // Zero out PML4
-        ZeroPage(_pml4PhysAddr);
-
-        DebugConsole.Write("[VMem] PML4 at 0x");
-        DebugConsole.WriteHex(_pml4PhysAddr);
-        DebugConsole.WriteLine();
-
-        // Map kernel space (first 4GB) using 2MB pages
-        // We map from 0 but will unmap page 0 separately for null guard
-        if (!IdentityMapRange(0, PhysicalMapSize))
-        {
-            DebugConsole.WriteLine("[VMem] Failed to create kernel mapping!");
-            return false;
-        }
-
-        // Unmap page 0 (null guard) - this catches null pointer dereferences
-        // We need to use 4KB pages for the first 2MB to allow unmapping just page 0
-        UnmapNullGuardPage();
-
-        DebugConsole.WriteLine("[VMem] Kernel space: 0x1000 - 0x1_0000_0000 (null guard at 0x0)");
-
-        // Map physical memory to higher half (0xFFFF_8000_0000_0000+)
-        // This allows kernel to access any physical memory through higher-half pointers
-        if (!MapHigherHalf(0, PhysicalMapSize))
-        {
-            DebugConsole.WriteLine("[VMem] Failed to create physical memory map!");
-            return false;
-        }
-
-        DebugConsole.Write("[VMem] Physical map: 0x");
-        DebugConsole.WriteHex(PhysicalMapBase);
-        DebugConsole.WriteLine(" (4GB)");
-
-        // W^X: re-map the kernel image executable. The bulk identity map
-        // above marks ALL RAM non-executable; only the loaded image (code +
-        // its data) and the separate JIT code heap may execute. This must
-        // happen before the CR3 switch so the running code is valid in the
-        // new tables.
-        ProtectKernelImage();
-
-        // Switch to our page tables
-        DebugConsole.Write("[VMem] Loading CR3 with 0x");
-        DebugConsole.WriteHex(_pml4PhysAddr);
-        DebugConsole.WriteLine();
-
-        CPU.WriteCr3(_pml4PhysAddr);
+        // read_cr3 maps to `mrs ttbr0_el1` in the ARM64 native layer.
+        _pml4PhysAddr = CPU.ReadCr3();
 
         _initialized = true;
-        DebugConsole.WriteLine("[VMem] Initialized (kernel 0-4GB, physmap in higher half)");
+        DebugConsole.Write("[VMem] ARM64: keeping firmware identity map (ttbr0=0x");
+        DebugConsole.WriteHex(_pml4PhysAddr);
+        DebugConsole.WriteLine(")");
         return true;
     }
 
@@ -694,77 +634,28 @@ public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
     /// <returns>Base address of allocation, or 0 on failure</returns>
     public static ulong AllocateVirtualRange(ulong requestedAddress, ulong size, bool commit, ulong flags)
     {
+        _ = requestedAddress;   // identity world: physical address is the usable address
+        _ = flags;
         if (size == 0)
             return 0;
 
-        // Round up to page boundary
         size = (size + PageSize - 1) & ~(PageSize - 1);
 
-        ulong virtAddr;
-        if (requestedAddress != 0)
-        {
-            // Use requested address (must be page-aligned)
-            if ((requestedAddress & (PageSize - 1)) != 0)
-                return 0;
-            virtAddr = requestedAddress;
-        }
-        else
-        {
-            // Allocate from next available address
-            _allocLock.Acquire();
-            virtAddr = _nextVirtualAddress;
-            _nextVirtualAddress += size;
-            _allocLock.Release();
-        }
+        // ARM64 identity map: hand out real contiguous pages and return
+        // their address directly. There is no separate virtual reservation
+        // concept in this increment; uncommitted reservations are a no-op.
+        if (!commit)
+            return 0;
 
-        // If committing, actually allocate physical pages and map them
-        if (commit)
-        {
-            ulong numPages = size / PageSize;
+        ulong baseAddr = PageAllocator.AllocatePages(size / PageSize);
+        if (baseAddr == 0)
+            return 0;
 
-            for (ulong i = 0; i < numPages; i++)
-            {
-                // Allocate physical page
-                ulong physPage = PageAllocator.AllocatePage();
-                if (physPage == 0)
-                {
-                    // Allocation failed - should unmap what we've done
-                    return 0;
-                }
+        byte* pagePtr = (byte*)baseAddr;
+        for (ulong i = 0; i < size; i++)
+            pagePtr[i] = 0;
 
-                // Zero the page
-                byte* pagePtr = (byte*)physPage;
-                for (int j = 0; j < (int)PageSize; j++)
-                    pagePtr[j] = 0;
-
-                // Map virtual to physical
-                ulong virt = virtAddr + i * PageSize;
-                if (!MapPage(virt, physPage, flags))
-                {
-                    PageAllocator.FreePage(physPage);
-                    return 0;
-                }
-
-                InvalidatePage(virt);
-            }
-        }
-
-        // Track the allocation
-        var entry = (VirtualAllocationEntry*)HeapAllocator.AllocZeroed((ulong)sizeof(VirtualAllocationEntry));
-        if (entry != null)
-        {
-            entry->BaseAddress = virtAddr;
-            entry->Size = size;
-            entry->IsCommitted = commit;
-            entry->Flags = flags;
-
-            _allocLock.Acquire();
-            entry->Next = _allocListHead;
-            _allocListHead = entry;
-            _allocLock.Release();
-        }
-
-        return virtAddr;
+        return baseAddr;
     }
 
     /// <summary>

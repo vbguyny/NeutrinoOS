@@ -23,9 +23,14 @@ namespace System
     public unsafe partial class Object
     {
         private static void* s_efiSystemTable;
+        private static void* s_efiImageHandle;
 
         internal static EFI_SYSTEM_TABLE* EfiSystemTable => (EFI_SYSTEM_TABLE*)s_efiSystemTable;
         internal static void SetEfiSystemTable(EFI_SYSTEM_TABLE* t) => s_efiSystemTable = t;
+
+        /// <summary>Image handle the firmware passed to the entry point.</summary>
+        internal static void* EfiImageHandle => s_efiImageHandle;
+        internal static void SetEfiImageHandle(void* h) => s_efiImageHandle = h;
     }
 }
 

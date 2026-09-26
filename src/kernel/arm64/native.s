@@ -46,6 +46,30 @@ arm64_raw_puts_nl:
     strb w17, [x16]
     ret
 
+// Print x0 as "0x" + 16 hex digits. Clobbers x1, x4, x16, x17.
+    .globl arm64_raw_puthex
+arm64_raw_puthex:
+    movz x16, #0x0900, lsl #16
+    mov w17, #'0'
+    strb w17, [x16]
+    mov w17, #'x'
+    strb w17, [x16]
+    mov x4, #60
+1:
+    lsr x1, x0, x4
+    and w1, w1, #0xF
+    cmp w1, #9
+    b.hi 2f
+    add w1, w1, #'0'
+    b 3f
+2:
+    add w1, w1, #55
+3:
+    strb w1, [x16]
+    subs x4, x4, #4
+    b.ge 1b
+    ret
+
 // Fatal halt with a message; never returns. x0 = message.
     .globl arm64_fatal
 arm64_fatal:
@@ -58,9 +82,28 @@ arm64_fatal:
 // Fatal entries with fixed messages.
     .globl arm64_fatal_throw
 arm64_fatal_throw:
+    // x0 = exception object, x30 = throw site. Print both for diagnosis.
+    mov x19, x0
+    mov x20, x30
     adrp x0, msg_throw
     add x0, x0, :lo12:msg_throw
-    b arm64_fatal
+    bl arm64_raw_puts
+    bl arm64_raw_puts_nl
+    adrp x0, msg_ex
+    add x0, x0, :lo12:msg_ex
+    bl arm64_raw_puts
+    mov x0, x19
+    bl arm64_raw_puthex
+    bl arm64_raw_puts_nl
+    adrp x0, msg_ra
+    add x0, x0, :lo12:msg_ra
+    bl arm64_raw_puts
+    mov x0, x20
+    bl arm64_raw_puthex
+    bl arm64_raw_puts_nl
+1:
+    wfi
+    b 1b
 
     .globl arm64_fatal_rethrow
 arm64_fatal_rethrow:
@@ -136,17 +179,19 @@ RhpStackProbe:
     ret
 
 // ---------------------------------------------------------------------------
-// GC reference helpers: plain stores (the kernel GC does not relocate
-// concurrently), signatures follow the NativeAOT arm64 convention.
+// GC reference helpers. NativeAOT's arm64 optimized-helper convention:
+//   x14 = destination address, x15 = value  (NOT x0/x1!)
+// bflat-compiled code sets x14/x15 and branches here for every reference
+// store, so these must use those registers.
 // ---------------------------------------------------------------------------
     .globl RhpAssignRefArm64
 RhpAssignRefArm64:
-    str x1, [x0]
+    str x15, [x14]
     ret
 
     .globl RhpCheckedAssignRefArm64
 RhpCheckedAssignRefArm64:
-    str x2, [x1]
+    str x15, [x14]
     ret
 
 // ---------------------------------------------------------------------------
@@ -355,12 +400,22 @@ atomic_add64:
     ret
 
 // ---------------------------------------------------------------------------
-// Boot info slot (Kernel.BootInfoAccess reads the pointer via get_boot_info)
+// Boot info slot (BootInfoAccess reads the pointer via get_boot_info).
+// Contract matches x64: get_boot_info returns the BootInfo* value stored
+// in the slot; set_boot_info stores the argument into the slot.
 // ---------------------------------------------------------------------------
     .globl get_boot_info
 get_boot_info:
     adrp x0, g_boot_info_slot
     add x0, x0, :lo12:g_boot_info_slot
+    ldr x0, [x0]
+    ret
+
+    .globl set_boot_info
+set_boot_info:
+    adrp x1, g_boot_info_slot
+    add x1, x1, :lo12:g_boot_info_slot
+    str x0, [x1]
     ret
 
 // ---------------------------------------------------------------------------
@@ -438,9 +493,45 @@ RhpThrowEx:
 RhpRethrow:
     b arm64_fatal_rethrow
 
+// Dynamic interface dispatch (mirrors x64 native.asm):
+//   on entry x11 = InterfaceDispatchCell*, x0 = 'this', args in x0..x7,
+//   x30 = the call site's return address.
+//   The call site does: mov x11, cell; ldr x16, [x11]; blr x16
+//   (cell word 0 initially points here. RhpResolveInterfaceMethod parses
+//   the cell (interface MT + slot), resolves the target method and
+//   returns it; the stub then tail-calls the target.)
+//
+//   CRITICAL: `bl` to the resolver clobbers x30. The original LR must be
+//   saved and restored before the tail `br`, otherwise the target's `ret`
+//   returns into the stub instead of the call site.
     .globl RhpInitialDynamicInterfaceDispatch
 RhpInitialDynamicInterfaceDispatch:
-    b arm64_fatal_iface
+    // Save all argument registers (the target must see them intact).
+    stp x0, x1, [sp, #-128]!
+    stp x2, x3, [sp, #16]
+    stp x4, x5, [sp, #32]
+    stp x6, x7, [sp, #48]
+    stp x8, x9, [sp, #64]
+    stp x10, x11, [sp, #80]
+    stp x12, x13, [sp, #96]
+    stp x14, x15, [sp, #112]
+    str x30, [sp, #72]             // save LR (over the x9 slot)
+
+    mov x1, x11                    // dispatch cell
+    bl RhpResolveInterfaceMethod   // (obj x0, cell x1) -> target x0
+    str x0, [sp, #64]              // stash target over the saved x8 slot
+
+    ldp x0, x1, [sp]
+    ldp x2, x3, [sp, #16]
+    ldp x4, x5, [sp, #32]
+    ldp x6, x7, [sp, #48]
+    ldp x10, x11, [sp, #80]
+    ldp x12, x13, [sp, #96]
+    ldp x14, x15, [sp, #112]
+    ldr x9, [sp, #64]              // target
+    ldr x30, [sp, #72]             // restore LR = original call site
+    add sp, sp, #128
+    br x9                          // tail-call the resolved method
 
     .globl call_filter_funclet
 call_filter_funclet:
@@ -507,43 +598,66 @@ get_isr_table:
 g_boot_info_slot:
     .xword 0
 
-// JIT shim address words (the JIT emits code that loads these; never
-// executed on ARM64 - point at a plain `ret`).
+// ---------------------------------------------------------------------------
+// JIT shim address FUNCTIONS. The kernel calls these as extern functions
+// returning the shim pointer (RuntimeHelpers.Init / JitStubs.Init), matching
+// x64 native.asm's `lea rax, [rel shim]; ret` contract - NOT data words.
+// Each returns a pointer to a bare `ret`, which is safe even if invoked:
+// the JIT never emits or runs code on ARM64.
+// ---------------------------------------------------------------------------
+    .text
     .globl jit_align_call_addr
 jit_align_call_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_ensure_compiled_shim_addr
 jit_ensure_compiled_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_ensure_virtual_compiled_shim_addr
 jit_ensure_virtual_compiled_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_ensure_vtable_slot_compiled_shim_addr
 jit_ensure_vtable_slot_compiled_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_get_interface_method_shim_addr
 jit_get_interface_method_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_new_array_shim_addr
 jit_new_array_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
     .globl jit_new_fast_shim_addr
 jit_new_fast_shim_addr:
-    .xword arm64_stub_ret
+    adrp x0, arm64_stub_ret
+    add x0, x0, :lo12:arm64_stub_ret
+    ret
 
-    .text
     .globl arm64_stub_ret
 arm64_stub_ret:
     ret
 
 msg_throw:
     .asciz "[arm64] FATAL: managed exception (RhpThrowEx) - exception support arrives with the ARM64 exception pass"
+msg_ex:
+    .asciz "[arm64] ex="
+msg_ra:
+    .asciz "[arm64] ra="
 msg_rethrow:
     .asciz "[arm64] FATAL: managed rethrow (RhpRethrow)"
 msg_iface:

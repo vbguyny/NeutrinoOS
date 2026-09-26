@@ -155,6 +155,13 @@ public static unsafe class Kernel
         DebugConsole.WriteLine("[CONSOLE] Serial console initialized (ttyS0 @ 115200 8N1)");
         DebugConsole.WriteLine();
 
+#if ARCH_ARM64
+        // ARM64 boots single-stage as its own UEFI application: build the
+        // BootInfo the x64 loader would otherwise provide (memory map,
+        // kernel image range, RSDP) from the live UEFI services.
+        Arm64BootSetup.EnsureBootInfo();
+#endif
+
         // Verify BootInfo from bootloader is available and valid
         var bootInfo = BootInfoAccess.Get();
         if (bootInfo == null || !bootInfo->IsValid)
@@ -245,7 +252,9 @@ public static unsafe class Kernel
         // and mirror the boot log to it, so a manual QEMU/VirtualBox boot
         // is visible in the VM window. Skipped when the console-vga-off
         // marker is present (automated serial-only test runs).
+#if !ARCH_ARM64
         ConsoleAbstractionLayer.EarlyInitVgaConsole();
+#endif
 
         // Boot progress timing starts here (the HPET is available now)
         BootLog.Status("Arch initialized (timers + interrupts)");

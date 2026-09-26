@@ -86,7 +86,7 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
     {
         if (_stage1Complete) return;
 
-        DebugConsole.WriteLine("[x64] Initializing architecture...");
+        DebugConsole.WriteLine("[arm64] Initializing architecture...");
 
         // Initialize GDT
         GDT.Init();
@@ -98,14 +98,18 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
                 ptr[i] = 0;
         }
 
-        // Initialize IDT
-        IDT.Init();
+        // Initialize IDT: skipped on ARM64. The x64 gate builder + native
+        // lidt stubs are meaningless here (and its ISR-table native import
+        // is a null stub). ARM64 uses VBAR_EL1 vector tables, which land
+        // with the GIC/interrupt pass. Handler storage above is retained
+        // for RegisterHandler callers.
+        // IDT.Init();
 
         // Initialize virtual memory (our own page tables)
         VirtualMemory.Init();
 
         _stage1Complete = true;
-        DebugConsole.WriteLine("[x64] Architecture initialized");
+        DebugConsole.WriteLine("[arm64] Architecture initialized");
     }
 
     /// <summary>
@@ -205,74 +209,15 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
     }
 
     /// <summary>
-    /// Second-stage architecture initialization.
-    /// Called after heap is ready, initializes timers and enables interrupts.
+    /// Second-stage architecture initialization (ARM64 increment).
+    /// The x64 subsystem stack (HPET/APIC/IOAPIC/RTC) does not exist here;
+    /// the GIC v2 + generic timer bring-up arrives in the scheduler pass.
+    /// Interrupts stay disabled (DAIF.I set by firmware) until then.
     /// </summary>
     public static void InitStage2()
     {
-        DebugConsole.WriteLine("[x64] Stage 2 initialization...");
-
-        // Initialize CPU topology from MADT (requires heap, so done here not in Stage1)
-        CPUTopology.Init();
-
-        // Initialize NUMA topology from SRAT/SLIT (requires CPU topology)
-        NumaTopology.Init();
-
-        // Update CPU info with NUMA node assignments
-        CPUTopology.UpdateNumaInfo();
-
-        // Initialize NUMA-aware page allocation
-        PageAllocator.InitNumaInfo();
-
-        // Initialize exception handling
-        ExceptionHandling.Init();
-
-        // Initialize HPET (for calibration)
-        if (!HPET.Init())
-        {
-            DebugConsole.WriteLine("[x64] WARNING: HPET not available, timer calibration will be inaccurate");
-        }
-
-        // Initialize RTC (for wall-clock time) - depends on HPET for elapsed time tracking
-        RTC.Init();
-
-        // Initialize Local APIC
-        if (APIC.Init())
-        {
-            // Calibrate timers using HPET if available
-            if (HPET.IsInitialized)
-            {
-                APIC.CalibrateTimer();
-                HPET.CalibrateTsc();
-            }
-
-            // Start periodic timer (1ms period = 1000Hz)
-            APIC.StartTimer(1);
-        }
-
-        // Initialize I/O APIC for external interrupt routing
-        if (CPUTopology.IOApicCount > 0)
-        {
-            if (IOAPIC.Init())
-            {
-                // Set up standard ISA IRQ routing to BSP
-                IOAPIC.SetupIsaIrqs();
-            }
-        }
-
-        // NOTE (Phase 7): AP startup (SMP.Init) intentionally does NOT run
-        // here. Starting APs this early deadlocked 2-vCPU boots: an early
-        // trampoline-era AP fault entered the exception machinery before
-        // the JIT-registration / exception-table / console locks had an
-        // established order, leaving ExceptionHandling._lock held while
-        // both CPUs spun on it. The kernel calls SMP.Init() from
-        // Kernel.Main once early subsystems are up (see SMP._apsReleased).
-
-        // Enable interrupts
-        EnableInterrupts();
-
+        DebugConsole.WriteLine("[arm64] Stage 2: timers/interrupts deferred (GIC pass pending)");
         _stage2Complete = true;
-        DebugConsole.WriteLine("[x64] Stage 2 complete, interrupts enabled");
     }
 
     // ==================== IArchitecture Timer Methods ====================

@@ -131,6 +131,11 @@ public static unsafe class ConsoleAbstractionLayer
     /// </summary>
     public static void EarlyInitVgaConsole()
     {
+#if ARCH_ARM64
+        // No VGA text hardware on the ARM64 targets; the console is the
+        // PL011 serial port only.
+        return;
+#else
         if (_vgaDevice != null || IsInitialized)
             return;
         if (BootInfoAccess.FindFile("console-vga-off", out _) != null)
@@ -145,6 +150,7 @@ public static unsafe class ConsoleAbstractionLayer
 
         _vgaDevice = vga;
         DebugConsole.SetEarlyMirror(&MirrorEarlyByte);
+#endif
     }
 
     /// <summary>Early-boot mirror target (ISR-safe raw VGA write).</summary>
@@ -165,6 +171,11 @@ public static unsafe class ConsoleAbstractionLayer
     private static void InitializeVgaConsole()
     {
         Uart16550.Write("[CAL-T2]");
+#if ARCH_ARM64
+        // No VGA text hardware on the ARM64 targets (0xB8000/0xA0000 are
+        // not mapped): skip the legacy VGA console entirely.
+        return;
+#else
         if (BootInfoAccess.FindFile("console-vga-off", out _) != null)
             return;
         Uart16550.Write("[CAL-T3]");
@@ -176,6 +187,7 @@ public static unsafe class ConsoleAbstractionLayer
         vga.Initialize(mode80x50);
         Uart16550.Write("[CAL-T5]");
         _vgaDevice = vga;
+#endif
     }
 
     /// <summary>
