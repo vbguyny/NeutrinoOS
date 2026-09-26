@@ -145,6 +145,31 @@ public unsafe struct CPU : ProtonOS.Arch.ICpu<CPU>
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern void load_context(CPUContext* context);
 
+    // Generic timer + exception vector base (from native.s)
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong read_cntfrq();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong read_cntpct();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong read_cntp_ctl();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void write_cntp_ctl(ulong value);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void write_cntp_cval(ulong value);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong get_arm64_vectors();
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void write_vbar(ulong addr);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern ulong read_vbar();
+
     // Syscall Kernel Stack (from native.asm)
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern void set_syscall_kernel_stack(ulong stackTop);
@@ -208,6 +233,29 @@ public unsafe struct CPU : ProtonOS.Arch.ICpu<CPU>
     /// Enable interrupts (set interrupt flag)
     /// </summary>
     public static void EnableInterrupts() => sti();
+
+    // --- Generic timer / exception vectors (ARM64 interrupt pass) ---
+
+    /// <summary>CNTFRQ_EL0: the system counter frequency in Hz.</summary>
+    public static ulong ReadCntFrq() => read_cntfrq();
+
+    /// <summary>CNTPCT_EL0: the EL1 physical counter value.</summary>
+    public static ulong ReadCntPct() => read_cntpct();
+
+    /// <summary>CNTP_CTL_EL0: the EL1 physical timer control register.</summary>
+    public static ulong ReadCntpCtl() => read_cntp_ctl();
+
+    /// <summary>CNTP_CTL_EL0 write (ENABLE/IMASK/ISTATUS).</summary>
+    public static void WriteCntpCtl(ulong value) => write_cntp_ctl(value);
+
+    /// <summary>CNTP_CVAL_EL0 write (absolute expiry on the physical counter).</summary>
+    public static void WriteCntpCval(ulong value) => write_cntp_cval(value);
+
+    /// <summary>Install the VBAR_EL1 exception vector table (native.s).</summary>
+    public static void InstallExceptionVectors() => write_vbar(get_arm64_vectors());
+
+    /// <summary>Current VBAR_EL1 value (diagnostics).</summary>
+    public static ulong ReadVbar() => read_vbar();
 
     /// <summary>
     /// Halt the CPU until next interrupt

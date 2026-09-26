@@ -97,13 +97,18 @@ public static unsafe class ConsoleAbstractionLayer
             InitializeVgaConsole();
         RegisterVgaConsole();
         Uart16550.Write("[CAL-T8]");
+
+        // Echo is serial-safe (serial non-blocking + VGA mirror when the
+        // device exists), so it is enabled whenever the serial console is
+        // present - including the serial-only ARM64 port.
+        if (BootInfoAccess.FindFile("skip-echo", out _) == null)
+        {
+            LineDiscipline.SetEchoSink(&EchoSink);
+            Uart16550.Write("[CAL-T9]");
+        }
+
         if (_vgaDevice != null)
         {
-            if (BootInfoAccess.FindFile("skip-echo", out _) == null)
-            {
-                LineDiscipline.SetEchoSink(&EchoSink);
-                Uart16550.Write("[CAL-T9]");
-            }
             if (BootInfoAccess.FindFile("skip-ps2", out _) == null)
             {
                 Ps2Keyboard.Initialize(&OnKeyboardByte);

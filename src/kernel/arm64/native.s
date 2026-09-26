@@ -268,6 +268,176 @@ write_cr3:
     isb
     ret
 
+// ---------------------------------------------------------------------------
+// Exception vectors (VBAR_EL1). The table must be 2 KB aligned. All 16
+// entries currently route to one of the common handlers (lower-EL/ring3
+// does not exist on ARM64 yet; a fault there prints and halts just the
+// same as a kernel fault).
+// x9 = handler kind: 0 = sync, 1 = IRQ, 2 = SError, 3 = FIQ
+// ---------------------------------------------------------------------------
+    .balign 2048
+    .globl arm64_vectors
+arm64_vectors:
+    // Current EL with SP0
+    b arm64_vect_sync
+    .space 0x7C, 0
+    b arm64_vect_irq
+    .space 0x7C, 0
+    b arm64_vect_fiq
+    .space 0x7C, 0
+    b arm64_vect_serror
+    .space 0x7C, 0
+    // Current EL with SPx
+    b arm64_vect_sync
+    .space 0x7C, 0
+    b arm64_vect_irq
+    .space 0x7C, 0
+    b arm64_vect_fiq
+    .space 0x7C, 0
+    b arm64_vect_serror
+    .space 0x7C, 0
+    // Lower EL (AArch64)
+    b arm64_vect_sync
+    .space 0x7C, 0
+    b arm64_vect_irq
+    .space 0x7C, 0
+    b arm64_vect_fiq
+    .space 0x7C, 0
+    b arm64_vect_serror
+    .space 0x7C, 0
+    // Lower EL (AArch32)
+    b arm64_vect_sync
+    .space 0x7C, 0
+    b arm64_vect_irq
+    .space 0x7C, 0
+    b arm64_vect_fiq
+    .space 0x7C, 0
+    b arm64_vect_serror
+    .space 0x7C, 0
+
+arm64_vect_sync:
+    mov x9, #0
+    b arm64_vectors_common
+arm64_vect_irq:
+    mov x9, #1
+    b arm64_vectors_common
+arm64_vect_fiq:
+    mov x9, #3
+    b arm64_vectors_common
+arm64_vect_serror:
+    mov x9, #2
+    b arm64_vectors_common
+
+// Build the exception frame (0x140 bytes). Field offsets 0x88/0x90/0x98/
+// 0xA0/0xB0 match the shared x64 InterruptFrame layout (InterruptNumber /
+// ErrorCode / Rip / Cs / Rsp) so the managed dispatch and handler code
+// (Arch.DispatchInterrupt, DriverServices IrqThunk, GenericTimer) work
+// unchanged:
+//   0x88 InterruptNumber   0x90 ESR   0x98 ELR(pc)   0xA0 SPSR
+//   0xB0 entry SP          0x130 FAR  0x138 handler kind
+arm64_vectors_common:
+    sub sp, sp, #0x140
+    stp x0, x1, [sp, #0x00]
+    stp x2, x3, [sp, #0x10]
+    stp x4, x5, [sp, #0x20]
+    stp x6, x7, [sp, #0x30]
+    stp x8, x9, [sp, #0x40]
+    stp x10, x11, [sp, #0x50]
+    stp x12, x13, [sp, #0x60]
+    stp x14, x15, [sp, #0x70]
+    str x16, [sp, #0x80]
+    str xzr, [sp, #0x88]
+    mrs x2, esr_el1
+    mrs x3, elr_el1
+    stp x2, x3, [sp, #0x90]
+    mrs x4, spsr_el1
+    str x4, [sp, #0xA0]
+    str xzr, [sp, #0xA8]
+    add x4, sp, #0x140
+    str x4, [sp, #0xB0]
+    str xzr, [sp, #0xB8]
+    stp x17, x18, [sp, #0xC0]
+    stp x19, x20, [sp, #0xD0]
+    stp x21, x22, [sp, #0xE0]
+    stp x23, x24, [sp, #0xF0]
+    stp x25, x26, [sp, #0x100]
+    stp x27, x28, [sp, #0x110]
+    stp x29, x30, [sp, #0x120]
+    mrs x4, far_el1
+    str x4, [sp, #0x130]
+    str x9, [sp, #0x138]
+
+    mov x0, sp
+    bl arm64_exception_dispatch
+
+    ldr x4, [sp, #0xA0]
+    msr spsr_el1, x4
+    ldr x4, [sp, #0x98]
+    msr elr_el1, x4
+    ldp x0, x1, [sp, #0x00]
+    ldp x2, x3, [sp, #0x10]
+    ldp x4, x5, [sp, #0x20]
+    ldp x6, x7, [sp, #0x30]
+    ldp x8, x9, [sp, #0x40]
+    ldp x10, x11, [sp, #0x50]
+    ldp x12, x13, [sp, #0x60]
+    ldp x14, x15, [sp, #0x70]
+    ldr x16, [sp, #0x80]
+    ldp x17, x18, [sp, #0xC0]
+    ldp x19, x20, [sp, #0xD0]
+    ldp x21, x22, [sp, #0xE0]
+    ldp x23, x24, [sp, #0xF0]
+    ldp x25, x26, [sp, #0x100]
+    ldp x27, x28, [sp, #0x110]
+    ldp x29, x30, [sp, #0x120]
+    add sp, sp, #0x140
+    eret
+
+// ---------------------------------------------------------------------------
+// Generic timer + vector-base register access
+// ---------------------------------------------------------------------------
+    .globl read_cntfrq
+read_cntfrq:
+    mrs x0, cntfrq_el0
+    ret
+
+    .globl read_cntpct
+read_cntpct:
+    mrs x0, cntpct_el0
+    ret
+
+    .globl read_cntp_ctl
+read_cntp_ctl:
+    mrs x0, cntp_ctl_el0
+    ret
+
+    .globl write_cntp_ctl
+write_cntp_ctl:
+    msr cntp_ctl_el0, x0
+    ret
+
+    .globl write_cntp_cval
+write_cntp_cval:
+    msr cntp_cval_el0, x0
+    ret
+
+    .globl get_arm64_vectors
+get_arm64_vectors:
+    adrp x0, arm64_vectors
+    add x0, x0, :lo12:arm64_vectors
+    ret
+
+    .globl write_vbar
+write_vbar:
+    msr vbar_el1, x0
+    isb
+    ret
+
+    .globl read_vbar
+read_vbar:
+    mrs x0, vbar_el1
+    ret
+
 // Port I/O does not exist on ARM64: return 0 / ignore. Reached only by
 // legacy x64 device paths (16550/PS2/VGA/PCI CF8), none of which bind here.
     .globl inb
@@ -419,11 +589,48 @@ set_boot_info:
     ret
 
 // ---------------------------------------------------------------------------
-// Context plumbing (v1 stubs; real switch lands with the scheduler pass)
+// Context switching (real switch; scheduler pass). CPUContext field mapping
+// on ARM64 (CPUContext names are x64-era, see Thread.cs):
+//   0x78 Rip = resume PC (LR at call)   0x80 Rsp = SP   0x88 Rflags = DAIF
+//   0x08 Rbx=x23  0x28 Rdi=x29  0x30 Rbp=x24  0x38 R8=x25  0x40 R9=x26
+//   0x48 R10=x27  0x50 R11=x28  0x58 R12=x19  0x60 R13=x20  0x68 R14=x21
+//   0x70 R15=x22
+// Restores SP/DAIF/callee-saved registers and branches to the resume PC.
+// Initial thread contexts (Scheduler.CreateThread) set Rip=ThreadEntryWrapper
+// and Rsp=stackTop, so fresh threads start on their own stack; Rflags is
+// masked to the DAIF bits (the initial 0x202 leaves IRQs enabled and only
+// masks debug exceptions).
 // ---------------------------------------------------------------------------
     .globl switch_context
 switch_context:
-    ret
+    str x30, [x0, #0x78]
+    mov x2, sp
+    str x2, [x0, #0x80]
+    mrs x2, daif
+    str x2, [x0, #0x88]
+    str x23, [x0, #0x08]
+    str x29, [x0, #0x28]
+    str x24, [x0, #0x30]
+    stp x25, x26, [x0, #0x38]
+    stp x27, x28, [x0, #0x48]
+    stp x19, x20, [x0, #0x58]
+    stp x21, x22, [x0, #0x68]
+
+    mov x2, x1
+    ldr x30, [x2, #0x78]           // resume PC
+    ldr x3, [x2, #0x80]
+    mov sp, x3                     // switch stacks
+    ldr x3, [x2, #0x88]
+    and x3, x3, #0x3C0             // keep only the DAIF mask bits
+    msr daif, x3
+    ldr x23, [x2, #0x08]
+    ldr x29, [x2, #0x28]
+    ldr x24, [x2, #0x30]
+    ldp x25, x26, [x2, #0x38]
+    ldp x27, x28, [x2, #0x48]
+    ldp x19, x20, [x2, #0x58]
+    ldp x21, x22, [x2, #0x68]
+    br x30
 
     .globl load_context
 load_context:

@@ -217,6 +217,17 @@ public static unsafe class Uart16550
         if (!_initialized || _interruptsEnabled)
             return;
 
+#if ARCH_ARM64
+        // ARM64: RX is delivered by the PL011 as GIC SPI 33. The GIC
+        // dispatcher performs the EOI before the handler runs (see
+        // ExceptionVectors), so SerialIrqHandler does not EOI.
+        Pl011.EnableRxInterrupt();
+        ProtonOS.Arch.GicV2.SetPriority(ProtonOS.Arch.GicV2.Uart0IntId, 0xA0);
+        ProtonOS.Arch.GicV2.EnableInterrupt(ProtonOS.Arch.GicV2.Uart0IntId);
+        ProtonOS.Arch.Arch.RegisterHandler((int)(32 + ProtonOS.Arch.GicV2.Uart0IntId), &SerialIrqHandler);
+        _interruptsEnabled = true;
+        return;
+#else
         ProtonOS.Arch.Arch.RegisterHandler(IrqVectorAt(_portIndex), &SerialIrqHandler);
         byte ier = IER_RX_AVAILABLE | IER_RX_STATUS;
         if (TxPending())
@@ -224,6 +235,7 @@ public static unsafe class Uart16550
 
         WriteReg(REG_IER, ier);
         _interruptsEnabled = true;
+#endif
     }
 
     /// <summary>Disable all UART interrupts (polled mode).</summary>
@@ -317,7 +329,9 @@ public static unsafe class Uart16550
     {
         _ = frame;
         HandleInterruptBody();
+#if !ARCH_ARM64
         APIC.SendEoi();
+#endif
     }
 
     /// <summary>
@@ -328,6 +342,18 @@ public static unsafe class Uart16550
     /// </summary>
     public static void HandleInterruptBody()
     {
+#if ARCH_ARM64
+        // PL011: drain the RX FIFO into the same consumer/ring the 16550
+        // path uses (the console wires RxConsumer in CAL.Initialize).
+        while (Pl011.TryReadByte(out byte rx))
+        {
+            if (RxConsumer != null)
+                RxConsumer(rx);
+            else
+                EnqueueRx(rx);
+        }
+        return;
+#else
         // Loop until the UART reports "no interrupt pending" (IIR bit 0 set)
         while (true)
         {
@@ -373,6 +399,7 @@ public static unsafe class Uart16550
                     break;
             }
         }
+#endif
     }
 
     private static void DrainRxFifo()

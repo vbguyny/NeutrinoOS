@@ -167,7 +167,11 @@ public sealed unsafe class KernelDriverServices : IDriverServices
             if (cb != null)
                 cb(irq);
         }
+#if !ARCH_ARM64
+        // On ARM64 the GIC dispatcher has already EOI'd the interrupt
+        // before the handler runs (see ExceptionVectors).
         APIC.SendEoi();
+#endif
     }
 
     /// <summary>

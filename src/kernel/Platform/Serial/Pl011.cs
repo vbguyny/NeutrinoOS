@@ -24,10 +24,13 @@ public static unsafe class Pl011
     private const int REG_LCRH = 0x2C;    // line control
     private const int REG_CR = 0x30;      // control
     private const int REG_IMSC = 0x38;    // interrupt mask
+    private const int REG_MIS = 0x40;     // masked interrupt status
     private const int REG_ICR = 0x44;     // interrupt clear
 
     private const uint FR_TXFF = 1u << 5; // transmit FIFO full
     private const uint FR_RXFE = 1u << 4; // receive FIFO empty
+    private const uint INTR_RX = 1u << 4; // receive interrupt (IMSC bit)
+    private const uint INTR_ALL = 0x7FF;
 
     private static bool _initialized;
 
@@ -80,6 +83,34 @@ public static unsafe class Pl011
     {
         byte* uart = (byte*)Base;
         return (*(uint*)(uart + REG_FR) & FR_RXFE) == 0;
+    }
+
+    /// <summary>
+    /// Enable the receive interrupt (RXIM). The GIC SPI wiring is the
+    /// caller's responsibility (see Uart16550.EnableInterrupts).
+    /// </summary>
+    public static void EnableRxInterrupt()
+    {
+        byte* uart = (byte*)Base;
+        *(uint*)(uart + REG_ICR) = INTR_ALL;   // clear stale conditions
+        *(uint*)(uart + REG_IMSC) = INTR_RX;
+    }
+
+    /// <summary>Mask all PL011 interrupts (polled mode).</summary>
+    public static void DisableInterrupts()
+    {
+        byte* uart = (byte*)Base;
+        *(uint*)(uart + REG_IMSC) = 0;
+    }
+
+    /// <summary>Whether an RX interrupt is currently asserted.</summary>
+    public static bool RxInterruptPending
+    {
+        get
+        {
+            byte* uart = (byte*)Base;
+            return (*(uint*)(uart + REG_MIS) & INTR_RX) != 0;
+        }
     }
 
     /// <summary>Whether the driver has been initialized.</summary>

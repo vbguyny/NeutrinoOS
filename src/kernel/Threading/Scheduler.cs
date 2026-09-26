@@ -1134,8 +1134,12 @@ public static unsafe class Scheduler
         return null;
     }
 
+    /// <summary>Ticks observed by TimerTick (arch-neutral; drives the slice gate).</summary>
+    private static ulong _tickCounter;
+
     /// <summary>
-    /// Timer tick handler - called from APIC timer interrupt.
+    /// Timer tick handler - called from the architected timer interrupt
+    /// (x64: APIC; ARM64: generic timer).
     /// </summary>
     public static void TimerTick()
     {
@@ -1144,7 +1148,8 @@ public static unsafe class Scheduler
 
         // Only reschedule every N ticks to avoid too much overhead
         // With 1ms timer, this gives 10ms time slices
-        if (APIC.TickCount % 10 == 0)
+        _tickCounter++;
+        if (_tickCounter % 10 == 0)
         {
             Schedule();
         }

@@ -465,8 +465,14 @@ public static unsafe class Kernel
             // Run the AppTest assembly (application-level tests after drivers loaded)
             RunAppTestAssembly();
 
+#if ARCH_ARM64
+            // User mode (EL0) does not exist on ARM64 yet: the ring-3
+            // syscall tests are x64-only in this phase.
+            DebugConsole.WriteLine("[Kernel] User-mode syscall tests skipped (arm64)");
+#else
             // Run syscall tests in Ring 3 (comprehensive syscall validation)
             Process.UserModeTests.RunSyscallTests();
+#endif
 
             BootLog.Status("Boot tests complete");
         }
@@ -542,6 +548,27 @@ public static unsafe class Kernel
         // Host the interactive serial shell (System.Console.ReadLine
         // through the line discipline: echo, editing, history, Ctrl+C/D).
         BootLog.Status("Starting interactive shell");
+#if ARCH_ARM64
+        DebugConsole.Write("[arm64] ticks=");
+        DebugConsole.WriteDecimal(ProtonOS.Arch.GenericTimer.Ticks);
+        DebugConsole.Write(" daif=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadFlags());
+        DebugConsole.Write(" gicd=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadDistCtlr());
+        DebugConsole.Write(" gicc=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadCpuCtlr());
+        DebugConsole.Write(" pmr=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadPmr());
+        DebugConsole.Write(" en0=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadEnabled0());
+        DebugConsole.Write(" en1=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadEnabled1());
+        DebugConsole.Write(" cntpctl=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadCntpCtl());
+        DebugConsole.Write(" vbar=0x");
+        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadVbar());
+        DebugConsole.WriteLine();
+#endif
         ConsoleSession.Run();
     }
 

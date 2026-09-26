@@ -88,6 +88,15 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
 
         DebugConsole.WriteLine("[arm64] Initializing architecture...");
 
+        // Take over the exception vectors FIRST and mask IRQs: the
+        // firmware leaves IRQs enabled (its timer PPI fires continuously),
+        // and once VBAR_EL1 points at our table those interrupts would
+        // reach an unconfigured GIC dispatcher. IRQs are re-enabled in
+        // InitStage2 once the GIC and generic timer are set up.
+        CPU.DisableInterrupts();
+        CPU.InstallExceptionVectors();
+        DebugConsole.WriteLine("[arm64] Exception vectors installed (VBAR_EL1)");
+
         // Initialize GDT
         GDT.Init();
 
@@ -209,33 +218,44 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
     }
 
     /// <summary>
-    /// Second-stage architecture initialization (ARM64 increment).
-    /// The x64 subsystem stack (HPET/APIC/IOAPIC/RTC) does not exist here;
-    /// the GIC v2 + generic timer bring-up arrives in the scheduler pass.
-    /// Interrupts stay disabled (DAIF.I set by firmware) until then.
+    /// Second-stage architecture initialization (ARM64): interrupt
+    /// controller (GICv2) + generic timer (CNTP, PPI 30) + unmask IRQs.
+    /// The x64 subsystem stack (HPET/APIC/IOAPIC/RTC) does not exist here.
     /// </summary>
     public static void InitStage2()
     {
-        DebugConsole.WriteLine("[arm64] Stage 2: timers/interrupts deferred (GIC pass pending)");
+        GicV2.Init();
+        DebugConsole.Write("[arm64] GICv");
+        DebugConsole.WriteDecimal(GicV2.DetectedVersion);
+        DebugConsole.WriteLine(" initialized (dist=0x08000000, cpu=0x08010000)");
+
+        GenericTimer.Init();
+
+        // All kernel interrupt sources are registered (timer PPI 30;
+        // the PL011 RX SPI 33 is enabled later by the console layer):
+        // interrupts can go live.
+        CPU.EnableInterrupts();
+
+        DebugConsole.WriteLine("[arm64] Stage 2: GIC + generic timer, interrupts live");
         _stage2Complete = true;
     }
 
     // ==================== IArchitecture Timer Methods ====================
 
     /// <summary>
-    /// Get the current timer tick count (from APIC timer).
+    /// Get the current timer tick count (generic timer on ARM64).
     /// </summary>
     public static ulong GetTickCount()
     {
-        return APIC.TickCount;
+        return GenericTimer.Ticks;
     }
 
     /// <summary>
-    /// Get the timer frequency in Hz (APIC timer frequency).
+    /// Get the timer frequency in Hz (generic timer on ARM64).
     /// </summary>
     public static ulong GetTimerFrequency()
     {
-        return APIC.TimerFrequency;
+        return GenericTimer.FrequencyHz;
     }
 
     /// <summary>
@@ -285,21 +305,34 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
     // ==================== Interrupt Dispatch ====================
 
     /// <summary>
-    /// Entry point from kernel ISR stubs
+    /// Entry point from kernel ISR stubs (x64 ABI parity; the ARM64 IRQ
+    /// vector calls DispatchInterruptManaged directly).
     /// </summary>
     [UnmanagedCallersOnly(EntryPoint = "InterruptDispatch")]
     public static void DispatchInterrupt(InterruptFrame* frame)
     {
+        DispatchInterruptManaged(frame);
+    }
+
+    /// <summary>
+    /// Managed interrupt dispatch: look up the registered handler for the
+    /// vector and invoke it, falling back to the default handler.
+    /// </summary>
+    public static void DispatchInterruptManaged(InterruptFrame* frame)
+    {
         int vector = (int)frame->InterruptNumber;
 
-        fixed (byte* ptr = _handlerStorage.Data)
+        if (vector >= 0 && vector < VectorCount)
         {
-            var handlers = (delegate*<InterruptFrame*, void>*)ptr;
-            var handler = handlers[vector];
-            if (handler != null)
+            fixed (byte* ptr = _handlerStorage.Data)
             {
-                handler(frame);
-                return;
+                var handlers = (delegate*<InterruptFrame*, void>*)ptr;
+                var handler = handlers[vector];
+                if (handler != null)
+                {
+                    handler(frame);
+                    return;
+                }
             }
         }
 
