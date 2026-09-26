@@ -714,6 +714,43 @@ public unsafe partial class NetworkStack
     }
 
     /// <summary>
+    /// Receive a UDP datagram addressed to a destination port, regardless
+    /// of the source port (IPv4). Unlike the queue-consuming v6 helper,
+    /// scanning STOPS at the first non-matching entry so datagrams that
+    /// belong to DHCP/DNS flows are not swallowed by service polls.
+    /// </summary>
+    public int ReceiveUdpTo(ushort destPort, out uint srcIP, out ushort srcPort,
+                            byte* buffer, int bufferLen)
+    {
+        srcIP = 0;
+        srcPort = 0;
+        int wantDest = destPort;
+        if (_udpQueueCount == 0)
+            return 0;
+        int idx = _udpQueueHead;
+        if (!_udpQueue[idx].Valid)
+            return 0;
+        if (_udpQueue[idx].IsV6)
+            return 0;
+        int dest = _udpQueue[idx].DestPort;
+        int len = _udpQueue[idx].Length;
+        if (dest != wantDest)
+            return 0;
+        srcIP = _udpQueue[idx].SourceIP;
+        srcPort = _udpQueue[idx].SourcePort;
+        int copyLen = len < bufferLen ? len : bufferLen;
+        fixed (byte* srcP = _udpQueue[idx].Data)
+        {
+            for (int i = 0; i < copyLen; i++)
+                buffer[i] = srcP[i];
+        }
+        _udpQueue[idx].Valid = false;
+        _udpQueueHead = (_udpQueueHead + 1) % MaxUdpQueueSize;
+        _udpQueueCount--;
+        return copyLen;
+    }
+
+    /// <summary>
     /// Receive a UDP datagram from the queue.
     /// </summary>
     /// <param name="srcIP">Receives source IP address.</param>

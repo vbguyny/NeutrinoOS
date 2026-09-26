@@ -127,24 +127,46 @@ public static class X509
 
     private static byte[] BuildValidity()
     {
-        SysInfo.GetWallClock(out int year, out int month, out int day,
-            out int hour, out int minute, out int second);
-        if (year < 2000 || year > 2100)
-        {
-            year = 2026;
-            month = 1;
-            day = 1;
-            hour = 0;
-            minute = 0;
-            second = 0;
-        }
-
+        // Read the clock in a dedicated SMALL method: the six out
+        // parameters have been miscompiled when read directly in larger
+        // frames (Tier-0 JIT hazard), producing out-of-range UTCTime
+        // values that strict X.509 parsers reject.
+        int[] t = ReadValidClock();
         var d = new Der();
         d.Sequence();
-        d.Raw(Tag(0x17, Ascii(UtcTime(year, month, day, hour, minute, second))));
-        d.Raw(Tag(0x17, Ascii(UtcTime(year + 10, month, day, hour, minute, second))));
+        d.Raw(Tag(0x17, Ascii(UtcTime(t[0], t[1], t[2], t[3], t[4], t[5]))));
+        d.Raw(Tag(0x17, Ascii(UtcTime(t[0] + 10, t[1], t[2], t[3], t[4], t[5]))));
         d.EndSequence();
         return d.ToArray();
+    }
+
+    /// <summary>Returns {year, month, day, hour, minute, second} clamped
+    /// into an always-legal X.509 range.</summary>
+    private static int[] ReadValidClock()
+    {
+        SysInfo.GetWallClock(out int year, out int month, out int day,
+            out int hour, out int minute, out int second);
+        var t = new int[6];
+        if (year < 2000 || year > 2098 || month < 1 || month > 12 ||
+            day < 1 || day > 28 || hour > 23 || minute > 59 || second > 59)
+        {
+            t[0] = 2026;
+            t[1] = 1;
+            t[2] = 1;
+            t[3] = 0;
+            t[4] = 0;
+            t[5] = 0;
+        }
+        else
+        {
+            t[0] = year;
+            t[1] = month;
+            t[2] = day;
+            t[3] = hour;
+            t[4] = minute;
+            t[5] = second;
+        }
+        return t;
     }
 
     private static string UtcTime(int year, int month, int day, int hour, int minute, int second)

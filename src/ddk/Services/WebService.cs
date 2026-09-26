@@ -48,6 +48,7 @@ public static class WebService
     private static readonly WebConnection[] _connections = new WebConnection[MaxConnections];
     private static byte[] _certDer;
     private static byte[] _keySeed;
+    private static QuicServer _quic;
     private static ushort _httpPort = 80;
     private static ushort _httpsPort = 443;
     private static bool _active;
@@ -93,6 +94,7 @@ public static class WebService
         }
 
         _active = true;
+        _quic = new QuicServer(_certDer, _keySeed);
         Console.Write("[web] listening on port ");
         Console.Write(IntToStr(_httpPort));
         if (_httpsListener != null)
@@ -102,6 +104,7 @@ public static class WebService
             Console.Write(" (https, TLS 1.3, Ed25519 certificate)");
         }
         Console.WriteLine();
+        Console.WriteLine("[web] HTTP/3 on UDP port 443 (QUIC v1)");
         return 0;
     }
 
@@ -160,6 +163,13 @@ public static class WebService
         // answering (no inbound traffic this slice) would otherwise leave
         // its segments parked in the shared TX buffer.
         NetworkPump.FlushTx(_stack);
+
+        // HTTP/3: drain UDP port 443 and answer via QUIC.
+        if (_quic != null)
+        {
+            _quic.Pump(_stack);
+            NetworkPump.FlushTx(_stack);
+        }
     }
 
     private static void AcceptNew(TcpServer listener, bool tls)
