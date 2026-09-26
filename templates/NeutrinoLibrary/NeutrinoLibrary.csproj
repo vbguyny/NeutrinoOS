@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="neutrino-app.props" Condition="Exists('neutrino-app.props')" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+
+    <!-- Libraries install into /lib and declare the "library" capability. -->
+    <NeutrinoInstallPath>lib</NeutrinoInstallPath>
+    <NeutrinoProvides>library</NeutrinoProvides>
+  </PropertyGroup>
+
+  <Import Project="neutrino-app.targets" Condition="Exists('neutrino-app.targets')" />
+
+</Project>

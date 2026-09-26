@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "NeutrinoOS Project",
+  "classifications": [ "NeutrinoOS", "Utility" ],
+  "identity": "NeutrinoOS.Templates.Utility",
+  "name": "NeutrinoOS Shell Utility",
+  "description": "A shell utility for NeutrinoOS ($PATH command). Produces a .npkg package on Release builds.",
+  "shortName": "neutrino-utility",
+  "sourceName": "NeutrinoUtility",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

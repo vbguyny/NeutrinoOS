@@ -1,9 +1,14 @@
-// NeutrinoOS Phase 4 application template.
+// NeutrinoOS application template.
 //
-// Build on Windows 11 (or in WSL) with:
-//     dotnet build -c Release -f net10.0
-// then copy the output DLL to the NeutrinoOS image (see README.md in this
-// folder) and run it from the shell:
+// Create a project from this template and build it:
+//     dotnet new neutrino-console -n MyApp
+//     cd MyApp
+//     dotnet build -c Release
+//
+// The Release build also produces MyApp.npkg (bin/Release/net10.0/) through
+// the NeutrinoOS SDK MSBuild targets. Install it on the device with
+// `npkg install` (see docs/SDK-GETTING-STARTED.md) or run it directly from
+// the shell once the dll is on the image:
 //     neutrinoos> run /apps/myapp.dll
 //
 // The application uses the standard .NET BCL surface; on NeutrinoOS the
@@ -12,7 +17,7 @@
 
 using System;
 
-namespace MyApp;
+namespace NeutrinoConsoleApp;
 
 public static class Program
 {

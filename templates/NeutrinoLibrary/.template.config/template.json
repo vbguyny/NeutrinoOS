@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "NeutrinoOS Project",
+  "classifications": [ "NeutrinoOS", "Library" ],
+  "identity": "NeutrinoOS.Templates.Library",
+  "name": "NeutrinoOS Class Library",
+  "description": "A class library for NeutrinoOS. Produces a .npkg package (/lib) on Release builds.",
+  "shortName": "neutrino-library",
+  "sourceName": "NeutrinoLibrary",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

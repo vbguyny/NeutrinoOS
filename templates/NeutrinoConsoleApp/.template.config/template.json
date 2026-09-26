@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "NeutrinoOS Project",
+  "classifications": [ "NeutrinoOS", "Console" ],
+  "identity": "NeutrinoOS.Templates.ConsoleApp",
+  "name": "NeutrinoOS Console Application",
+  "description": "A minimal NeutrinoOS application. Builds on .NET 10 and produces a .npkg package on Release builds.",
+  "shortName": "neutrino-console",
+  "sourceName": "NeutrinoConsoleApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

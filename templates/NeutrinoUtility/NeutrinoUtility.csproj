@@ -9,14 +9,11 @@
     <Nullable>disable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>$(NoWarn);CS0436</NoWarn>
-    <!-- Standard .NET 10 build: the app compiles against the normal BCL and
-         runs against korlib on NeutrinoOS through the kernel's virtual
-         assembly redirect (System.Runtime/System.Console/System.Linq/...
-         resolve to korlib at load time).
 
-         The assembly name defaults to the project name. Keep it FAT 8.3
-         sized (<= 8 characters) when the package will be installed onto
-         the FAT boot volume (npkg install -> /apps, /bin, ...). -->
+    <!-- Utilities install into /bin (on $PATH) and declare the "utility"
+         capability so npkg and the shell treat them as commands. -->
+    <NeutrinoInstallPath>bin</NeutrinoInstallPath>
+    <NeutrinoProvides>utility</NeutrinoProvides>
   </PropertyGroup>
 
   <Import Project="neutrino-app.targets" Condition="Exists('neutrino-app.targets')" />

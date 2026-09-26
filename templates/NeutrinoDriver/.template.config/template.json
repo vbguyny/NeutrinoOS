@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "NeutrinoOS Project",
+  "classifications": [ "NeutrinoOS", "Driver" ],
+  "identity": "NeutrinoOS.Templates.Driver",
+  "name": "NeutrinoOS Device Driver",
+  "description": "A driver package for NeutrinoOS (IDriver + IDriverServices). Package with scripts/build-driver.ps1 or npkg-host.",
+  "shortName": "neutrino-driver",
+  "sourceName": "MyDriver",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "NeutrinoOS Project",
+  "classifications": [ "NeutrinoOS", "Web" ],
+  "identity": "NeutrinoOS.Templates.WebApp",
+  "name": "NeutrinoOS Web Application",
+  "description": "An ASP.NET Core minimal-API web application targeting the NeutrinoOS web hosting surface (see docs/PHASE6-WEB.md).",
+  "shortName": "neutrino-webapp",
+  "sourceName": "NeutrinoWebApp",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

@@ -1,0 +1,37 @@
+<Project>
+
+  <!--
+    NeutrinoOS SDK - application packaging properties.
+
+    Import this file at the TOP of your project (before your first
+    PropertyGroup) and NeutrinoOS.App.targets at the bottom:
+
+        <Import Project="neutrino-app.props"  Condition="Exists('neutrino-app.props')" />
+        ...
+        <Import Project="neutrino-app.targets" Condition="Exists('neutrino-app.targets')" />
+
+    Overridable properties:
+      NeutrinoNpkgTool     path/name of the host npkg tool (default: npkg-host
+                           on PATH; the NEUTRINOOS_NPKG environment variable is
+                           honoured as well)
+      NeutrinoPackageOnBuild  true/false - auto-create <AssemblyName>.npkg on
+                           Release builds (default: true)
+      NeutrinoPackageName  package name (default: $(AssemblyName))
+      NeutrinoArchitecture any | x86-64 | arm64 (default: any)
+      NeutrinoInstallPath  apps | bin | drivers | lib (default: apps)
+      NeutrinoProvides      comma-separated capabilities (default: application)
+      NeutrinoSigningKey   path to an Ed25519 private key (hex). When set, the
+                           package is signed during the build.
+  -->
+
+  <PropertyGroup>
+    <NeutrinoPackageOnBuild Condition="'$(NeutrinoPackageOnBuild)' == ''">true</NeutrinoPackageOnBuild>
+    <NeutrinoArchitecture Condition="'$(NeutrinoArchitecture)' == ''">any</NeutrinoArchitecture>
+    <NeutrinoInstallPath Condition="'$(NeutrinoInstallPath)' == ''">apps</NeutrinoInstallPath>
+    <NeutrinoProvides Condition="'$(NeutrinoProvides)' == ''">application</NeutrinoProvides>
+
+    <NeutrinoNpkgTool Condition="'$(NeutrinoNpkgTool)' == '' And '$(NEUTRINOOS_NPKG)' != ''">$(NEUTRINOOS_NPKG)</NeutrinoNpkgTool>
+    <NeutrinoNpkgTool Condition="'$(NeutrinoNpkgTool)' == ''">npkg-host</NeutrinoNpkgTool>
+  </PropertyGroup>
+
+</Project>

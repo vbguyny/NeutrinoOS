@@ -139,14 +139,69 @@ internal static class Program
     private static int CmdPack(string[] args)
     {
         ArgParser a = new ArgParser(args);
-        string manifestPath = a.Req("manifest");
-        string payloadDir = a.Req("payload-dir");
         string outPath = a.Req("out");
         string keyPath = a.Opt("key");
-        a.EnsureNoExtra();
 
-        NpkgManifest manifest = NpkgManifest.FromJson(Json.Parse(File.ReadAllText(manifestPath)));
-        KeyValuePair<string, byte[]>[] files = CollectPayload(payloadDir);
+        NpkgManifest manifest;
+        KeyValuePair<string, byte[]>[] files;
+
+        string manifestPath = a.Opt("manifest");
+        if (!string.IsNullOrEmpty(manifestPath))
+        {
+            // Manifest-file mode: pack every file under --payload-dir.
+            string payloadDir = a.Req("payload-dir");
+            manifest = NpkgManifest.FromJson(Json.Parse(File.ReadAllText(manifestPath)));
+            files = CollectPayload(payloadDir);
+        }
+        else
+        {
+            // SDK mode: synthesize the manifest from command-line metadata.
+            // Used by the MSBuild packaging targets (NeutrinoOS.App.targets).
+            string name = a.Req("name");
+            string version = a.Opt("version") ?? "1.0.0";
+            string entry = a.Opt("entry");            // application entry dll
+            string fileList = a.Opt("files");         // comma-separated extra payload files
+            string architecture = a.Opt("architecture") ?? "any";
+            string installPath = a.Opt("install-path") ?? (entry != null ? "apps" : "lib");
+            string provides = a.Opt("provides") ?? (entry != null ? "application" : "library");
+
+            List<KeyValuePair<string, byte[]>> list = new List<KeyValuePair<string, byte[]>>();
+            if (!string.IsNullOrEmpty(entry))
+                list.Add(new KeyValuePair<string, byte[]>(Path.GetFileName(entry), File.ReadAllBytes(entry)));
+            if (!string.IsNullOrEmpty(fileList))
+            {
+                foreach (string f in fileList.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string trimmed = f.Trim();
+                    if (trimmed.Length == 0) continue;
+                    list.Add(new KeyValuePair<string, byte[]>(Path.GetFileName(trimmed), File.ReadAllBytes(trimmed)));
+                }
+            }
+            if (list.Count == 0)
+                throw new UsageException("pack needs either --manifest or --entry/--files");
+
+            manifest = new NpkgManifest
+            {
+                Format = "npkg/1",
+                Name = name,
+                Version = SemVersion.Parse(version),
+                Architecture = architecture,
+                InstallPath = installPath,
+                Author = a.Opt("author"),
+                Description = a.Opt("description"),
+                License = a.Opt("license"),
+                Homepage = a.Opt("homepage"),
+                Provides = new List<string>(provides.Split(',', StringSplitOptions.RemoveEmptyEntries)),
+                EntryPoints = new Dictionary<string, string>(),
+            };
+            if (!string.IsNullOrEmpty(entry))
+            {
+                manifest.EntryPoints[Path.GetFileNameWithoutExtension(entry)] = Path.GetFileName(entry);
+            }
+            files = list.ToArray();
+        }
+
+        a.EnsureNoExtra();
         byte[] seed = keyPath != null ? ReadHexKeyFile(keyPath) : null;
 
         byte[] npkg = NpkgPackage.Build(manifest, files, seed);
@@ -371,6 +426,9 @@ internal static class Program
         Console.WriteLine("  npkg-host keygen [--seed <64-hex>] [--out-dir <dir>] [--force]");
         Console.WriteLine("  npkg-host fingerprint <pubkey-file>");
         Console.WriteLine("  npkg-host pack --manifest <manifest.json> --payload-dir <dir> --out <file.npkg> [--key <private.key>]");
+        Console.WriteLine("  npkg-host pack --name <name> --version <v> [--entry <app.dll> | --files <a.dll,b.dll>] --out <file.npkg>");
+        Console.WriteLine("                   [--install-path apps|bin|drivers|lib] [--architecture any|x86-64|arm64] [--provides <a,b>]");
+        Console.WriteLine("                   [--description <s>] [--license <s>] [--author <s>] [--homepage <s>] [--key <private.key>]");
         Console.WriteLine("  npkg-host sign <file.npkg> <private.key>");
         Console.WriteLine("  npkg-host verify <file.npkg> [--key <pubkey-file>]");
         Console.WriteLine("  npkg-host repo-index --dir <dir> [--key <private.key>] [--name <name>]");
@@ -442,7 +500,10 @@ internal static class Program
         {
             List<string> unknown = _opt.Keys.Where(k => k != "seed" && k != "out-dir" && k != "force" &&
                                                         k != "manifest" && k != "payload-dir" && k != "out" &&
-                                                        k != "key" && k != "dir" && k != "name" && k != "repo").ToList();
+                                                        k != "key" && k != "dir" && k != "name" && k != "repo" &&
+                                                        k != "version" && k != "entry" && k != "files" &&
+                                                        k != "architecture" && k != "install-path" && k != "provides" &&
+                                                        k != "description" && k != "license" && k != "author" && k != "homepage").ToList();
             if (unknown.Count > 0)
                 throw new UsageException("unknown option --" + unknown[0]);
             if (_pos.Count > 2)
