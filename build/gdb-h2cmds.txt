@@ -1,0 +1,11 @@
+set pagination off
+printf "=== registers ===\n"
+info registers rax rbx rcx rdx rsi rdi rbp rsp rip
+printf "=== code at rip ===\n"
+x/24i $rip-24
+printf "=== stack ===\n"
+x/12gx $rsp
+printf "=== backtrace ===\n"
+bt
+printf "=== jit symbol ===\n"
+info symbol $rip

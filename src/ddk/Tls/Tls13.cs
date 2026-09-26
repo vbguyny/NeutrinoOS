@@ -94,9 +94,13 @@ public sealed unsafe class Tls13Connection
     private int _hsLen;
 
     private string _serverName;
+    private string _alpn;
 
     /// <summary>Server name from the SNI extension (null when absent).</summary>
     public string ServerName => _serverName;
+
+    /// <summary>Negotiated ALPN protocol ("h2", "http/1.1", or null).</summary>
+    public string AlpnSelected => _alpn;
 
     /// <summary>True once the handshake finished with the client.</summary>
     public bool Connected => _state == StateConnected;
@@ -320,7 +324,11 @@ public sealed unsafe class Tls13Connection
                 Fail();
             }
         }
-        return DrainPending(destination, offset, maxLength);
+        // NOTE: do not drain staged app data here - the caller (ReadApp)
+        // drains exactly once. Draining in both places made the pending
+        // length bookkeeping unreliable in this large frame (Tier-0 JIT
+        // field-update hazard) and stalled h2-over-TLS connections.
+        return 0;
     }
 
     private void Fail()
@@ -476,6 +484,8 @@ public sealed unsafe class Tls13Connection
         byte[] clientX25519 = null;
         bool versionOk = false;
         bool sigAlgOk = false;
+        bool sawH2 = false;
+        bool sawHttp11 = false;
         string sni = null;
 
         while (r.Position + 4 <= extEnd)
@@ -534,9 +544,35 @@ public sealed unsafe class Tls13Connection
                 }
                 r.Position = listStart + listLen;
             }
+            else if (extType == 16)     // ALPN
+            {
+                int listLen = r.U16();
+                int listEnd = r.Position + listLen;
+                while (r.Position < listEnd)
+                {
+                    int nl = r.U8();
+                    if (r.Position + nl > listEnd)
+                        break;
+                    int nmStart = r.Position;
+                    r.Skip(nl);
+                    if (nl == 2 && body[nmStart] == (byte)'h' && body[nmStart + 1] == (byte)'2')
+                        sawH2 = true;
+                    else if (nl == 8 && body[nmStart] == (byte)'h' && body[nmStart + 1] == (byte)'t'
+                        && body[nmStart + 2] == (byte)'t' && body[nmStart + 3] == (byte)'p'
+                        && body[nmStart + 4] == (byte)'/' && body[nmStart + 5] == (byte)'1'
+                        && body[nmStart + 6] == (byte)'.' && body[nmStart + 7] == (byte)'1')
+                        sawHttp11 = true;
+                }
+            }
             // Skip to the end of this extension regardless.
             r.Position = extStart + extLen;
         }
+
+        // RFC 7301: prefer HTTP/2 when offered, then HTTP/1.1.
+        if (sawH2)
+            _alpn = "h2";
+        else if (sawHttp11)
+            _alpn = "http/1.1";
 
         if (!versionOk || clientX25519 == null || !sigAlgOk)
         {
@@ -628,10 +664,12 @@ public sealed unsafe class Tls13Connection
 if (Verbose)
                 Console.WriteLine("[web] tls: ccs sent");
 
-        // EncryptedExtensions (no extensions).
-        var ee = new TlsWriter(8);
-        ee.U16(0);
-        SendHandshake(HtEncryptedExtensions, ee.Buffer, 0, ee.Length);
+        // EncryptedExtensions (ALPN echo when negotiated). Built with plain
+        // ints: reading TlsWriter properties in this large frame has shown
+        // Tier-0 JIT miscompiles (inconsistent Length values).
+        var eeBuf = new byte[64];
+        int eeLen = BuildEeBody(eeBuf);
+        SendHandshake(HtEncryptedExtensions, eeBuf, 0, eeLen);
 if (Verbose)
                 Console.WriteLine("[web] tls: encrypted extensions sent");
 
@@ -864,6 +902,34 @@ if (Verbose)
             chars[i * 2 + 1] = digits[data[offset + i] & 15];
         }
         return new string(chars);
+    }
+
+    /// <summary>
+    /// Writes the EncryptedExtensions body (extensions block) into buf and
+    /// returns its length. Plain byte writes only - safe from Tier-0 JIT
+    /// property-read miscompiles seen with TlsWriter in large frames.
+    /// </summary>
+    private int BuildEeBody(byte[] buf)
+    {
+        if (_alpn == null || _alpn.Length == 0)
+        {
+            buf[0] = 0;
+            buf[1] = 0;
+            return 2;
+        }
+        int nl = _alpn.Length;
+        buf[0] = 0;
+        buf[1] = (byte)(7 + nl);        // extensions block length
+        buf[2] = 0;
+        buf[3] = 16;                    // application_layer_protocol_negotiation
+        buf[4] = 0;
+        buf[5] = (byte)(3 + nl);        // extension length
+        buf[6] = 0;
+        buf[7] = (byte)(1 + nl);        // ProtocolNameList length
+        buf[8] = (byte)nl;
+        for (int i = 0; i < nl; i++)
+            buf[9 + i] = (byte)_alpn[i];
+        return 9 + nl;
     }
 
     private static string IntStr(int value)

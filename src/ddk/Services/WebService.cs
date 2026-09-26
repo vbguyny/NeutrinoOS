@@ -154,6 +154,12 @@ public static class WebService
                 _connections[i] = null;
             }
         }
+
+        // Always move queued responses to the wire: NetworkPump.Pump only
+        // flushes when an RX frame arrives, and a server that is purely
+        // answering (no inbound traffic this slice) would otherwise leave
+        // its segments parked in the shared TX buffer.
+        NetworkPump.FlushTx(_stack);
     }
 
     private static void AcceptNew(TcpServer listener, bool tls)
@@ -238,6 +244,165 @@ public static class WebService
     }
 
     // ==================== Configuration / certificate ====================
+
+    /// <summary>
+    /// Resolve a request path to a full response description. Shared by
+    /// the HTTP/1.1, HTTP/2 and HTTP/3 front ends.
+    /// </summary>
+    internal static bool BuildRoute(string path, out int status, out string statusText,
+        out string contentType, out string body)
+    {
+        status = 404;
+        statusText = "Not Found";
+        contentType = "text/plain";
+        body = "404 not found\n";
+
+        // Strip a query string.
+        int q = IndexOfChar(path, '?');
+        string clean = q >= 0 ? path.Substring(0, q) : path;
+
+        if (StrEq(clean, "/") || StrEq(clean, "/index.html"))
+        {
+            status = 200;
+            statusText = "OK";
+            contentType = "text/html";
+            body =
+                "<!doctype html><html><head><title>NeutrinoOS</title></head><body>" +
+                "<h1>NeutrinoOS web host</h1>" +
+                "<p>Managed .NET host on bare metal. HTTP/1.1 + HTTP/2 + HTTP/3.</p>" +
+                "<ul><li><a href=\"/health\">/health</a></li>" +
+                "<li><a href=\"/time\">/time</a></li></ul></body></html>\n";
+            return true;
+        }
+        if (StrEq(clean, "/health"))
+        {
+            status = 200;
+            statusText = "OK";
+            contentType = "application/json";
+            body = "{\"status\":\"ok\"}\n";
+            return true;
+        }
+        if (StrEq(clean, "/time"))
+        {
+            // Use the proven `date` utility through the kernel shell
+            // bridge (the tiny formatter helpers misbehave when compiled
+            // inside the service graph - see PHASE6-WEB notes).
+            int rc;
+            string dateOut = ShellBridge.Exec("date", out rc);
+            int de = dateOut.Length;
+            while (de > 0 && (dateOut[de - 1] == '\n' || dateOut[de - 1] == '\r' || dateOut[de - 1] == ' '))
+                de--;
+            var dc = new char[de];
+            for (int i = 0; i < de; i++)
+                dc[i] = dateOut[i] == ' ' ? 'T' : dateOut[i];
+            string utc = new string(dc);
+            var timeBuf = new char[128];
+            int n = 0;
+            n = AddStr(timeBuf, n, "{\"utc\":\"");
+            n = AddStr(timeBuf, n, utc);
+            n = AddStr(timeBuf, n, "\",\"uptime_s\":");
+            n = AddStr(timeBuf, n, IntToStr((int)(Timer.GetUptimeMilliseconds() / 1000)));
+            n = AddStr(timeBuf, n, "}\n");
+            var jsonChars = new char[n];
+            for (int i = 0; i < n; i++)
+                jsonChars[i] = timeBuf[i];
+            status = 200;
+            statusText = "OK";
+            contentType = "application/json";
+            body = new string(jsonChars);
+            return true;
+        }
+
+        // Static files under /var/www.
+        if (HasDotDot(clean))
+        {
+            status = 400;
+            statusText = "Bad Request";
+            contentType = "text/plain";
+            body = "bad path\n";
+            return true;
+        }
+        string full = WwwRoot + clean;
+        bool isDir = false;
+        try
+        {
+            isDir = Directory.Exists(full);
+        }
+        catch (Exception)
+        {
+        }
+        if (isDir)
+            full = full + "/index.html";
+
+        bool exists = false;
+        string fileBody = null;
+        try
+        {
+            exists = File.Exists(full);
+            if (exists)
+                fileBody = File.ReadAllText(full);
+        }
+        catch (Exception)
+        {
+            exists = false;
+        }
+
+        if (exists)
+        {
+            status = 200;
+            statusText = "OK";
+            contentType = ContentTypeFor(full);
+            body = fileBody;
+        }
+        return true;
+    }
+
+    private static int AddStr(char[] target, int pos, string s)
+    {
+        for (int i = 0; i < s.Length; i++)
+            target[pos + i] = s[i];
+        return pos + s.Length;
+    }
+
+    private static bool HasDotDot(string path)
+    {
+        for (int i = 0; i + 1 < path.Length; i++)
+        {
+            if (path[i] == '.' && path[i + 1] == '.')
+                return true;
+        }
+        return false;
+    }
+
+    private static string ContentTypeFor(string file)
+    {
+        if (EndsWith(file, ".html") || EndsWith(file, ".htm"))
+            return "text/html";
+        if (EndsWith(file, ".css"))
+            return "text/css";
+        if (EndsWith(file, ".js"))
+            return "application/javascript";
+        if (EndsWith(file, ".json"))
+            return "application/json";
+        if (EndsWith(file, ".txt") || EndsWith(file, ".log") || EndsWith(file, ".conf"))
+            return "text/plain";
+        if (EndsWith(file, ".svg"))
+            return "image/svg+xml";
+        return "application/octet-stream";
+    }
+
+    private static bool EndsWith(string s, string suffix)
+    {
+        if (s.Length < suffix.Length)
+            return false;
+        int offset = s.Length - suffix.Length;
+        for (int i = 0; i < suffix.Length; i++)
+        {
+            if (s[offset + i] != suffix[i])
+                return false;
+        }
+        return true;
+    }
 
     private static void LoadConfig()
     {
@@ -391,6 +556,47 @@ public static class WebService
         return any ? value : fallback;
     }
 
+    /// <summary>Decode base64url (RFC 4648 section 5, no padding required).</summary>
+    internal static byte[] Base64UrlDecode(string s)
+    {
+        if (s == null || s.Length == 0)
+            return null;
+        var tmp = new byte[(s.Length * 3) / 4 + 3];
+        int acc = 0;
+        int bits = 0;
+        int o = 0;
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+            int v;
+            if (c >= 'A' && c <= 'Z')
+                v = c - 'A';
+            else if (c >= 'a' && c <= 'z')
+                v = c - 'a' + 26;
+            else if (c >= '0' && c <= '9')
+                v = c - '0' + 52;
+            else if (c == '-')
+                v = 62;
+            else if (c == '_')
+                v = 63;
+            else if (c == '=')
+                break;
+            else
+                continue;
+            acc = (acc << 6) | v;
+            bits += 6;
+            if (bits >= 8)
+            {
+                bits -= 8;
+                tmp[o++] = (byte)(acc >> bits);
+            }
+        }
+        var r = new byte[o];
+        for (int i = 0; i < o; i++)
+            r[i] = tmp[i];
+        return r;
+    }
+
     internal static string IntToStr(int value)
     {
         if (value == 0)
@@ -429,6 +635,10 @@ public sealed unsafe class WebConnection
     private bool _tlsReady;
     private bool _closed;
 
+    // Phase 9: HTTP/2 state (plain h2c or, later, ALPN-negotiated h2).
+    private Http2Connection _h2;
+    private bool _h2Checked;
+
     private readonly byte[] _in = new byte[12288];
     private int _inLen;
     private int _requests;
@@ -441,6 +651,50 @@ public sealed unsafe class WebConnection
 
     /// <summary>Source IP of the peer (Phase 7 rate limiting).</summary>
     public uint PeerIp => _sock.RemoteAddress;
+
+    /// <summary>Read from the active transport (TLS or plain); -1 when closed.</summary>
+    internal int TransportRead(byte[] buf, int off, int len)
+    {
+        if (_tls != null && _tlsReady)
+            return _tls.ReadApp(buf, off, len);
+        int got;
+        fixed (byte* p = buf)
+        {
+            got = _sock.Receive(p + off, len);
+        }
+        return got < 0 ? -1 : got;
+    }
+
+    /// <summary>Write to the active transport; false when it closed.</summary>
+    internal bool TransportWrite(byte[] buf, int off, int len)
+    {
+        if (_tls != null && _tlsReady)
+        {
+            _tls.WriteApp(buf, off, len);
+            return !_tls.Closed;
+        }
+        int sent = 0;
+        while (sent < len)
+        {
+            int got;
+            fixed (byte* p = buf)
+            {
+                got = _sock.Send(p + off + sent, len - sent);
+            }
+            if (got <= 0)
+                return false;
+            sent += got;
+        }
+        return true;
+    }
+
+    /// <summary>Hand the connection over to the HTTP/2 engine.</summary>
+    private void StartH2()
+    {
+        _h2 = new Http2Connection(this);
+        _h2.Seed(_in, 0, _inLen);
+        _inLen = 0;
+    }
 
     /// <summary>Creates a connection; tlsCert/tlsSeed null means plain HTTP.</summary>
     public WebConnection(TcpSocket sock, byte[] tlsCert, byte[] tlsSeed)
@@ -488,9 +742,35 @@ public sealed unsafe class WebConnection
                 return;
             }
             if (_tls.Connected)
+            {
                 _tlsReady = true;
+                // Phase 9: an ALPN result of "h2" switches to HTTP/2. The
+                // client still sends the connection preface (RFC 9113 3.4),
+                // so the normal Http2Connection handshake applies.
+                if (WebService.StrEq(_tls.AlpnSelected, "h2"))
+                {
+                    _h2Checked = true;
+                    StartH2();
+                    _h2.Tick();
+                    if (_h2.Closed)
+                        _closed = true;
+                    return;
+                }
+            }
             else
+            {
                 return;
+            }
+        }
+
+        // Phase 9: once in HTTP/2 mode the engine owns the transport -
+        // no plain reads may race it for bytes.
+        if (_h2 != null)
+        {
+            _h2.Tick();
+            if (_h2.Closed)
+                _closed = true;
+            return;
         }
 
         // Read available plaintext bytes.
@@ -541,6 +821,23 @@ public sealed unsafe class WebConnection
             }
         }
 
+        // Phase 9: HTTP/2. A plain connection beginning with the h2c
+        // client preface switches protocols (prior knowledge).
+        if (_h2 == null && !_h2Checked && _tls == null)
+        {
+            if (_inLen >= 3 && _in[0] == (byte)'P' && _in[1] == (byte)'R' && _in[2] == (byte)'I')
+            {
+                if (_inLen < Http2Connection.ClientPreface.Length)
+                    return;   // wait for the rest of the preface
+                _h2Checked = true;
+                StartH2();
+                _h2.Tick();
+                if (_h2.Closed)
+                    _closed = true;
+                return;
+            }
+        }
+
         ProcessRequests();
     }
 
@@ -569,8 +866,10 @@ public sealed unsafe class WebConnection
             string version;
             string keepAlive;
             int contentLength;
+            string upgrade;
+            string h2settings;
             if (!ParseRequest(head, out method, out path, out version,
-                    out keepAlive, out contentLength))
+                    out keepAlive, out contentLength, out upgrade, out h2settings))
             {
                 SendSimple(400, "Bad Request", "text/plain", "bad request\n", false);
                 Close();
@@ -580,6 +879,42 @@ public sealed unsafe class WebConnection
             int totalLen = headerEnd + 4 + contentLength;
             if (_inLen < totalLen)
                 return;   // wait for the body
+
+            // Phase 9: h2c upgrade (RFC 7540 3.2). Accept with 101, then
+            // hand the connection to HTTP/2; the captured request is
+            // answered on stream 1.
+            if (_tls == null && StrEqLower(upgrade, "h2c"))
+            {
+                byte[] settings = WebService.Base64UrlDecode(h2settings);
+                string sw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n";
+                var sb = new byte[sw.Length];
+                for (int i = 0; i < sw.Length; i++)
+                    sb[i] = (byte)sw[i];
+                int sent = 0;
+                while (sent < sb.Length)
+                {
+                    int got;
+                    fixed (byte* p = sb)
+                    {
+                        got = _sock.Send(p + sent, sb.Length - sent);
+                    }
+                    if (got <= 0)
+                        break;
+                    sent += got;
+                }
+                if (sent != sb.Length)
+                {
+                    Close();
+                    return;
+                }
+                _h2Checked = true;
+                _h2 = new Http2Connection(this);
+                _h2.BeginUpgrade(method, path, settings);
+                if (totalLen < _inLen)
+                    _h2.Seed(_in, totalLen, _inLen - totalLen);
+                _inLen = 0;
+                return;
+            }
 
             bool headOnly = WebService.StrEq(method, "HEAD");
             bool isGet = WebService.StrEq(method, "GET");
@@ -650,13 +985,16 @@ public sealed unsafe class WebConnection
     }
 
     private bool ParseRequest(string head, out string method, out string path,
-        out string version, out string keepAlive, out int contentLength)
+        out string version, out string keepAlive, out int contentLength,
+        out string upgrade, out string h2settings)
     {
         method = null;
         path = null;
         version = "HTTP/1.0";
         keepAlive = "close";
         contentLength = 0;
+        upgrade = "";
+        h2settings = "";
 
         // First line: method SP path SP version CRLF.
         int lineEnd = IndexOfStr(head, "\r\n", 0);
@@ -701,6 +1039,14 @@ public sealed unsafe class WebConnection
                     contentLength = WebService.ParseInt(value, 0);
                     if (contentLength > 1_000_000)
                         contentLength = 0;
+                }
+                else if (NameEq(name, "upgrade"))
+                {
+                    upgrade = value;
+                }
+                else if (NameEq(name, "http2-settings"))
+                {
+                    h2settings = value;
                 }
             }
             pos = end + 2;
@@ -767,131 +1113,12 @@ public sealed unsafe class WebConnection
 
     private void SendRoute(string path, bool headOnly)
     {
-        // Strip a query string.
-        int q = WebService.IndexOfChar(path, '?');
-        string clean = q >= 0 ? path.Substring(0, q) : path;
-
-        if (WebService.StrEq(clean, "/") || WebService.StrEq(clean, "/index.html"))
-        {
-            SendSimple(200, "OK", "text/html",
-                "<!doctype html><html><head><title>NeutrinoOS</title></head><body>" +
-                "<h1>NeutrinoOS web host</h1>" +
-                "<p>Managed .NET host on bare metal. Phase 6 fallback HTTP server.</p>" +
-                "<ul><li><a href=\"/health\">/health</a></li>" +
-                "<li><a href=\"/time\">/time</a></li></ul></body></html>\n",
-                headOnly);
-            return;
-        }
-        if (WebService.StrEq(clean, "/health"))
-        {
-            SendSimple(200, "OK", "application/json", "{\"status\":\"ok\"}\n", headOnly);
-            return;
-        }
-        if (WebService.StrEq(clean, "/time"))
-        {
-            // Use the proven `date` utility through the kernel shell
-            // bridge (the tiny formatter helpers misbehave when compiled
-            // inside the service graph - see PHASE6-WEB notes).
-            int rc;
-            string dateOut = ShellBridge.Exec("date", out rc);
-            int de = dateOut.Length;
-            while (de > 0 && (dateOut[de - 1] == '\n' || dateOut[de - 1] == '\r' || dateOut[de - 1] == ' '))
-                de--;
-            var dc = new char[de];
-            for (int i = 0; i < de; i++)
-                dc[i] = dateOut[i] == ' ' ? 'T' : dateOut[i];
-            string utc = new string(dc);
-            var timeBuf = new char[128];
-            int n = 0;
-            n = Add(timeBuf, n, "{\"utc\":\"");
-            n = Add(timeBuf, n, utc);
-            n = Add(timeBuf, n, "\",\"uptime_s\":");
-            n = Add(timeBuf, n, WebService.IntToStr((int)(Timer.GetUptimeMilliseconds() / 1000)));
-            n = Add(timeBuf, n, "}\n");
-            var jsonChars = new char[n];
-            for (int i = 0; i < n; i++)
-                jsonChars[i] = timeBuf[i];
-            SendSimple(200, "OK", "application/json", new string(jsonChars), headOnly);
-            return;
-        }
-
-        // Static files under /var/www.
-        if (HasDotDot(clean))
-        {
-            SendSimple(400, "Bad Request", "text/plain", "bad path\n", headOnly);
-            return;
-        }
-        string full = WebService.WwwRoot + clean;
-        bool isDir = false;
-        try
-        {
-            isDir = Directory.Exists(full);
-        }
-        catch (Exception)
-        {
-        }
-        if (isDir)
-            full = full + "/index.html";
-
-        bool exists = false;
-        string body = null;
-        try
-        {
-            exists = File.Exists(full);
-            if (exists)
-                body = File.ReadAllText(full);
-        }
-        catch (Exception)
-        {
-            exists = false;
-        }
-
-        if (!exists)
-        {
-            SendSimple(404, "Not Found", "text/plain", "404 not found\n", headOnly);
-            return;
-        }
-        SendSimple(200, "OK", ContentTypeFor(full), body, headOnly);
-    }
-
-    private static bool HasDotDot(string path)
-    {
-        for (int i = 0; i + 1 < path.Length; i++)
-        {
-            if (path[i] == '.' && path[i + 1] == '.')
-                return true;
-        }
-        return false;
-    }
-
-    private static string ContentTypeFor(string file)
-    {
-        if (EndsWith(file, ".html") || EndsWith(file, ".htm"))
-            return "text/html";
-        if (EndsWith(file, ".css"))
-            return "text/css";
-        if (EndsWith(file, ".js"))
-            return "application/javascript";
-        if (EndsWith(file, ".json"))
-            return "application/json";
-        if (EndsWith(file, ".txt") || EndsWith(file, ".log") || EndsWith(file, ".conf"))
-            return "text/plain";
-        if (EndsWith(file, ".svg"))
-            return "image/svg+xml";
-        return "application/octet-stream";
-    }
-
-    private static bool EndsWith(string s, string suffix)
-    {
-        if (s.Length < suffix.Length)
-            return false;
-        int offset = s.Length - suffix.Length;
-        for (int i = 0; i < suffix.Length; i++)
-        {
-            if (s[offset + i] != suffix[i])
-                return false;
-        }
-        return true;
+        int status;
+        string statusText;
+        string contentType;
+        string body;
+        WebService.BuildRoute(path, out status, out statusText, out contentType, out body);
+        SendSimple(status, statusText, contentType, body, headOnly);
     }
 
     // ==================== Responses ====================

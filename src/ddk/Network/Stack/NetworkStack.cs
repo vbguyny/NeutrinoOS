@@ -1504,16 +1504,28 @@ public unsafe partial class NetworkStack
 
         // Total frame length
         int totalLen = EthernetHeader.Size + arpLen;
+
+        // Pad to minimum frame size
         if (totalLen < EthernetHeader.MinFrameSize)
+        {
+            for (int i = totalLen; i < EthernetHeader.MinFrameSize; i++)
+                _txBuffer[i] = 0;
             totalLen = EthernetHeader.MinFrameSize;
+        }
 
         _txFrames++;
+
+        // Queue for transmission: this runs inside frame processing, so the
+        // pump that delivered the request must flush the reply (Phase 9 fix -
+        // previously the frame was built and silently dropped).
+        _pendingTxLen = totalLen;
+
+        // Acknowledge the requester immediately (no MAC-resolution dance).
+        _arpCache.Update(targetIP, targetMac);
 
         Debug.Write("[NetStack] Sending ARP reply to ");
         PrintIP(targetIP);
         Debug.WriteLine();
-
-        // Note: Caller needs to actually transmit _txBuffer
     }
 
     /// <summary>
