@@ -53,6 +53,21 @@ public static unsafe class DNS
     public static int BuildQuery(byte* buffer, ushort transactionId,
                                   byte* hostname, int hostnameLen)
     {
+        return BuildQueryType(buffer, transactionId, hostname, hostnameLen, TypeA);
+    }
+
+    /// <summary>
+    /// Build a DNS query packet for an explicit record type (A or AAAA).
+    /// </summary>
+    /// <param name="buffer">Buffer to write query to (must be at least MaxMessageSize bytes).</param>
+    /// <param name="transactionId">Transaction ID to match response.</param>
+    /// <param name="hostname">Hostname to resolve (e.g., "example.com").</param>
+    /// <param name="hostnameLen">Length of hostname.</param>
+    /// <param name="qtype">Query type (TypeA / TypeAAAA).</param>
+    /// <returns>Total query length in bytes, or 0 on error.</returns>
+    public static int BuildQueryType(byte* buffer, ushort transactionId,
+                                  byte* hostname, int hostnameLen, ushort qtype)
+    {
         if (buffer == null || hostname == null || hostnameLen <= 0 || hostnameLen > 253)
             return 0;
 
@@ -90,9 +105,9 @@ public static unsafe class DNS
             return 0;
         offset += nameLen;
 
-        // QTYPE - A record (2 bytes)
-        buffer[offset++] = (byte)(TypeA >> 8);
-        buffer[offset++] = (byte)(TypeA & 0xFF);
+        // QTYPE
+        buffer[offset++] = (byte)(qtype >> 8);
+        buffer[offset++] = (byte)(qtype & 0xFF);
 
         // QCLASS - Internet (2 bytes)
         buffer[offset++] = (byte)(ClassIN >> 8);
@@ -208,6 +223,74 @@ public static unsafe class DNS
         }
 
         Debug.WriteLine("[DNS] No A record found in response");
+        return false;
+    }
+
+    /// <summary>
+    /// Parse a DNS response and extract the first AAAA record IPv6 address.
+    /// </summary>
+    /// <param name="data">Response data.</param>
+    /// <param name="length">Response length.</param>
+    /// <param name="expectedId">Expected transaction ID.</param>
+    /// <param name="ipAddress">Output: resolved IPv6 address.</param>
+    /// <returns>True if successful, false on error or no AAAA record found.</returns>
+    public static bool ParseResponseAAAA(byte* data, int length, ushort expectedId,
+        out Ipv6Address ipAddress)
+    {
+        ipAddress = default;
+
+        if (data == null || length < HeaderSize)
+            return false;
+
+        ushort transactionId = (ushort)((data[0] << 8) | data[1]);
+        ushort flags = (ushort)((data[2] << 8) | data[3]);
+        ushort qdCount = (ushort)((data[4] << 8) | data[5]);
+        ushort anCount = (ushort)((data[6] << 8) | data[7]);
+
+        if (transactionId != expectedId)
+            return false;
+        if ((flags & FlagResponse) == 0)
+            return false;
+        if ((flags & RCodeMask) != 0)
+            return false;
+        if (anCount == 0)
+            return false;
+
+        int offset = HeaderSize;
+        for (int i = 0; i < qdCount; i++)
+        {
+            offset = SkipName(data, length, offset);
+            if (offset < 0)
+                return false;
+            offset += 4;
+            if (offset > length)
+                return false;
+        }
+
+        for (int i = 0; i < anCount; i++)
+        {
+            offset = SkipName(data, length, offset);
+            if (offset < 0 || offset + 10 > length)
+                return false;
+
+            ushort type = (ushort)((data[offset] << 8) | data[offset + 1]);
+            ushort cls = (ushort)((data[offset + 2] << 8) | data[offset + 3]);
+            ushort rdLength = (ushort)((data[offset + 8] << 8) | data[offset + 9]);
+            offset += 10;
+
+            if (offset + rdLength > length)
+                return false;
+
+            if (type == TypeAAAA && cls == ClassIN && rdLength == 16)
+            {
+                ipAddress = Ipv6Address.FromBytes(data + offset);
+                return true;
+            }
+
+            offset += rdLength;
+        }
+
+        Debug.WriteLine("[DNS] No AAAA record found in response");
         return false;
     }
 

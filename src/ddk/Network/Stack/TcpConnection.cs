@@ -31,6 +31,12 @@ public unsafe class TcpConnection
     private TcpEndpoint _local;
     private TcpEndpoint _remote;
 
+    // IPv6 endpoints (valid when _isV6). Public fields: the stack takes
+    // their addresses for pointer-based JIT-safe calls.
+    public Ipv6Address LocalV6;
+    public Ipv6Address RemoteV6;
+    private bool _isV6;
+
     // Connection state
     private TcpState _state;
 
@@ -98,6 +104,9 @@ public unsafe class TcpConnection
     /// Get the remote endpoint.
     /// </summary>
     public TcpEndpoint RemoteEndpoint => _remote;
+
+    /// <summary>True when this connection runs over IPv6.</summary>
+    public bool IsV6 => _isV6;
 
     /// <summary>
     /// Get the current connection state.
@@ -185,6 +194,52 @@ public unsafe class TcpConnection
         _sendBuffer = new byte[SendBufferSize];
     }
 
+    /// <summary>Create an outgoing IPv6 connection.</summary>
+    public TcpConnection(Ipv6Address* localIP, ushort localPort, Ipv6Address* remoteIP, ushort remotePort)
+    {
+        _isV6 = true;
+        LocalV6 = *localIP;
+        RemoteV6 = *remoteIP;
+        _local = new TcpEndpoint(0, localPort);
+        _remote = new TcpEndpoint(0, remotePort);
+        _state = TcpState.Closed;
+
+        _iss = GenerateISN();
+        _sendNext = _iss;
+        _sendUnack = _iss;
+
+        _recvWindow = (ushort)RecvBufferSize;
+        _sendWindow = RecvBufferSize;
+
+        _recvBuffer = new byte[RecvBufferSize];
+        _sendBuffer = new byte[SendBufferSize];
+    }
+
+    /// <summary>Create an IPv6 connection from an incoming SYN (server side).</summary>
+    public TcpConnection(Ipv6Address* localIP, ushort localPort, Ipv6Address* remoteIP, ushort remotePort,
+                         uint remoteSeq, ushort remoteWindow)
+    {
+        _isV6 = true;
+        LocalV6 = *localIP;
+        RemoteV6 = *remoteIP;
+        _local = new TcpEndpoint(0, localPort);
+        _remote = new TcpEndpoint(0, remotePort);
+        _state = TcpState.SynReceived;
+
+        _iss = GenerateISN();
+        _sendNext = _iss;
+        _sendUnack = _iss;
+
+        _irs = remoteSeq;
+        _recvNext = remoteSeq + 1;
+
+        _recvWindow = (ushort)RecvBufferSize;
+        _sendWindow = remoteWindow;
+
+        _recvBuffer = new byte[RecvBufferSize];
+        _sendBuffer = new byte[SendBufferSize];
+    }
+
     /// <summary>
     /// Generate an initial sequence number.
     /// In a real implementation, this should be based on a secure random source.
@@ -208,8 +263,7 @@ public unsafe class TcpConnection
         _state = TcpState.SynSent;
 
         // Build SYN packet
-        int len = TCP.BuildSyn(buffer, _local.Port, _remote.Port, _sendNext,
-                               _recvWindow, _local.IP, _remote.IP);
+        int len = BuildSegment(buffer, _sendNext, 0, TcpFlags.SYN, _recvWindow, null, 0);
 
         // SYN consumes one sequence number
         _sendNext++;
@@ -226,9 +280,8 @@ public unsafe class TcpConnection
         if (_state != TcpState.SynReceived)
             return 0;
 
-        int len = TCP.BuildSynAck(buffer, _local.Port, _remote.Port,
-                                   _sendNext, _recvNext, _recvWindow,
-                                   _local.IP, _remote.IP);
+        int len = BuildSegment(buffer, _sendNext, _recvNext,
+            (byte)(TcpFlags.SYN | TcpFlags.ACK), _recvWindow, null, 0);
 
         // SYN consumes one sequence number
         _sendNext++;
@@ -251,8 +304,8 @@ public unsafe class TcpConnection
                 // Send RST for any packet to closed connection
                 if (!packet->IsRst)
                 {
-                    responseLen = TCP.BuildRst(responseBuffer, _local.Port, _remote.Port,
-                                               packet->AckNum, _local.IP, _remote.IP);
+                    responseLen = BuildSegment(responseBuffer, packet->AckNum, 0,
+                                               TcpFlags.RST, 0, null, 0);
                 }
                 break;
 
@@ -296,9 +349,7 @@ public unsafe class TcpConnection
                 // In TIME_WAIT, just ACK any valid segment
                 if (IsValidSequence(packet->SeqNum))
                 {
-                    responseLen = TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                               _sendNext, _recvNext, _recvWindow,
-                                               _local.IP, _remote.IP);
+                    responseLen = BuildAckHere(responseBuffer);
                 }
                 break;
         }
@@ -317,9 +368,8 @@ public unsafe class TcpConnection
             _state = TcpState.SynReceived;
 
             // Send SYN-ACK
-            int len = TCP.BuildSynAck(responseBuffer, _local.Port, _remote.Port,
-                                       _sendNext, _recvNext, _recvWindow,
-                                       _local.IP, _remote.IP);
+            int len = BuildSegment(responseBuffer, _sendNext, _recvNext,
+                (byte)(TcpFlags.SYN | TcpFlags.ACK), _recvWindow, null, 0);
             _sendNext++; // SYN consumes one sequence
             return len;
         }
@@ -336,8 +386,8 @@ public unsafe class TcpConnection
             if (packet->AckNum != _sendNext)
             {
                 // Invalid ACK, send RST
-                return TCP.BuildRst(responseBuffer, _local.Port, _remote.Port,
-                                    packet->AckNum, _local.IP, _remote.IP);
+                return BuildSegment(responseBuffer, packet->AckNum, 0,
+                                    TcpFlags.RST, 0, null, 0);
             }
 
             _irs = packet->SeqNum;
@@ -349,9 +399,7 @@ public unsafe class TcpConnection
             Debug.WriteLine("[TCP] Connection established");
 
             // Send ACK
-            return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                _local.IP, _remote.IP);
+            return BuildAckHere(responseBuffer);
         }
         else if (packet->IsSyn && !packet->IsAck)
         {
@@ -360,9 +408,8 @@ public unsafe class TcpConnection
             _recvNext = packet->SeqNum + 1;
             _state = TcpState.SynReceived;
 
-            return TCP.BuildSynAck(responseBuffer, _local.Port, _remote.Port,
-                                    _sendNext - 1, _recvNext, _recvWindow,
-                                    _local.IP, _remote.IP);
+            return BuildSegment(responseBuffer, _sendNext - 1, _recvNext,
+                                (byte)(TcpFlags.SYN | TcpFlags.ACK), _recvWindow, null, 0);
         }
 
         return 0;
@@ -424,16 +471,12 @@ public unsafe class TcpConnection
                 _recvNext += (uint)copied;
 
                 // Send ACK
-                return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                    _sendNext, _recvNext, _recvWindow,
-                                    _local.IP, _remote.IP);
+                return BuildAckHere(responseBuffer);
             }
             else
             {
                 // Out of order - send duplicate ACK
-                return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                    _sendNext, _recvNext, _recvWindow,
-                                    _local.IP, _remote.IP);
+                return BuildAckHere(responseBuffer);
             }
         }
 
@@ -444,9 +487,7 @@ public unsafe class TcpConnection
             _finReceived = true;
             _state = TcpState.CloseWait;
 
-            return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                _local.IP, _remote.IP);
+            return BuildAckHere(responseBuffer);
         }
 
         return 0;
@@ -462,9 +503,7 @@ public unsafe class TcpConnection
             {
                 _recvNext++;
                 _state = TcpState.TimeWait;
-                return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                    _sendNext, _recvNext, _recvWindow,
-                                    _local.IP, _remote.IP);
+                return BuildAckHere(responseBuffer);
             }
             else
             {
@@ -475,9 +514,7 @@ public unsafe class TcpConnection
         {
             _recvNext++;
             _state = TcpState.Closing;
-            return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                _local.IP, _remote.IP);
+            return BuildAckHere(responseBuffer);
         }
 
         return 0;
@@ -489,9 +526,7 @@ public unsafe class TcpConnection
         {
             _recvNext++;
             _state = TcpState.TimeWait;
-            return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                _local.IP, _remote.IP);
+            return BuildAckHere(responseBuffer);
         }
 
         // Can still receive data
@@ -499,9 +534,7 @@ public unsafe class TcpConnection
         {
             int copied = CopyToRecvBuffer(packet->Payload, packet->PayloadLength);
             _recvNext += (uint)copied;
-            return TCP.BuildAck(responseBuffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                _local.IP, _remote.IP);
+            return BuildAckHere(responseBuffer);
         }
 
         return 0;
@@ -545,9 +578,8 @@ public unsafe class TcpConnection
         if (_state == TcpState.Established)
         {
             _state = TcpState.FinWait1;
-            int len = TCP.BuildFinAck(buffer, _local.Port, _remote.Port,
-                                       _sendNext, _recvNext, _recvWindow,
-                                       _local.IP, _remote.IP);
+            int len = BuildSegment(buffer, _sendNext, _recvNext,
+                (byte)(TcpFlags.FIN | TcpFlags.ACK), _recvWindow, null, 0);
             _sendNext++; // FIN consumes one sequence
             _finSent = true;
             return len;
@@ -555,9 +587,8 @@ public unsafe class TcpConnection
         else if (_state == TcpState.CloseWait)
         {
             _state = TcpState.LastAck;
-            int len = TCP.BuildFinAck(buffer, _local.Port, _remote.Port,
-                                       _sendNext, _recvNext, _recvWindow,
-                                       _local.IP, _remote.IP);
+            int len = BuildSegment(buffer, _sendNext, _recvNext,
+                (byte)(TcpFlags.FIN | TcpFlags.ACK), _recvWindow, null, 0);
             _sendNext++;
             _finSent = true;
             return len;
@@ -582,9 +613,8 @@ public unsafe class TcpConnection
 
         int sendLen = dataLength < maxSend ? dataLength : maxSend;
 
-        int len = TCP.BuildData(buffer, _local.Port, _remote.Port,
-                                _sendNext, _recvNext, _recvWindow,
-                                data, sendLen, _local.IP, _remote.IP);
+        int len = BuildSegment(buffer, _sendNext, _recvNext,
+            (byte)(TcpFlags.PSH | TcpFlags.ACK), _recvWindow, data, sendLen);
 
         if (len > 0)
         {
@@ -649,9 +679,43 @@ public unsafe class TcpConnection
     /// </summary>
     public bool Matches(uint remoteIP, ushort remotePort, ushort localPort)
     {
-        return _remote.IP == remoteIP &&
+        return !_isV6 &&
+               _remote.IP == remoteIP &&
                _remote.Port == remotePort &&
                _local.Port == localPort;
+    }
+
+    /// <summary>IPv6 match (ports + remote address).</summary>
+    public bool Matches6(Ipv6Address* remoteIP, ushort remotePort, ushort localPort)
+    {
+        return _isV6 &&
+               RemoteV6.Hi == remoteIP->Hi && RemoteV6.Lo == remoteIP->Lo &&
+               _remote.Port == remotePort &&
+               _local.Port == localPort;
+    }
+
+    /// <summary>
+    /// Build a TCP segment on this connection with the right pseudo-header
+    /// (IPv4 or IPv6 checksum). Single construction point for all responses.
+    /// </summary>
+    private int BuildSegment(byte* buffer, uint seqNum, uint ackNum, byte flags,
+        ushort window, byte* payload, int payloadLength)
+    {
+        if (_isV6)
+        {
+            Ipv6Address l = LocalV6;
+            Ipv6Address r = RemoteV6;
+            return TCP.BuildPacketWithChecksum6(buffer, _local.Port, _remote.Port,
+                seqNum, ackNum, flags, window, payload, payloadLength, &l, &r);
+        }
+        return TCP.BuildPacketWithChecksum(buffer, _local.Port, _remote.Port,
+            seqNum, ackNum, flags, window, payload, payloadLength, _local.IP, _remote.IP);
+    }
+
+    /// <summary>Plain ACK with the connection's current sequence state.</summary>
+    private int BuildAckHere(byte* buffer)
+    {
+        return BuildSegment(buffer, _sendNext, _recvNext, TcpFlags.ACK, _recvWindow, null, 0);
     }
 
     /// <summary>

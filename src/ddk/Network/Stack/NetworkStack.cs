@@ -42,7 +42,7 @@ public struct NetworkConfig
 /// </summary>
 public unsafe struct UdpDatagram
 {
-    /// <summary>Source IP address (host byte order).</summary>
+    /// <summary>Source IP address (host byte order; v4 only).</summary>
     public uint SourceIP;
 
     /// <summary>Source port.</summary>
@@ -50,6 +50,15 @@ public unsafe struct UdpDatagram
 
     /// <summary>Destination port.</summary>
     public ushort DestPort;
+
+    /// <summary>True when this datagram arrived over IPv6.</summary>
+    public bool IsV6;
+
+    /// <summary>IPv6 source address (when IsV6).</summary>
+    public Ipv6Address SourceV6;
+
+    /// <summary>IPv6 destination address (when IsV6).</summary>
+    public Ipv6Address DestV6;
 
     /// <summary>Data buffer.</summary>
     public fixed byte Data[1500];
@@ -64,7 +73,7 @@ public unsafe struct UdpDatagram
 /// <summary>
 /// Network stack manager - handles Ethernet/ARP/IP processing.
 /// </summary>
-public unsafe class NetworkStack
+public unsafe partial class NetworkStack
 {
     // Network device MAC address
     private byte* _macAddress;
@@ -223,6 +232,13 @@ public unsafe class NetworkStack
         bool isForUs = Ethernet.CompareMac(frame.DestinationMac, _macAddress) ||
                        Ethernet.IsBroadcast(frame.DestinationMac);
 
+        // IPv6 multicast frames (33:33:xx) are accepted; the IPv6 layer
+        // decides whether the group is joined.
+        if (!isForUs && frame.EtherType == EtherType.IPv6 && frame.DestinationMac != null)
+        {
+            isForUs = frame.DestinationMac[0] == 0x33 && frame.DestinationMac[1] == 0x33;
+        }
+
         if (!isForUs)
             return;
 
@@ -235,6 +251,10 @@ public unsafe class NetworkStack
 
             case EtherType.IPv4:
                 ProcessIPv4(frame.Payload, frame.PayloadLength, frame.SourceMac);
+                break;
+
+            case EtherType.IPv6:
+                ProcessIPv6(frame.Payload, frame.PayloadLength, frame.SourceMac);
                 break;
 
             default:
@@ -469,6 +489,7 @@ public unsafe class NetworkStack
         {
             int idx = _udpQueueTail;
             _udpQueue[idx].SourceIP = srcIP;
+            _udpQueue[idx].IsV6 = false;
             _udpQueue[idx].SourcePort = packet.SourcePort;
             _udpQueue[idx].DestPort = packet.DestPort;
             _udpQueue[idx].Length = packet.PayloadLength;

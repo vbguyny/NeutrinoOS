@@ -14,6 +14,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using ProtonOS.DDK.Kernel;
 using ProtonOS.DDK.Network.Stack;
 
 namespace ProtonOS.DDK.Network;
@@ -60,6 +61,16 @@ public static unsafe class NetworkPump
             uint destIP = ((uint)frame[30] << 24) | ((uint)frame[31] << 16) |
                           ((uint)frame[32] << 8) | frame[33];
             if (stack.IsLocalAddress(destIP))
+            {
+                stack.ProcessFrame(frame, frameLength);
+                return true;
+            }
+        }
+        // IPv6 loopback (Phase 9): ::1 and any assigned address.
+        if (frameLength >= 54 && frame[12] == 0x86 && frame[13] == 0xDD)
+        {
+            Ipv6Address dest = Ipv6Address.FromBytes(frame + 14 + 24);
+            if (stack.IsLocalV6(&dest))
             {
                 stack.ProcessFrame(frame, frameLength);
                 return true;
@@ -112,23 +123,90 @@ public static unsafe class NetworkPump
 
     /// <summary>
     /// Resolve an IP to a MAC through ARP: sends a request when needed
-    /// and pumps the stack until the cache is populated or the poll
-    /// budget runs out.
+    /// and pumps the stack for up to <paramref name="maxMs"/> ms (real
+    /// time - instant poll loops are far too fast for the emulated NIC,
+    /// so the request is re-sent every 500 ms while waiting).
     /// </summary>
-    public static bool ResolveArp(NetworkStack stack, uint ip, int maxPolls)
+    public static bool ResolveArp(NetworkStack stack, uint ip, int maxMs)
     {
         byte* mac = stackalloc byte[6];
         if (stack.ArpCache.Lookup(ip, mac))
             return true;
 
-        int len = stack.SendArpRequest(ip);
-        if (len > 0)
-            TransmitTxBuffer(stack, len);
-
-        for (int i = 0; i < maxPolls; i++)
+        ulong start = Timer.GetUptimeMilliseconds();
+        ulong lastProbe = 0;
+        while (Timer.GetUptimeMilliseconds() - start < (ulong)maxMs)
         {
+            ulong now = Timer.GetUptimeMilliseconds();
+            if (now - start - lastProbe >= 500 || lastProbe == 0)
+            {
+                lastProbe = now - start;
+                int len = stack.SendArpRequest(ip);
+                if (len > 0)
+                    TransmitTxBuffer(stack, len);
+            }
             Pump(stack, 4);
             if (stack.ArpCache.Lookup(ip, mac))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Resolve an IPv6 next-hop to a MAC through neighbor discovery.
+    /// Runs for up to <paramref name="maxMs"/> milliseconds (real time),
+    /// resending the solicitation periodically (mirrors ResolveArp, but
+    /// with a millisecond budget: the emulated network needs wall-clock
+    /// time to answer, a fast poll loop is not enough).
+    /// </summary>
+    public static bool ResolveNdp(NetworkStack stack, Ipv6Address* target, int maxMs)
+    {
+        byte* mac = stackalloc byte[6];
+        if (stack.LookupNdp(target, mac))
+            return true;
+
+        ulong start = Timer.GetUptimeMilliseconds();
+        ulong lastProbe = 0;
+        while (Timer.GetUptimeMilliseconds() - start < (ulong)maxMs)
+        {
+            ulong now = Timer.GetUptimeMilliseconds();
+            if (now - start - lastProbe >= 500 || lastProbe == 0)
+            {
+                lastProbe = now - start;
+                int len = stack.SendNeighborSolicitation(target);
+                if (len > 0)
+                    TransmitTxBuffer(stack, len);
+            }
+            Pump(stack, 4);
+            if (stack.LookupNdp(target, mac))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Bring the IPv6 side up: link-local address + Router Solicitation,
+    /// pumping (in real time, up to <paramref name="maxMs"/>) until a
+    /// router advertisement arrives. Returns true when a router was
+    /// heard (SLAAC address adopted).
+    /// </summary>
+    public static bool BringUpV6(NetworkStack stack, int maxMs)
+    {
+        stack.ConfigureV6LinkLocal();
+        ulong start = Timer.GetUptimeMilliseconds();
+        ulong lastProbe = 0;
+        while (Timer.GetUptimeMilliseconds() - start < (ulong)maxMs)
+        {
+            ulong now = Timer.GetUptimeMilliseconds();
+            if (now - start - lastProbe >= 1000 || lastProbe == 0)
+            {
+                lastProbe = now - start;
+                int len = stack.SendRouterSolicitation();
+                if (len > 0)
+                    TransmitTxBuffer(stack, len);
+            }
+            Pump(stack, 4);
+            if (stack.V6RouterSeen)
                 return true;
         }
         return false;

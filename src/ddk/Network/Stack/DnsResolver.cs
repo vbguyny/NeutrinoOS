@@ -187,6 +187,133 @@ public unsafe class DnsResolver
     }
 
     /// <summary>
+    /// Resolve a hostname to an IPv6 address (AAAA record). Uses the
+    /// IPv6 DNS server when one was learned (RDNSS/DHCPv6); otherwise
+    /// queries the IPv4 server for the AAAA record (RFC 3596 allows
+    /// transport-independent record types).
+    /// </summary>
+    /// <returns>Resolved address, or :: on failure.</returns>
+    public Ipv6Address ResolveV6(string hostname, int timeoutMs,
+                                 TransmitFrameDelegate transmit, ReceiveFrameDelegate receive)
+    {
+        Ipv6Address none = default;
+        if (string.IsNullOrEmpty(hostname))
+            return none;
+
+        // Literal address?
+        if (Ipv6Address.TryParse(hostname, out Ipv6Address literal))
+            return literal;
+
+        Ipv6Address dns6 = _stack.V6Dns;
+        bool useV6 = !dns6.IsUnspecified;
+        if (!useV6 && _stack.Config.DnsServer == 0)
+        {
+            Debug.WriteLine("[DNS] No DNS server configured");
+            return none;
+        }
+
+        // Encode the hostname.
+        int hlen = hostname.Length;
+        byte* hostnameBytes = stackalloc byte[hlen];
+        for (int i = 0; i < hlen; i++)
+        {
+            char c = hostname[i];
+            if (c > 127)
+                return none;
+            hostnameBytes[i] = (byte)c;
+        }
+
+        byte* queryBuffer = stackalloc byte[DNS.MaxMessageSize];
+        ushort transactionId = _nextTransactionId++;
+        int queryLen = DNS.BuildQueryType(queryBuffer, transactionId, hostnameBytes, hlen,
+            DNS.TypeAAAA);
+        if (queryLen <= 0)
+            return none;
+
+        ushort localPort = 53001;
+        if (useV6)
+        {
+            Debug.Write("[DNS] AAAA query via [");
+            Debug.Write(dns6.ToString());
+            Debug.WriteLine("]");
+            int sent = _stack.SendUdp6(&dns6, localPort, DNS.Port, queryBuffer, queryLen);
+            if (sent == 0)
+            {
+                Debug.WriteLine("[DNS] Failed to send v6 query (NDP needed?)");
+                return none;
+            }
+        }
+        else
+        {
+            int sent = _stack.SendUdp(_stack.Config.DnsServer, localPort, DNS.Port,
+                queryBuffer, queryLen);
+            if (sent == 0)
+            {
+                Debug.WriteLine("[DNS] Failed to send query (ARP needed?)");
+                return none;
+            }
+        }
+
+        int pendingLen = _stack.GetPendingTxLen();
+        if (pendingLen > 0)
+            transmit(_stack.GetTxBuffer(), pendingLen);
+
+        ulong startTime = Timer.GetUptimeMilliseconds();
+        byte* rxBuffer = stackalloc byte[1514];
+        byte* responseBuffer = stackalloc byte[DNS.MaxMessageSize];
+
+        while (true)
+        {
+            ulong elapsed = Timer.GetUptimeMilliseconds() - startTime;
+            if (elapsed >= (ulong)timeoutMs)
+            {
+                Debug.WriteLine("[DNS] Timeout waiting for AAAA response");
+                return none;
+            }
+
+            int rxLen = receive(rxBuffer, 1514);
+            if (rxLen > 0)
+            {
+                _stack.ProcessFrame(rxBuffer, rxLen);
+
+                if (useV6)
+                {
+                    if (_stack.Udp6Available() > 0)
+                    {
+                        Ipv6Address srcAddr;
+                        ushort replyPort;
+                        int recvLen = _stack.ReceiveUdp6To(localPort,
+                            out srcAddr, out replyPort, responseBuffer, DNS.MaxMessageSize);
+                        if (recvLen > 0)
+                        {
+                            Ipv6Address resolved;
+                            if (DNS.ParseResponseAAAA(responseBuffer, recvLen, transactionId,
+                                out resolved))
+                                return resolved;
+                            return none;
+                        }
+                    }
+                }
+                else if (_stack.UdpAvailable() > 0)
+                {
+                    uint srcIP;
+                    ushort srcPort, destPort;
+                    int recvLen = _stack.ReceiveUdp(out srcIP, out srcPort, out destPort,
+                        responseBuffer, DNS.MaxMessageSize);
+                    if (recvLen > 0 && srcIP == _stack.Config.DnsServer && srcPort == DNS.Port)
+                    {
+                        Ipv6Address resolved;
+                        if (DNS.ParseResponseAAAA(responseBuffer, recvLen, transactionId,
+                            out resolved))
+                            return resolved;
+                        return none;
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Try to parse a string as an IP address (e.g., "192.168.1.1").
     /// </summary>
     /// <param name="s">String to parse.</param>

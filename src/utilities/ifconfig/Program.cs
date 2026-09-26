@@ -12,6 +12,7 @@
 using System;
 using NeutrinoOS.Utils;
 using ProtonOS.DDK.Network;
+using ProtonOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utility.Ifconfig;
 
@@ -19,7 +20,7 @@ namespace NeutrinoOS.Utility.Ifconfig;
 public static class Program
 {
     /// <summary>Entry point; always returns 0.</summary>
-    public static int Main(string[] args)
+    public static unsafe int Main(string[] args)
     {
         if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
@@ -63,7 +64,8 @@ public static class Program
                 "usage: ifconfig [interface [up|down|static ...]]",
                 "  With no arguments, shows every network interface.",
                 "  'ifconfig eth0 up|down' changes the interface state.",
-                "  'ifconfig eth0 static <ip> <mask> <gateway> [dns]' applies IP settings.");
+                "  'ifconfig eth0 static <ip> <mask> <gateway> [dns]' applies IP settings.",
+                "  'ifconfig eth0 static6 <addr> [gateway] [dns6]' applies an IPv6 address.");
         }
 
         if (name == null)
@@ -84,6 +86,18 @@ public static class Program
             iface.Up();
             Console.Write(name);
             Console.WriteLine(": interface up");
+            // Phase 9: bring the IPv6 side up too (link-local + RS/RA).
+            if (iface.Stack != null && iface.Type != InterfaceType.Loopback)
+            {
+                if (!iface.Stack.V6Configured || !iface.Stack.V6RouterSeen)
+                {
+                    ProtonOS.DDK.Network.NetworkPump.BringUpV6(iface.Stack, 10000);
+                    Console.Write(name);
+                    Console.WriteLine(iface.Stack.V6RouterSeen
+                        ? ": IPv6 up (router advertisement received)"
+                        : ": IPv6 link-local up");
+                }
+            }
             return 0;
         }
         if (op == "down")
@@ -107,7 +121,24 @@ public static class Program
             Console.WriteLine(": static configuration applied");
             return 0;
         }
-        return Util.Fail("ifconfig", op + ": expected 'up', 'down' or 'static'");
+        if (op == "static6")
+        {
+            if (p1 == null || iface.Stack == null)
+                return Util.Fail("ifconfig", "usage: ifconfig <iface> static6 <addr> [gateway] [dns6]");
+            if (!Ipv6Address.TryParse(p1, out Ipv6Address addr))
+                return Util.Fail("ifconfig", p1 + ": invalid IPv6 address");
+            Ipv6Address gw6 = default;
+            Ipv6Address dns6 = default;
+            if (p2 != null && !Ipv6Address.TryParse(p2, out gw6))
+                return Util.Fail("ifconfig", p2 + ": invalid IPv6 gateway");
+            if (p3 != null && !Ipv6Address.TryParse(p3, out dns6))
+                return Util.Fail("ifconfig", p3 + ": invalid IPv6 DNS server");
+            iface.Stack.ConfigureV6Static(&addr, &gw6, &dns6);
+            Console.Write(name);
+            Console.WriteLine(": IPv6 address applied");
+            return 0;
+        }
+        return Util.Fail("ifconfig", op + ": expected 'up', 'down', 'static' or 'static6'");
     }
 
     /// <summary>Parses a dotted-quad IPv4 address into host byte order."</summary>
@@ -156,6 +187,33 @@ public static class Program
                 Console.Write(FormatIP(iface.IPAddress));
                 Console.Write("  netmask ");
                 Console.WriteLine(loopback ? "255.0.0.0" : FormatIP(iface.SubnetMask));
+            }
+
+            // Phase 9: IPv6 addresses (link-local and global).
+            if (!loopback && iface.Stack != null && iface.Stack.V6Configured)
+            {
+                if (iface.Stack.V6LinkLocalIsValid)
+                {
+                    Console.Write("    inet6 ");
+                    Console.Write(iface.Stack.V6LinkLocal.ToString());
+                    Console.WriteLine("  prefixlen 64  scope link");
+                }
+                if (iface.Stack.V6GlobalValid)
+                {
+                    Console.Write("    inet6 ");
+                    Console.Write(iface.Stack.V6Global.ToString());
+                    Console.WriteLine("  prefixlen 64");
+                }
+                if (!iface.Stack.V6Gateway.IsUnspecified)
+                {
+                    Console.Write("    gateway6 ");
+                    Console.WriteLine(iface.Stack.V6Gateway.ToString());
+                }
+                if (!iface.Stack.V6Dns.IsUnspecified)
+                {
+                    Console.Write("    dns6 ");
+                    Console.WriteLine(iface.Stack.V6Dns.ToString());
+                }
             }
 
             if (!loopback)

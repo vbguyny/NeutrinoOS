@@ -1,0 +1,13 @@
+set pagination off
+printf "=== regs ===\n"
+info registers rax rbx rcx rdx rsi rdi rbp rsp rip
+printf "=== stack around rsp ===\n"
+x/8gx $rsp
+printf "=== 16-byte struct at rbp-0xc0 (candidate Ipv6Address) ===\n"
+x/2gx $rbp-0xc0
+printf "=== forward disasm (find the call) ===\n"
+x/40i 0x2003E3C87
+printf "=== jit symbol of current method ===\n"
+info symbol 0x2003E3C87
+printf "=== bt ===\n"
+bt

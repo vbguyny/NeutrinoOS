@@ -447,4 +447,36 @@ public static unsafe class TCP
 
         return (ushort)sum;
     }
+
+    // ========================================================================
+    // IPv6 variants (Phase 9 Task 2) - same segment layout, pseudo-header
+    // carries the two 16-byte addresses and the upper-layer length.
+    // ========================================================================
+
+    /// <summary>Build a TCP segment with an IPv6 pseudo-header checksum.</summary>
+    public static int BuildPacketWithChecksum6(byte* buffer, ushort srcPort, ushort destPort,
+                                               uint seqNum, uint ackNum, byte flags, ushort window,
+                                               byte* payload, int payloadLength,
+                                               Ipv6Address* srcIP, Ipv6Address* destIP)
+    {
+        int totalLength = BuildPacket(buffer, srcPort, destPort, seqNum, ackNum,
+                                       flags, window, payload, payloadLength);
+        if (totalLength == 0)
+            return 0;
+
+        ushort checksum = Ipv6.UpperLayerChecksum(srcIP, destIP, Ipv6NextHeader.Tcp,
+            buffer, totalLength);
+        if (checksum == 0)
+            checksum = 0xFFFF;
+        buffer[16] = (byte)(checksum >> 8);
+        buffer[17] = (byte)(checksum & 0xFF);
+        return totalLength;
+    }
+
+    /// <summary>Verify a TCP segment checksum against an IPv6 pseudo-header.</summary>
+    public static bool VerifyChecksum6(byte* tcpData, int tcpLength, Ipv6Address* srcIP, Ipv6Address* destIP)
+    {
+        return Ipv6.VerifyUpperLayerChecksum(srcIP, destIP, Ipv6NextHeader.Tcp,
+            tcpData, tcpLength);
+    }
 }

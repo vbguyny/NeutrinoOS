@@ -79,6 +79,33 @@ public static class Program
         if (shown == 0)
             Console.WriteLine("  (no active connections)");
 
+        if (stack.V6Configured)
+        {
+            Console.WriteLine();
+            Console.WriteLine("IPV6");
+            Ipv6Address ll = stack.V6LinkLocal;
+            Console.Write("  link-local ");
+            Console.WriteLine(stack.V6LinkLocalIsValid ? ll.ToString() : "(none)");
+            if (stack.V6GlobalValid)
+            {
+                Ipv6Address gl = stack.V6Global;
+                Console.Write("  global     ");
+                Console.WriteLine(gl.ToString());
+            }
+            if (stack.V6RouterSeen)
+            {
+                Ipv6Address gw = stack.V6Gateway;
+                Console.Write("  router     ");
+                Console.WriteLine(gw.ToString());
+            }
+            Ipv6Address d6 = stack.V6Dns;
+            if (!d6.IsUnspecified)
+            {
+                Console.Write("  dns6       ");
+                Console.WriteLine(d6.ToString());
+            }
+        }
+
         Console.WriteLine();
         Console.WriteLine("COUNTERS");
         Console.WriteLine("  TCP:  sent=" + tcpSent.ToString() + " segments, received=" + tcpRecv.ToString()
@@ -97,7 +124,13 @@ public static class Program
             Console.WriteLine("  BYTES  IPv4 in=" + ipIn.ToString() + ", out=" + ipOut.ToString()
                 + "   TCP payload in=" + tcpIn.ToString() + ", out=" + tcpOut.ToString());
             Console.WriteLine("         (/dev/netstats carries interface-level frame counters)");
-        }        return 0;
+            Console.WriteLine("  IPV6   bytes in=" + stack.Ip6BytesIn.ToString() + ", out=" + stack.Ip6BytesOut.ToString()
+                + "  ICMPv6 sent=" + stack.Icmp6Sent.ToString() + ", received=" + stack.Icmp6Received.ToString());
+            Console.WriteLine("         NDP sent=" + stack.NdpSent.ToString() + ", received=" + stack.NdpReceived.ToString()
+                + "  UDP6 sent=" + stack.Udp6Sent.ToString() + ", received=" + stack.Udp6Received.ToString());
+            Console.WriteLine("         TCP6 sent=" + stack.Tcp6Sent.ToString() + ", received=" + stack.Tcp6Received.ToString());
+        }
+        return 0;
     }
 
     private static string FormatEP(uint ip, ushort port)

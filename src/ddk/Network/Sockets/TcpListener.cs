@@ -272,6 +272,70 @@ public unsafe class TcpListener
     }
 
     /// <summary>
+    /// Handle an incoming SYN carried over IPv6 (Phase 9 Task 2). The
+    /// listener is dual-stack: it accepts v6 SYNs on the same port unless
+    /// a specific v4 address was bound.
+    /// </summary>
+    internal void HandleIncomingSyn6(Ipv6Address* srcAddr, Ipv6Address* dstAddr, ushort srcPort,
+                                     ushort dstPort, uint seqNum, ushort window)
+    {
+        if (!_isListening)
+            return;
+
+        // Check if we already have a pending connection from this source
+        for (int i = 0; i < MaxPendingConnections; i++)
+        {
+            var pending = _pendingConnections[i];
+            if (pending != null && pending.IsV6 &&
+                pending.RemoteV6.Hi == srcAddr->Hi && pending.RemoteV6.Lo == srcAddr->Lo &&
+                pending.RemoteEndpoint.Port == srcPort)
+            {
+                return;
+            }
+        }
+
+        if (_pendingCount >= MaxPendingConnections)
+        {
+            Debug.WriteLine("[TcpListener] Too many pending connections, dropping SYNv6");
+            return;
+        }
+
+        // Local address is the address the SYN targeted (global/link-local).
+        var conn = new TcpConnection(dstAddr, dstPort, srcAddr, srcPort, seqNum, window);
+        conn.Listener = this;
+
+        for (int i = 0; i < MaxPendingConnections; i++)
+        {
+            if (_pendingConnections[i] == null)
+            {
+                _pendingConnections[i] = conn;
+                _pendingCount++;
+                break;
+            }
+        }
+
+        _stack.AddListenerConnection(conn);
+
+        byte* synAckBuffer = stackalloc byte[TcpHeader.MaxSize];
+        int synAckLen = conn.BuildSynAck(synAckBuffer);
+        if (synAckLen > 0)
+        {
+            Ipv6Address l = conn.LocalV6;
+            Ipv6Address r = conn.RemoteV6;
+            int frameLen = _stack.BuildIpv6Frame(&l, &r,
+                Ipv6NextHeader.Tcp, synAckBuffer, synAckLen);
+            if (frameLen > 0)
+                _stack.QueuePendingTx(frameLen);
+        }
+
+        Debug.Write("[TcpListener] SYNv6 received from [");
+        Debug.Write(srcAddr->ToString());
+        Debug.Write("]:");
+        Debug.WriteDecimal(srcPort);
+        Debug.WriteLine(", sent SYN-ACK");
+    }
+
+    /// <summary>
     /// Called when a pending connection has been established (received final ACK).
     /// </summary>
     internal void ConnectionEstablished(TcpConnection conn)
