@@ -199,10 +199,16 @@ bash build/p8-npkg-deploy.sh         # /root/npkgtest.img (utilities+repo+key)
 bash build/p8-npkg-test.sh           # boots QEMU, drives npkg, asserts output
 ```
 
-The acceptance run installs a utility, an application (runs it through the
-`/bin` wrapper), a driver package and a three-deep dependency chain,
-verifies dependency-guarded removal, upgrade behavior and signature
-verification (`checksums: OK`).
+The acceptance run installs a utility (1.0.0), an application (runs it
+through the `/bin` wrapper), a driver package and a three-deep dependency
+chain; verifies dependency-guarded removal; upgrades hello-utility to the
+1.1.0 repository version (`1.0.0 -> 1.1.0`); verifies a signed package
+(`checksums: OK`); rejects a **tampered** package (`checksums: FAIL`,
+fixture built with the structure-safe rebuild method); exercises both
+conflict paths (a plan whose two requirements disagree on libz 1.x vs
+2.x -> `conflicting version requirements`; and an installed-version
+conflict -> `is already installed and does not satisfy`); and reports a
+missing package (`package not found in any repository`).
 
 ## 10. Known limitations (Phase 8 scope)
 
@@ -217,3 +223,14 @@ verification (`checksums: OK`).
 - HTTP repositories are fetched in the clear; integrity comes from the
   signed index and signed packages. HTTPS repository fetching is host-side
   only in this phase.
+- **Assembly loader cache:** loaded assemblies are cached for the boot
+  (keyed by path). After `npkg upgrade`, a tool that already ran during
+  this boot keeps executing the previous image; a fresh boot always runs
+  the upgraded files. `npkg upgrade` updates the installed database and
+  on-disk files immediately (asserted via `npkg info`).
+- **Resolver failures are non-throwing (`Resolver.LastError`):** exception
+  unwinding across JIT-compiled frames is not reliable on the Tier-0 JIT
+  (the same constraint behind `RepoClient.TryFetchIndex`), so plan
+  failures - conflicts, missing packages, unsatisfied installed versions,
+  cycles - are returned as an error string instead of being thrown.
+  Regression coverage: the conflict/missing-package acceptance steps.

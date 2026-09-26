@@ -1,0 +1,11 @@
+{
+  "name": "tests.hello-utility",
+  "version": "1.1.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "entryPoints": {
+    "helloutil": "helloutil.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

@@ -87,7 +87,7 @@ else
     step "list-empty"    "npkg list"                       "no packages installed"            90
   fi
   step "search"          "npkg search hello"               "tests.hello-utility"              90
-  step "install-utility" "npkg install tests.hello-utility" "installed tests.hello-utility 1.0.0" 120
+  step "install-utility" "npkg install tests.hello-utility@1.0.0" "installed tests.hello-utility 1.0.0" 120
   step "run-utility"     "helloutil"                        "hello-utility ok"                90
   step "install-app"     "npkg install tests.hello-app"    "installed tests.hello-app 1.0.0" 120
   step "run-app-wrapper" "helloapp"                         "hello-app ok"                    90
@@ -95,13 +95,33 @@ else
   step "install-chain"   "npkg install tests.chain-a"      "installed tests.chain-a 1.0.0"   180
   step "list-chain"      "npkg list"                       "tests.chain-b"                    90
   step "remove-guard"    "npkg remove tests.chain-c"       "is required by"                   90
-  step "upgrade"         "npkg upgrade"                    "up to date"                       90
+  # Task 6: upgrade to a newer version in the repository (1.1.0). The
+  # upgraded dll is not reloaded into the warm JIT assembly cache within
+  # this boot (loader keys on path - see PHASE8-NPKG.md limitations), so
+  # the upgrade is asserted through the installed database/metadata.
+  step "upgrade"         "npkg upgrade"                    "tests.hello-utility 1.0.0 -> 1.1.0" 120
+  step "info-utility-11" "npkg info tests.hello-utility"   "version: 1.1.0"                   90
   step "verify"          "npkg verify /repo/tests.hello-utility-1.0.0.npkg" "checksums: OK"    90
   step "info"            "npkg info tests.hello-app"       "tests.hello-app"                  90
   step "remove-a"        "npkg remove tests.chain-a"       "removed tests.chain-a 1.0.0"      90
   step "remove-b"        "npkg remove tests.chain-b"       "removed tests.chain-b 1.0.0"      90
   step "remove-c"        "npkg remove tests.chain-c"       "removed tests.chain-c 1.0.0"      90
   step "final-list"      "npkg list"                       "tests.hello-app"                  90
+
+  # Task 6 coverage: checksum rejection of a tampered package and
+  # version-conflict detection (conflict-x needs libz =1.0.0,
+  # conflict-y needs libz =2.0.0).
+  step "tamper-detect"      "npkg verify /repo/tampered.npkg" "checksums: FAIL"                   90
+  # Co-resolution conflict: conflict-w depends on conflict-x (libz =1.0.0)
+  # and conflict-y (libz =2.0.0) - the plan itself must be rejected.
+  step "install-conflict-w" "npkg install tests.conflict-w"  "conflicting version requirements" 120
+  # Sequential conflict: with libz 1.0.0 installed, conflict-y fails the
+  # installed-version check with a clear message.
+  step "install-conflict-x" "npkg install tests.conflict-x"  "installed tests.conflict-x 1.0.0" 120
+  step "install-conflict-y" "npkg install tests.conflict-y"  "is already installed and does not satisfy" 120
+  step "install-nonexistent" "npkg install does.not.exist"   "package not found in any repository" 90
+  step "remove-conflict-x"  "npkg remove tests.conflict-x"   "removed tests.conflict-x 1.0.0"   90
+  step "remove-libz"        "npkg remove tests.libz"         "removed tests.libz 1.0.0"          90
 
   # Extra cross-checks on the captured log.
   if grep -aq "tests.chain-c" "$LOG"; then

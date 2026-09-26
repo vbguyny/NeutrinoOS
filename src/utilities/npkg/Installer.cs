@@ -82,6 +82,13 @@ public sealed class Installer
 
             var resolver = new Resolver(_sources, _db, force);
             List<PlanItem> plan = resolver.Resolve(name, version);
+            if (plan == null)
+            {
+                // The resolver reports failures without throwing (Tier-0 JIT
+                // unwinding is unreliable); surface the message here.
+                Console.Error.WriteLine("neutrinoos: npkg: " + resolver.LastError);
+                return 1;
+            }
             if (plan.Count == 0)
             {
                 InstalledPackage installed = _db.Find(name);

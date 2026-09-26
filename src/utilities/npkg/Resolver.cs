@@ -66,6 +66,7 @@ public sealed class Resolver
     private readonly List<PackageSource> _sources;
     private readonly InstalledDatabase _db;
     private readonly bool _replaceInstalled;
+    private bool _failed;
 
     /// <summary>
     /// Creates a resolver; installed packages always win (a version that
@@ -89,18 +90,41 @@ public sealed class Resolver
     }
 
     /// <summary>
+    /// Failure text of the most recent Resolve call (null on success).
+    /// Resolution reports failures through this property instead of
+    /// exceptions: exception unwinding across JIT-compiled frames is not
+    /// reliable on the Tier-0 JIT (the same reason RepoClient exposes
+    /// TryFetchIndex), so an unresolvable request must not throw.
+    /// </summary>
+    public string LastError { get; private set; }
+
+    /// <summary>
     /// Builds the install plan for one package request. A plan entry is
     /// returned for every package that still needs installing, in
     /// dependency-first order; an already-satisfied request yields an
-    /// empty plan.
+    /// empty plan. Returns null (with <see cref="LastError"/> set) when
+    /// the request cannot be satisfied - conflicts, missing packages,
+    /// unsatisfied installed versions and dependency cycles.
     /// </summary>
     public List<PlanItem> Resolve(string name, string requestedVersion)
     {
+        LastError = null;
+        _failed = false;
         var plan = new List<PlanItem>();
         var chosen = new Dictionary<string, int>();
         var inProgress = new HashSet<string>();
         Visit(name, null, requestedVersion, null, plan, chosen, inProgress);
-        return plan;
+        return _failed ? null : plan;
+    }
+
+    /// <summary>Records a resolution failure and stops the plan walk.</summary>
+    private void Fail(string message)
+    {
+        if (!_failed)
+        {
+            _failed = true;
+            LastError = message;
+        }
     }
 
     /// <summary>
@@ -219,6 +243,9 @@ public sealed class Resolver
     private void Visit(string name, string constraintText, string exactVersion, string requester,
         List<PlanItem> plan, Dictionary<string, int> chosen, HashSet<string> inProgress)
     {
+        if (_failed)
+            return;
+
         InstalledPackage installed = _db == null ? null : _db.Find(name);
         if (installed != null && VersionTextMatches(installed.Version, constraintText, exactVersion))
             return;     // dependency already satisfied by the installed database
@@ -229,7 +256,7 @@ public sealed class Resolver
             PlanItem chosenItem = plan[existingIndex];
             if (!VersionMatches(chosenItem.Info.Version, constraintText, exactVersion))
             {
-                throw new Exception("conflicting version requirements for " + name + ": "
+                Fail("conflicting version requirements for " + name + ": "
                     + chosenItem.Info.Version.ToString() + " already selected, "
                     + Describe(constraintText, exactVersion) + ByWhom(requester) + " needs another version");
             }
@@ -241,29 +268,41 @@ public sealed class Resolver
         {
             if (installed != null)
             {
-                throw new Exception(name + " " + installed.Version + " is installed but "
+                Fail(name + " " + installed.Version + " is installed but "
                     + Describe(constraintText, exactVersion) + " is required" + ByWhom(requester));
             }
-            throw new Exception("package not found in any repository: " + name
-                + (exactVersion != null && exactVersion.Length > 0 ? " (version " + exactVersion + ")" : "")
-                + ByWhom(requester));
+            else
+            {
+                Fail("package not found in any repository: " + name
+                    + (exactVersion != null && exactVersion.Length > 0 ? " (version " + exactVersion + ")" : "")
+                    + ByWhom(requester));
+            }
+            return;
         }
 
         if (installed != null && !_replaceInstalled)
         {
-            throw new Exception(name + " " + installed.Version + " is already installed and does not satisfy "
+            Fail(name + " " + installed.Version + " is already installed and does not satisfy "
                 + Describe(constraintText, exactVersion) + ByWhom(requester)
                 + " (run 'npkg upgrade " + name + "' or use --force)");
+            return;
         }
 
         if (inProgress.Contains(name))
-            throw new Exception("dependency cycle detected at " + name);
+        {
+            Fail("dependency cycle detected at " + name);
+            return;
+        }
 
         inProgress.Add(name);
         if (candidate.Info.Dependencies != null)
         {
             foreach (KeyValuePair<string, string> dep in candidate.Info.Dependencies)
+            {
                 Visit(dep.Key, dep.Value, null, candidate.Info.Name, plan, chosen, inProgress);
+                if (_failed)
+                    return;
+            }
         }
         inProgress.Remove(name);
 

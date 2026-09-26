@@ -1,0 +1,15 @@
+{
+  "name": "tests.conflict-w",
+  "version": "1.0.0",
+  "architecture": "any",
+  "provides": ["utility"],
+  "dependencies": {
+    "tests.conflict-x": "=1.0.0",
+    "tests.conflict-y": "=1.0.0"
+  },
+  "entryPoints": {
+    "conflict-w": "conflictw.dll"
+  },
+  "installPath": "/bin",
+  "signer": ""
+}

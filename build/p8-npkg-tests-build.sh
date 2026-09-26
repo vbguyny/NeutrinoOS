@@ -49,6 +49,7 @@ fi
 # ---- (c) fixtures: payload build + pack --------------------------------
 fixtures=(
   hello-utility
+  hello-utility-1.1
   hello-app
   hello-driver
   dependency-chain/chain-a
@@ -56,6 +57,7 @@ fixtures=(
   dependency-chain/chain-c
   conflict/libz-1
   conflict/libz-2
+  conflict/conflict-w
   conflict/conflict-x
   conflict/conflict-y
 )
@@ -138,6 +140,43 @@ done
 # ---- (d) signed repository index ---------------------------------------
 if [ "$PAYLOAD_ONLY" != 1 ]; then
   "$HOST" repo-index --dir "$REPO" --key "$KEYS/private.key" --name local
+
+  # ---- (e) tampered package (checksum-rejection fixture) ---------------
+  # Rebuild a copy of hello-utility 1.0.0 with one byte flipped inside the
+  # stored payload dll. The container stays fully valid (python recomputes
+  # CRCs; manifest.json and checksums.sha256 are byte-identical), so the
+  # verifier reads it cleanly and fails on the payload checksum
+  # ("checksums: FAIL"). A naive in-place byte flip corrupted the archive
+  # structure and crashed the guest verifier - keep this rebuild method.
+  python3 - "$REPO/tests.hello-utility-1.0.0.npkg" "$REPO/tampered.npkg" <<'PY'
+import sys, zipfile
+src, dst = sys.argv[1], sys.argv[2]
+zin = zipfile.ZipFile(src)
+zout = zipfile.ZipFile(dst, 'w', zipfile.ZIP_STORED)
+for info in zin.infolist():
+    data = bytearray(zin.read(info.filename))
+    if info.filename == 'payload/helloutil.dll':
+        if len(data) < 128:
+            raise SystemExit('payload too small to tamper')
+        data[64] ^= 0xFF
+    zout.writestr(info, bytes(data), compress_type=zipfile.ZIP_STORED)
+zout.close()
+print('tampered package written:', dst)
+PY
+
+  # Host-side sanity: the doubled package must still parse (list shows the
+  # real manifest) and fail verification on the checksum.
+  "$HOST" list "$REPO/tampered.npkg" > /tmp/p8-tamper-list.log 2>&1 \
+    || { echo "error: tampered package does not parse:" >&2; cat /tmp/p8-tamper-list.log >&2; exit 1; }
+  grep -qa "version:      1.0.0" /tmp/p8-tamper-list.log \
+    || { echo "error: tampered package manifest damaged:" >&2; cat /tmp/p8-tamper-list.log >&2; exit 1; }
+  if "$HOST" verify "$REPO/tampered.npkg" > /tmp/p8-tamper-check.log 2>&1; then
+    echo "error: tampered package unexpectedly verified" >&2
+    exit 1
+  fi
+  grep -qa "\[FAIL\] checksums" /tmp/p8-tamper-check.log \
+    || { echo "error: tampered package did not report a checksum failure:" >&2; cat /tmp/p8-tamper-check.log >&2; exit 1; }
+  echo "tamper fixture rejected by npkg-host verify (checksums FAIL)"
 fi
 
 echo "=== NPKG TEST PACKAGES OK ==="
