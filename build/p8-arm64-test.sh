@@ -105,6 +105,13 @@ sleep 2
 
 timeout 5 bash -c "printf 'help\r' > /tmp/ser.in" || true
 sleep 2
+# The very first write into the serial pipe can race with the PL011 RX
+# bring-up (observed once in CI-style runs: 'help' lost, 'version' fine).
+# Retry once before judging the step.
+if ! grep -aq 'NeutrinoOS shell (Phase 5)' /tmp/ser.log; then
+  timeout 5 bash -c "printf 'help\r' > /tmp/ser.in" || true
+  sleep 2
+fi
 timeout 5 bash -c "printf 'version\r' > /tmp/ser.in" || true
 sleep 3
 

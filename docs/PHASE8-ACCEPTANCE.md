@@ -189,9 +189,9 @@ build/p8-sdk-archive.sh` gives `bin/npkg-host`, libs, MSBuild targets,
 templates and docs — see `docs/SDK-GETTING-STARTED.md`):
 
 ```powershell
-# one-time: templates + host tools
+# one-time: templates install; on Windows run the host CLI through the
+# .NET 10 runtime (dotnet <path>\npkg-host.dll <command>)
 dotnet new install .\neutrinoos-sdk\templates
-$env:PATH = "$PWD\neutrinoos-sdk\bin;$env:PATH"   # gives npkg-host
 
 dotnet new neutrino-console -n MyApp
 cd MyApp; dotnet build -c Release      # -> bin\Release\net10.0\MyApp.npkg
@@ -199,8 +199,9 @@ cd ..
 dotnet new neutrino-driver -n MyDriver
 cd MyDriver; dotnet build -c Release; cd ..   # -> MyDriver.npkg
 
-npkg-host sign MyApp\bin\Release\net10.0\MyApp.npkg tests\npkg\keys\private.key
-npkg-host publish MyApp\bin\Release\net10.0\MyApp.npkg --repo $env:USERPROFILE\.neutrinoos\repo
+$npkg = ".\neutrinoos-sdk\bin\npkg-host.dll"
+dotnet $npkg sign MyApp\bin\Release\net10.0\MyApp.npkg tests\npkg\keys\private.key
+dotnet $npkg publish MyApp\bin\Release\net10.0\MyApp.npkg --repo $env:USERPROFILE\.neutrinoos\repo
 scripts\start-repo-server.ps1          # serves the repo over HTTP
 ```
 
