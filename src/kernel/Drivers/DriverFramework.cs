@@ -47,6 +47,8 @@ public static class DriverFramework
         int pciCount = PciBusEnumerator.Enumerate();
         int virtioCount = VirtioBusEnumerator.Enumerate();
         AddPlatformDevices(tree);
+        PcieHotplug.Initialize();
+        AcpiPciHotplug.Initialize();
 
         LogTree(tree, pciCount, virtioCount);
 

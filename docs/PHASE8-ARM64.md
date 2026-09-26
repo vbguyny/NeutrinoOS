@@ -145,6 +145,12 @@ x64 regression (same commit): boots with byte-identical test output —
 2964 PASS / 0 FAIL, same category sequence, same raw-fault/exception
 diagnostics as the pre-change baseline.
 
+Boot-time comparison (Phase 8 benchmark, standard `make image`
+products, QEMU 2 GB / 1 vCPU, wall clock to the shell prompt):
+**x64 18.1 s vs ARM64 6.0 s** — the x64 standard image runs the
+x64-only boot suites (Ring-3 syscalls, JIT tests) that ARM64 does not;
+re-run with `bash build/p8-t6-bench.sh` (see `docs/PHASE8-REPORT.md`).
+
 ## 9. Debugging notes
 
 * Kernel runtime base comes from the serial line

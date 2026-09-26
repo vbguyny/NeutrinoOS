@@ -148,6 +148,8 @@ public static class DriverManager
             DeviceInfo device = _tree.GetAt(i);
             if (device.Status == DeviceStatus.Started)
                 continue;
+            if (device.Status == DeviceStatus.Removed)
+                continue;   // hot-unplugged tombstone
 
             for (int d = 0; d < _driverCount; d++)
             {
@@ -201,5 +203,39 @@ public static class DriverManager
                 reg.Started = false;
             }
         }
+    }
+
+    /// <summary>
+    /// Hot-unplug path: stop the driver bound to <paramref name="device"/>
+    /// (children first, e.g. a VirtIO child of a PCI node), release the
+    /// registration and mark every node in the subtree Removed so later
+    /// match passes never rebind them.
+    /// </summary>
+    public static void UnbindDeviceTree(DeviceInfo device)
+    {
+        if (!_initialized || _tree == null || device == null)
+            return;
+
+        int[] children = _tree.GetChildren(device.Id);
+        for (int c = 0; c < children.Length; c++)
+            UnbindDeviceTree(_tree.GetById(children[c]));
+
+        for (int d = 0; d < _driverCount; d++)
+        {
+            DriverRegistration reg = _drivers[d];
+            if (!reg.Started || reg.BoundDevice == null || reg.BoundDevice.Id != device.Id)
+                continue;
+
+            reg.Driver.Stop(device);
+            DebugConsole.Write("[drv] stopped '");
+            DebugConsole.Write(reg.Driver.Name);
+            DebugConsole.Write("' (");
+            DebugConsole.Write(device.Path);
+            DebugConsole.WriteLine(")");
+            reg.Started = false;
+            reg.BoundDevice = null;
+        }
+
+        device.Status = DeviceStatus.Removed;
     }
 }

@@ -96,6 +96,10 @@ public static unsafe class ShellMain
         // Phase 6: cooperative background services (sshd, webhost).
         Services.ServiceRegistry.Tick();
 
+        // Phase 8: PCIe hot-plug poll (throttled internally to ~200 ms);
+        // loads/unloads drivers when devices are added/removed on a slot.
+        ProtonOS.Drivers.PcieHotplug.Poll();
+
         if (!JobManager.HasQueuedJobs)
             return;
         JobManager.Pump();

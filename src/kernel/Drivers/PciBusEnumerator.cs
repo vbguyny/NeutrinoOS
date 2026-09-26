@@ -182,6 +182,43 @@ public static unsafe class PciBusEnumerator
         return (~mask) + 1UL;
     }
 
+    /// <summary>
+    /// Add one PCI function to the device tree by reading its identity and
+    /// class directly from config space. Used by boot enumeration (which
+    /// already holds the scanned values and does not call this) and by the
+    /// PCIe hot-plug detector when a device appears on a port's secondary
+    /// bus after boot. Returns null for empty slots or a full tree.
+    /// </summary>
+    public static DeviceInfo AddFunction(byte bus, byte device, byte function)
+    {
+        uint id = PCI.ReadConfig32(bus, device, function, 0);
+        ushort vendorId = (ushort)(id & 0xFFFF);
+        if (vendorId == 0xFFFF)
+            return null;
+        ushort deviceId = (ushort)(id >> 16);
+
+        byte baseClass = PCI.ReadConfig8(bus, device, function, 0x0B);
+        byte subClass = PCI.ReadConfig8(bus, device, function, 0x0A);
+        byte progIf = PCI.ReadConfig8(bus, device, function, 0x09);
+
+        DeviceResource[] resources = BuildResources(bus, device, function);
+        DeviceClass deviceClass = MapClass(baseClass, subClass);
+        uint classCode = (uint)((baseClass << 16) | (subClass << 8) | progIf);
+        uint address = (uint)((bus << 8) | ((device & 0x1F) << 3) | (function & 0x7));
+        string segment = "pci/" + Hex2(bus) + ":" + Hex2(device) + "." + Hex1(function);
+
+        return KernelDeviceTree.Instance.Add(
+            0,
+            "pci",
+            address,
+            vendorId,
+            deviceId,
+            deviceClass,
+            classCode,
+            segment,
+            resources);
+    }
+
     /// <summary>Map PCI base/sub class to a device class.</summary>
     public static DeviceClass MapClass(byte baseClass, byte subClass)
     {

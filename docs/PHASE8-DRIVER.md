@@ -26,7 +26,7 @@ Implementation staging (this phase):
 | Packaged drivers: device marshal + kernel services bridges (full lifecycle) | done |
 | Port VirtIO-Net/Blk, E1000, AHCI onto the framework | done (legacy transports keep I/O) |
 | Driver hosts as isolated user-mode processes | deferred (see Limitations) |
-| PCIe hot-plug detection | deferred (see Limitations) |
+| PCIe hot-plug detection + driver load/unload | done (see Hot-plug below) |
 | SDK: `templates/NeutrinoDriver` + `scripts/build-driver.ps1` | done |
 
 ## Device model
@@ -187,9 +187,51 @@ first PCI-matched driver:
   deviceIds,entryPoint}`) are discovered and loaded at boot, and the full
   packaged lifecycle (match, probe, start, services) is verified - see
   "Driver packages" above.
-- **Hot-plug**: PCIe hot-plug detection (`Attention Button`/`Power
-  Indicator` and the PCIe capability walk) is not implemented yet.
+- **Hot-plug**: implemented - see "Hot-plug" below. PCIe root ports are
+  discovered through a PCIe capability walk; arrivals are picked up by
+  secondary-bus rescans; departures are completed through either the PCIe
+  Attention Button / Power Indicator handshake or the ICH9 ACPI hotplug
+  interface (whichever the machine routes unplug requests through).
 - **USB**: out of scope for Phase 8 (deferred to Phase 9+).
+
+## Hot-plug
+
+The kernel monitors hot-plug slots from the shell idle loop
+(`ShellMain.IdlePump -> PcieHotplug.Poll`, throttled to one pass per
+~200 ms) and the driver manager loads/unloads drivers accordingly:
+
+- **Port discovery** (`PcieHotplug.Initialize`): every PCI-to-PCI bridge
+  (class 06/04) is walked for its PCI Express capability; ports whose PCIe
+  capability type is Root Port or Downstream Port and that set the Slot
+  Implemented bit get their secondary bus range remembered.
+- **Arrival**: each poll rescans every remembered secondary bus. A
+  function that answers config reads and is not in the device tree gets a
+  PCI node (BARs sized, class mapped) plus a VirtIO child node when the
+  vendor is 0x1AF4; `DriverManager.MatchAll` then runs the normal
+  Match -> Probe -> Start lifecycle and logs `[drv] bound '<name>' to
+  <path>`.
+- **Departure**: the device no longer answering config reads is unbound -
+  drivers are stopped child-first (`[drv] stopped '<name>' (<path>)`),
+  registrations are released and the tree nodes are marked
+  `DeviceStatus.Removed` so later match passes never rebind them.
+- **Unplug requests**: on a PCIe-native path the port sets Attention
+  Button Pressed (SLTSTA bit 0); the guest responds by powering the slot
+  off through Slot Control (Power Indicator = off, Power Controller =
+  power off), which performs the physical eject. On QEMU q35 the ICH9
+  ACPI controller owns the root-port slots instead (QEMU rewrites the
+  bus hotplug handler for cold-plugged bridges), so unplug requests
+  arrive as DOWN bits in the `acpi-pci-hotplug` IO block (0xCC0): the
+  poll completes them by writing EJ, and the removal is then seen by the
+  bus rescan. `AcpiPciHotplug` implements this side; both paths converge
+  on the same unbind logic.
+- **Verification**: `build/p8-hotplug-test.sh` boots q35 with an empty
+  `pcie-root-port` plus a monitor socket, hot-adds a virtio-net-pci
+  (`device_add ... bus=hp0`), asserts the tree/bind evidence, then
+  `device_del` and asserts the unbind evidence - 9/9 checks, driver
+  bound ~334 ms after `device_add` and stopped ~329 ms after
+  `device_del` (dominated by the 200 ms poll interval).
+- ARM64 does not compile the hot-plug poll (x64 port I/O only); the
+  device model and driver manager are shared.
 
 ## Driver packages
 

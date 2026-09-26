@@ -47,6 +47,55 @@ if [ "$PAYLOAD_ONLY" != 1 ] && [ ! -f "$KEYS/private.key" ]; then
 fi
 
 # ---- (c) fixtures: payload build + pack --------------------------------
+# Benchmark fixtures (spec: "npkg install time for a package with 10
+# dependencies") are generated: tests.bench-root depends on ten leaf
+# packages tests.bench-dep-1..10. The install benchmark is
+# build/p8-t6-bench.sh.
+python3 - "$WORK/bench" <<'PY'
+import json, os, sys
+base = sys.argv[1]
+for i in range(1, 11):
+    d = os.path.join(base, "dep-%d" % i)
+    os.makedirs(d, exist_ok=True)
+    man = {
+        "name": "tests.bench-dep-%d" % i,
+        "version": "1.0.0",
+        "architecture": "any",
+        "provides": ["utility"],
+        "dependencies": {},
+        "entryPoints": {"benchdep%d" % i: "benchdep%d.dll" % i},
+        "installPath": "/bin",
+        "signer": "",
+    }
+    with open(os.path.join(d, "manifest.json"), "w") as f:
+        json.dump(man, f, indent=2)
+    with open(os.path.join(d, "Program.cs"), "w") as f:
+        f.write('public static class Program\n{\n'
+                '    public static int Main(string[] args)\n    {\n'
+                '        System.Console.WriteLine("bench-dep-%d ok");\n'
+                '        return 0;\n    }\n}\n' % i)
+d = os.path.join(base, "root")
+os.makedirs(d, exist_ok=True)
+man = {
+    "name": "tests.bench-root",
+    "version": "1.0.0",
+    "architecture": "any",
+    "provides": ["utility"],
+    "dependencies": {("tests.bench-dep-%d" % i): ">=1.0.0" for i in range(1, 11)},
+    "entryPoints": {"benchroot": "benchroot.dll"},
+    "installPath": "/bin",
+    "signer": "",
+}
+with open(os.path.join(d, "manifest.json"), "w") as f:
+    json.dump(man, f, indent=2)
+with open(os.path.join(d, "Program.cs"), "w") as f:
+    f.write('public static class Program\n{\n'
+            '    public static int Main(string[] args)\n    {\n'
+            '        System.Console.WriteLine("bench-root ok");\n'
+            '        return 0;\n    }\n}\n')
+print("benchmark fixtures generated under", base)
+PY
+
 fixtures=(
   hello-utility
   hello-utility-1.1
@@ -60,6 +109,17 @@ fixtures=(
   conflict/conflict-w
   conflict/conflict-x
   conflict/conflict-y
+  bench/dep-1
+  bench/dep-2
+  bench/dep-3
+  bench/dep-4
+  bench/dep-5
+  bench/dep-6
+  bench/dep-7
+  bench/dep-8
+  bench/dep-9
+  bench/dep-10
+  bench/root
 )
 
 rm -rf "$REPO"

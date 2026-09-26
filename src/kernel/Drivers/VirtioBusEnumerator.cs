@@ -58,32 +58,56 @@ public static class VirtioBusEnumerator
             if (pciDev.Bus != "pci" || pciDev.VendorId != VirtioVendorId)
                 continue;
 
-            int virtioType = VirtioTypeFromDeviceId(pciDev.DeviceId);
-            if (virtioType < 0)
-                continue;
-
-            string typeName = TypeName(virtioType);
-            int index = 0;
-            if (virtioType < TypeCounts.Length)
-                index = TypeCounts[virtioType]++;
-
-            string segment = index == 0 ? "virtio-" + typeName : "virtio-" + typeName + index.ToString();
-
-            DeviceInfo node = tree.Add(
-                pciDev.Id,
-                "virtio",
-                (uint)virtioType,
-                VirtioVendorId,
-                pciDev.DeviceId,
-                DeviceClass.Unknown,
-                (uint)virtioType,
-                segment,
-                new DeviceResource[0]);
-            if (node == null)
-                break;
-            added++;
+            if (TryAddFor(pciDev) != null)
+                added++;
         }
 
         return added;
+    }
+
+    /// <summary>
+    /// Add the VirtIO child node for one PCI device (used by boot
+    /// enumeration and by the PCIe hot-plug detector when a new VirtIO
+    /// function appears). Returns the node, or null when the device is not
+    /// VirtIO, the tree is full, or a child already exists.
+    /// </summary>
+    public static DeviceInfo TryAddFor(DeviceInfo pciDev)
+    {
+        if (pciDev == null || pciDev.Bus != "pci" || pciDev.VendorId != VirtioVendorId)
+            return null;
+
+        KernelDeviceTree tree = KernelDeviceTree.Instance;
+
+        int virtioType = VirtioTypeFromDeviceId(pciDev.DeviceId);
+        if (virtioType < 0)
+            return null;
+
+        // Idempotence for the hot-plug path: never add a second child for
+        // the same PCI function.
+        int[] children = tree.GetChildren(pciDev.Id);
+        for (int c = 0; c < children.Length; c++)
+        {
+            DeviceInfo child = tree.GetById(children[c]);
+            if (child != null && child.Bus == "virtio")
+                return child;
+        }
+
+        string typeName = TypeName(virtioType);
+        int index = 0;
+        if (virtioType < TypeCounts.Length)
+            index = TypeCounts[virtioType]++;
+
+        string segment = index == 0 ? "virtio-" + typeName : "virtio-" + typeName + index.ToString();
+
+        return tree.Add(
+            pciDev.Id,
+            "virtio",
+            (uint)virtioType,
+            VirtioVendorId,
+            pciDev.DeviceId,
+            DeviceClass.Unknown,
+            (uint)virtioType,
+            segment,
+            new DeviceResource[0]);
     }
 }
