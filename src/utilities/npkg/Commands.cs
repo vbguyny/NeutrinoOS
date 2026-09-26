@@ -151,10 +151,18 @@ public static class Commands
     /// <summary>
     /// Adds or updates a repository: fetches repo.pub, checks an optional
     /// pinned fingerprint, stores the key in trusted-keys/ and records the
-    /// repository in repos.json.
+    /// repository in repos.json (with an ordering priority).
     /// </summary>
-    public static int RepoAdd(string name, string url, string fingerprintOption)
+    public static int RepoAdd(string name, string url, string fingerprintOption, int priority)
     {
+        if (Str.Starts(url, "https://"))
+        {
+            Console.Error.WriteLine("neutrinoos: npkg: https:// repositories are not supported yet:");
+            Console.Error.WriteLine("  the device has no TLS client in Phase 8 (see docs/PHASE8-ECOSYSTEM.md).");
+            Console.Error.WriteLine("  Package integrity is still protected by Ed25519 signatures over http://.");
+            return 1;
+        }
+
         byte[] publicKeyFile;
         try
         {
@@ -187,9 +195,10 @@ public static class Commands
 
         NpkgPaths.EnsureDirs();
         RepoStore.WriteKeyFile(name, publicKey);
-        RepoStore.AddOrUpdate(name, url, fingerprint);
-        Console.WriteLine("added repository " + name + " (" + url + ") fingerprint "
-            + ShortHex(fingerprint, 8) + "...");
+        RepoStore.AddOrUpdate(name, url, fingerprint, priority);
+        Console.WriteLine("added repository " + name + " (" + url + ")"
+            + (priority >= 0 ? " priority " + TextConv.LongToString(priority) : "")
+            + " fingerprint " + ShortHex(fingerprint, 8) + "...");
         if (fingerprintOption == null || fingerprintOption.Length == 0)
         {
             Console.WriteLine("warning: this repository is not pinned yet; verify the fingerprint and re-add with");
@@ -207,13 +216,15 @@ public static class Commands
             Console.WriteLine("no repositories configured (add one with 'npkg repo add')");
             return 0;
         }
+        Console.WriteLine(Pad("NAME", 16) + " " + Pad("URL", 40) + " " + Pad("PRIO", 5) + " FINGERPRINT");
         for (int i = 0; i < repos.Count; i++)
         {
             RepoConfig repo = repos[i];
             string fingerprint = repo.Fingerprint == null || repo.Fingerprint.Length == 0
                 ? "(unpinned)"
                 : repo.Fingerprint;
-            Console.WriteLine(Pad(repo.Name, 16) + " " + Pad(repo.Url, 40) + " " + fingerprint);
+            Console.WriteLine(Pad(repo.Name, 16) + " " + Pad(repo.Url, 40) + " "
+                + Pad(TextConv.LongToString(repo.Priority), 5) + " " + fingerprint);
         }
         return 0;
     }

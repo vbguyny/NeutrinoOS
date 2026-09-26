@@ -171,6 +171,7 @@ public static class Program
             string name = null;
             string url = null;
             string fingerprint = null;
+            int priority = -1;
             for (int i = 0; i < rest.Length; i++)
             {
                 string a = rest[i];
@@ -179,6 +180,26 @@ public static class Program
                     if (i + 1 >= rest.Length)
                         return Usage("--fingerprint needs a hex value");
                     fingerprint = rest[++i];
+                }
+                else if (a == "--priority")
+                {
+                    if (i + 1 >= rest.Length)
+                        return Usage("--priority needs a number (lower = higher priority)");
+                    // Manual parse: System.Int32.Parse is not available on the
+                    // device runtime (the Tier-0 JIT cannot resolve it).
+                    string value = rest[++i];
+                    int parsed = 0;
+                    bool ok = value.Length > 0;
+                    for (int d = 0; d < value.Length; d++)
+                    {
+                        char c = value[d];
+                        if (c < '0' || c > '9') { ok = false; break; }
+                        parsed = parsed * 10 + (c - '0');
+                        if (parsed > 1000000) { ok = false; break; }
+                    }
+                    if (!ok)
+                        return Usage("--priority needs a number (lower = higher priority)");
+                    priority = parsed;
                 }
                 else if (a.Length > 0 && a[0] == '-')
                 {
@@ -199,7 +220,7 @@ public static class Program
             }
             if (name == null || url == null)
                 return Usage("repo add needs a name and a URL");
-            return Commands.RepoAdd(name, url, fingerprint);
+            return Commands.RepoAdd(name, url, fingerprint, priority);
         }
         if (sub == "remove")
         {
@@ -253,9 +274,10 @@ public static class Program
         Console.WriteLine("      --allow-untrusted                 install without a trusted signature");
         Console.WriteLine("  remove <name> [--force]               uninstall a package");
         Console.WriteLine("  upgrade [<name>]                      upgrade one or all installed packages");
-        Console.WriteLine("  repo add <name> <url> [--fingerprint <hex64>]");
+        Console.WriteLine("  repo add <name> <url> [--priority <n>] [--fingerprint <hex64>]");
         Console.WriteLine("                                        add/update a repository and trust its key");
-        Console.WriteLine("  repo list                             list configured repositories");
+        Console.WriteLine("                                        (lower priority number = preferred source)");
+        Console.WriteLine("  repo list                             list configured repositories (priority order)");
         Console.WriteLine("  repo remove <name> [--key]            remove a repository (--key drops the key)");
         Console.WriteLine("  verify <file.npkg>                    verify checksums and signature of a file");
         Console.WriteLine("  help                                  show this text");

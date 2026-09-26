@@ -1,7 +1,11 @@
 // NeutrinoOS Phase 8 - npkg: repositories + trusted keys
 //
 // /etc/npkg/repos.json
-//   {"repos":[{"name":"main","url":"http://host/repo","fingerprint":"<hex64>"}]}
+//   {"repos":[{"name":"main","url":"http://host/repo","priority":10,"fingerprint":"<hex64>"}]}
+//
+// Repositories are kept in priority order (lower number = higher priority;
+// default 50); LoadRepos returns them sorted, and the resolver walks the
+// sources in that order, so the preferred repository wins version ties.
 //
 // /etc/npkg/trusted-keys/<repo>.pub
 //   either the raw 32 Ed25519 public-key bytes or the key as 64 hex
@@ -16,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using NeutrinoOS.Packaging;
+using NeutrinoOS.Utils;
 using ProtonOS.DDK.Crypto;
 
 namespace NeutrinoOS.Utility.Npkg;
@@ -32,12 +37,16 @@ public sealed class RepoConfig
     /// <summary>Pinned fingerprint (hex) of the repository's signing key; may be empty.</summary>
     public string Fingerprint;
 
+    /// <summary>Ordering priority: lower number = higher priority (default 50).</summary>
+    public int Priority;
+
     /// <summary>Creates an empty repository record.</summary>
     public RepoConfig()
     {
         Name = "";
         Url = "";
         Fingerprint = "";
+        Priority = 50;
     }
 }
 
@@ -83,8 +92,26 @@ public static class RepoStore
             repo.Name = Jsn.GetStr(obj, "name");
             repo.Url = Jsn.GetStr(obj, "url");
             repo.Fingerprint = Jsn.GetStr(obj, "fingerprint");
+            try { repo.Priority = (int)obj.GetLong("priority", 50); }
+            catch (Exception) { repo.Priority = 50; }
             if (repo.Name.Length > 0 && repo.Url.Length > 0)
                 repos.Add(repo);
+        }
+
+        // Priority ordering: lower number = higher priority; ties fall back
+        // to the name so the order is deterministic. Sources are resolved in
+        // this order, so the preferred repository wins version ties.
+        for (int i = 1; i < repos.Count; i++)
+        {
+            RepoConfig key = repos[i];
+            int j = i - 1;
+            while (j >= 0 && (repos[j].Priority > key.Priority ||
+                              (repos[j].Priority == key.Priority && Util.Compare(repos[j].Name, key.Name) > 0)))
+            {
+                repos[j + 1] = repos[j];
+                j--;
+            }
+            repos[j + 1] = key;
         }
         return repos;
     }
@@ -104,6 +131,8 @@ public static class RepoStore
             sb.Append(Jsn.Quote(repos[i].Url));
             sb.Append(",\"fingerprint\":");
             sb.Append(Jsn.Quote(repos[i].Fingerprint));
+            sb.Append(",\"priority\":");
+            sb.Append(Jsn.Num(repos[i].Priority));
             sb.Append('}');
         }
         sb.Append("]}\n");
@@ -117,8 +146,12 @@ public static class RepoStore
         File.Delete(temp);
     }
 
-    /// <summary>Adds or updates a repository entry (matched by name).</summary>
-    public static void AddOrUpdate(string name, string url, string fingerprint)
+    /// <summary>
+    /// Adds or updates a repository entry (matched by name). Priority -1
+    /// keeps the existing value (default 50 for a new entry); otherwise the
+    /// priority is set. Lower number = higher priority.
+    /// </summary>
+    public static void AddOrUpdate(string name, string url, string fingerprint, int priority)
     {
         List<RepoConfig> repos = LoadRepos();
         bool replaced = false;
@@ -128,6 +161,8 @@ public static class RepoStore
             {
                 repos[i].Url = url;
                 repos[i].Fingerprint = fingerprint;
+                if (priority >= 0)
+                    repos[i].Priority = priority;
                 replaced = true;
                 break;
             }
@@ -138,6 +173,8 @@ public static class RepoStore
             repo.Name = name;
             repo.Url = url;
             repo.Fingerprint = fingerprint;
+            if (priority >= 0)
+                repo.Priority = priority;
             repos.Add(repo);
         }
         SaveRepos(repos);

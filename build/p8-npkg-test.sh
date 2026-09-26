@@ -70,6 +70,14 @@ else
 
   step "help"            "npkg"                             "usage: npkg"                     240
   step "repo-add"        "npkg repo add local /repo"       "added repository local"           90
+  # Task 5: repository priority ordering (lower number = higher priority).
+  # backup is added FIRST with a lower priority, then local is re-added with
+  # priority 10; the sources must resolve in priority order regardless of
+  # insertion order.
+  step "repo-add-backup"    "npkg repo add backup /repo --priority 70" "added repository backup" 90
+  step "repo-add-priority"  "npkg repo add local /repo --priority 10"  "priority 10 fingerprint" 90
+  step "repo-list-priority" "npkg repo list"                           "PRIO"              90
+  step "search-priority"    "npkg search hello"                       "[local]"           90
   # The npkg acceptance runs on baseline images (P8_PREPLACE=off): the first
   # list must be empty. On driver-loader images (P8_PREPLACE=full) the
   # pre-placed fixture appears instead - set P8_EXPECT_PREPLACED=1 there.
@@ -101,6 +109,18 @@ else
     PASS=$((PASS + 1))
   else
     echo "FAIL: chain-c not visible in list output"
+    FAIL=$((FAIL + 1))
+  fi
+
+  # Task 5: search lists sources in priority order - local (10) must appear
+  # before backup (70), even though backup was added first.
+  L_LOCAL=$(grep -an '\[local\]' "$LOG" | head -1 | cut -d: -f1)
+  L_BACKUP=$(grep -an '\[backup\]' "$LOG" | head -1 | cut -d: -f1)
+  if [ -n "$L_LOCAL" ] && [ -n "$L_BACKUP" ] && [ "$L_LOCAL" -lt "$L_BACKUP" ]; then
+    echo "PASS: repository priority order (local@10 before backup@70)"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: repository priority order (local=$L_LOCAL backup=$L_BACKUP)"
     FAIL=$((FAIL + 1))
   fi
 fi
