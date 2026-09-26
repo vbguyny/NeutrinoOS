@@ -1,0 +1,16 @@
+{
+  "name": "samples.hello-led",
+  "version": "1.0.0",
+  "architecture": "any",
+  "description": "Hello-world virtual LED driver (NeutrinoOS SDK sample).",
+  "license": "MIT",
+  "provides": ["driver"],
+  "installPath": "/drivers",
+  "driver": {
+    "class": "custom",
+    "vendorIds": ["FFFF"],
+    "deviceIds": ["LED0"],
+    "entryPoint": "leddrv.dll"
+  },
+  "signer": ""
+}

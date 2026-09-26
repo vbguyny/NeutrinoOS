@@ -58,6 +58,8 @@ internal static class Program
                     return CmdSign(rest);
                 case "verify":
                     return CmdVerify(rest);
+                case "list":
+                    return CmdList(rest);
                 case "repo-index":
                     return CmdRepoIndex(rest);
                 case "publish":
@@ -174,7 +176,12 @@ internal static class Program
                 {
                     string trimmed = f.Trim();
                     if (trimmed.Length == 0) continue;
-                    list.Add(new KeyValuePair<string, byte[]>(Path.GetFileName(trimmed), File.ReadAllBytes(trimmed)));
+                    string fileName = Path.GetFileName(trimmed);
+                    bool duplicate = false;
+                    for (int i = 0; i < list.Count; i++)
+                        if (list[i].Key == fileName) { duplicate = true; break; }
+                    if (!duplicate)
+                        list.Add(new KeyValuePair<string, byte[]>(fileName, File.ReadAllBytes(trimmed)));
                 }
             }
             if (list.Count == 0)
@@ -275,6 +282,32 @@ internal static class Program
         }
 
         return pass ? 0 : 1;
+    }
+
+    // ------------------------------------------------------------------ list
+
+    private static int CmdList(string[] args)
+    {
+        ArgParser a = new ArgParser(args);
+        string pkgPath = a.Pos(0) ?? throw new UsageException("list requires a package file");
+        a.EnsureNoExtra();
+
+        NpkgPackage pkg = NpkgPackage.Open(File.ReadAllBytes(pkgPath));
+        Console.WriteLine("name:         " + pkg.Manifest.Name);
+        Console.WriteLine("version:      " + pkg.Manifest.Version);
+        Console.WriteLine("architecture: " + pkg.Manifest.Architecture);
+        Console.WriteLine("install path: " + pkg.Manifest.InstallPath);
+        if (pkg.Manifest.Provides != null && pkg.Manifest.Provides.Count > 0)
+            Console.WriteLine("provides:     " + string.Join(", ", pkg.Manifest.Provides));
+        if (pkg.Manifest.EntryPoints != null && pkg.Manifest.EntryPoints.Count > 0)
+        {
+            foreach (KeyValuePair<string, string> kv in pkg.Manifest.EntryPoints)
+                Console.WriteLine("entry point:  " + kv.Key + " -> " + kv.Value);
+        }
+        Console.WriteLine("payload (" + pkg.PayloadFiles.Length + " files):");
+        foreach (KeyValuePair<string, byte[]> f in pkg.PayloadFiles)
+            Console.WriteLine("  " + f.Key + " (" + TextConv.LongToString(f.Value.Length) + " bytes)");
+        return 0;
     }
 
     // ------------------------------------------------------------ repo-index
@@ -431,6 +464,7 @@ internal static class Program
         Console.WriteLine("                   [--description <s>] [--license <s>] [--author <s>] [--homepage <s>] [--key <private.key>]");
         Console.WriteLine("  npkg-host sign <file.npkg> <private.key>");
         Console.WriteLine("  npkg-host verify <file.npkg> [--key <pubkey-file>]");
+        Console.WriteLine("  npkg-host list <file.npkg>");
         Console.WriteLine("  npkg-host repo-index --dir <dir> [--key <private.key>] [--name <name>]");
         Console.WriteLine("  npkg-host publish <file.npkg> --repo <dir>");
         Console.WriteLine("  npkg-host --help");

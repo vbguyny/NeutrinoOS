@@ -1,0 +1,79 @@
+# NeutrinoOS application CI - GitHub Actions template.
+#
+# Copy this file to .github/workflows/build.yml in your application
+# repository. It builds the app on every push/PR, verifies the generated
+# .npkg package, optionally signs it (set the NPKG_SIGNING_KEY secret to
+# your 64-hex Ed25519 private key) and uploads a ready-to-serve
+# repository directory as an artifact.
+#
+# See docs/SDK-CICD.md for the full walkthrough.
+
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Fetch the NeutrinoOS SDK (npkg-host + templates)
+        run: |
+          git clone --depth 1 https://github.com/vbguyny/NeutrinoOS.git .neutrinoos
+          dotnet build .neutrinoos/sdk/npkg/Npkg.Cli.csproj -c Release -o .neutrinoos/tools
+          echo "$PWD/.neutrinoos/tools" >> "$GITHUB_PATH"
+          dotnet new install .neutrinoos/templates --force
+
+      - name: Build (Release) - also produces the .npkg
+        run: dotnet build -c Release
+
+      - name: Verify packages
+        run: |
+          set -euo pipefail
+          for p in bin/Release/net10.0/*.npkg; do
+            echo "--- $p"
+            npkg-host verify "$p"
+          done
+
+      - name: Sign packages (set the NPKG_SIGNING_KEY secret to enable)
+        env:
+          NPKG_SIGNING_KEY: ${{ secrets.NPKG_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$NPKG_SIGNING_KEY" ]; then
+            echo "NPKG_SIGNING_KEY not set - packages stay unsigned"
+            exit 0
+          fi
+          printf '%s\n' "$NPKG_SIGNING_KEY" > /tmp/npkg.key
+          for p in bin/Release/net10.0/*.npkg; do
+            npkg-host sign "$p" /tmp/npkg.key
+          done
+
+      - name: Assemble a repository index
+        run: |
+          set -euo pipefail
+          mkdir -p repo
+          cp bin/Release/net10.0/*.npkg repo/
+          if [ -n "${NPKG_SIGNING_KEY:-}" ]; then
+            printf '%s\n' "$NPKG_SIGNING_KEY" > /tmp/npkg.key
+            npkg-host repo-index --dir repo --key /tmp/npkg.key --name "${GITHUB_REPOSITORY##*/}"
+          else
+            npkg-host repo-index --dir repo --name "${GITHUB_REPOSITORY##*/}"
+          fi
+        env:
+          NPKG_SIGNING_KEY: ${{ secrets.NPKG_SIGNING_KEY }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npkg-packages
+          path: bin/Release/net10.0/*.npkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npkg-repository
+          path: repo/

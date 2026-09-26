@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../sdk/build/NeutrinoOS.App.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>hellolib</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+
+    <NeutrinoInstallPath>lib</NeutrinoInstallPath>
+    <NeutrinoProvides>library</NeutrinoProvides>
+  </PropertyGroup>
+
+  <Import Project="../../sdk/build/NeutrinoOS.App.targets" />
+
+</Project>

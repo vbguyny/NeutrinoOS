@@ -1,0 +1,42 @@
+# NeutrinoOS application CI - GitLab CI template.
+#
+# Copy this file to .gitlab-ci.yml in your application repository. Set the
+# masked CI variable NPKG_SIGNING_KEY to your 64-hex Ed25519 private key
+# to sign the packages and the repository index.
+#
+# See docs/SDK-CICD.md for the full walkthrough.
+
+stages:
+  - build
+
+build:
+  stage: build
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  script:
+    - git clone --depth 1 https://github.com/vbguyny/NeutrinoOS.git .neutrinoos
+    - dotnet build .neutrinoos/sdk/npkg/Npkg.Cli.csproj -c Release -o .neutrinoos/tools
+    - export PATH="$PWD/.neutrinoos/tools:$PATH"
+    - dotnet new install .neutrinoos/templates --force
+
+    - dotnet build -c Release
+
+    - |
+      for p in bin/Release/net10.0/*.npkg; do
+        echo "--- $p"
+        npkg-host verify "$p"
+      done
+
+    - |
+      if [ -n "${NPKG_SIGNING_KEY:-}" ]; then
+        printf '%s\n' "$NPKG_SIGNING_KEY" > /tmp/npkg.key
+        for p in bin/Release/net10.0/*.npkg; do npkg-host sign "$p" /tmp/npkg.key; done
+        mkdir -p repo && cp bin/Release/net10.0/*.npkg repo/
+        npkg-host repo-index --dir repo --key /tmp/npkg.key --name "$CI_PROJECT_NAME"
+      else
+        echo "NPKG_SIGNING_KEY not set - packages stay unsigned"
+      fi
+
+  artifacts:
+    paths:
+      - bin/Release/net10.0/*.npkg
+    expire_in: 30 days

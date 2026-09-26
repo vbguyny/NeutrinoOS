@@ -13,18 +13,27 @@
           AfterTargets="Build"
           Condition="'$(Configuration)' == 'Release' And '$(NeutrinoPackageOnBuild)' == 'true'">
 
+    <!-- Extra payload: referenced project outputs (libraries the app needs
+         at run time) plus explicit items via the NeutrinoPayload item group. -->
+    <ItemGroup>
+      <_NeutrinoPayloadAll Include="@(NeutrinoPayload)" />
+      <_NeutrinoPayloadAll Include="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceSourceTarget)' == 'ProjectReference' And '%(Extension)' == '.dll'" />
+    </ItemGroup>
+
     <PropertyGroup>
       <NeutrinoPackageName Condition="'$(NeutrinoPackageName)' == ''">$(AssemblyName)</NeutrinoPackageName>
       <NeutrinoPackagePath>$(TargetDir)$(NeutrinoPackageName).npkg</NeutrinoPackagePath>
       <NeutrinoKeyArg Condition="'$(NeutrinoSigningKey)' != ''">--key "$(NeutrinoSigningKey)"</NeutrinoKeyArg>
+      <NeutrinoExtraItems>@(_NeutrinoPayloadAll->'%(FullPath)', ',')</NeutrinoExtraItems>
+      <NeutrinoEntryArg Condition="'$(OutputType)' == 'Exe'">--entry "$(TargetPath)"</NeutrinoEntryArg>
+      <NeutrinoFilesArg Condition="'$(OutputType)' == 'Exe' And '$(NeutrinoExtraItems)' != ''">--files "$(NeutrinoExtraItems)"</NeutrinoFilesArg>
+      <NeutrinoFilesList Condition="'$(OutputType)' != 'Exe' And '$(NeutrinoExtraItems)' != ''">$(TargetPath),$(NeutrinoExtraItems)</NeutrinoFilesList>
+      <NeutrinoFilesList Condition="'$(OutputType)' != 'Exe' And '$(NeutrinoExtraItems)' == ''">$(TargetPath)</NeutrinoFilesList>
+      <NeutrinoFilesArg Condition="'$(OutputType)' != 'Exe'">--files "$(NeutrinoFilesList)"</NeutrinoFilesArg>
       <NeutrinoPackCommonArgs>--name "$(NeutrinoPackageName)" --version "$(Version)" --architecture $(NeutrinoArchitecture) --install-path $(NeutrinoInstallPath) --provides $(NeutrinoProvides) --out "$(NeutrinoPackagePath)" $(NeutrinoKeyArg)</NeutrinoPackCommonArgs>
     </PropertyGroup>
 
-    <Exec Condition="'$(OutputType)' == 'Exe'"
-          Command="$(NeutrinoNpkgTool) pack --entry &quot;$(TargetPath)&quot; $(NeutrinoPackCommonArgs)" />
-
-    <Exec Condition="'$(OutputType)' == 'Library'"
-          Command="$(NeutrinoNpkgTool) pack --files &quot;$(TargetPath)&quot; $(NeutrinoPackCommonArgs)" />
+    <Exec Command="$(NeutrinoNpkgTool) pack $(NeutrinoEntryArg) $(NeutrinoFilesArg) $(NeutrinoPackCommonArgs)" />
 
     <Message Importance="high" Text="[NeutrinoOS] package: $(NeutrinoPackagePath)" />
 
