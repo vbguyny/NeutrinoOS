@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>npkg-repo-server</AssemblyName>
+    <RootNamespace>NeutrinoOS.Sdk.RepoServer</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- Host-side repository server.  The shared NeutrinoOS.Packaging sources
+       and the DDK crypto library are compiled in so the generated index
+       (and its Ed25519 signature) matches the on-device npkg byte-for-byte. -->
+  <ItemGroup>
+    <Compile Include="../../src/lib/NeutrinoOS.Packaging/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ddk/DDK.csproj" />
+  </ItemGroup>
+
+</Project>
