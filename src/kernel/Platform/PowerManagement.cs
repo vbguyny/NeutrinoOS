@@ -43,11 +43,15 @@ public static unsafe class PowerManagement
     private static bool _havePm1b;
     private static bool _haveResetReg;
     private static bool _slpTypFromAml;
+    private static bool _haveS3;
+    private static bool _slpTypFromAml3;
     private static ushort _pm1aCntPort;
     private static ushort _pm1bCntPort;
     private static byte _pm1CntLen = 2;
     private static ulong _slpTypA;
     private static ulong _slpTypB;
+    private static ulong _slpTypA3;
+    private static ulong _slpTypB3;
     private static ushort _resetRegPort;
     private static byte _resetValue;
 
@@ -66,6 +70,8 @@ public static unsafe class PowerManagement
             return "ACPI power management unavailable (no FADT)";
         string s = "PM1a_CNT=0x" + Hex4(_pm1aCntPort) + " len=" + _pm1CntLen.ToString();
         s += " SLP_TYP=" + _slpTypA.ToString() + (_slpTypFromAml ? " (\\_S5)" : " (fallback)");
+        if (_haveS3)
+            s += " S3_SLP_TYP=" + _slpTypA3.ToString() + (_slpTypFromAml3 ? " (\\_S3)" : "");
         if (_havePm1b)
             s += " PM1b_CNT=0x" + Hex4(_pm1bCntPort) + " b=" + _slpTypB.ToString();
         s += _haveResetReg ? (" reset=port 0x" + Hex4(_resetRegPort) + " val 0x" + Hex2(_resetValue)) : " reset=0xCF9";
@@ -156,6 +162,30 @@ public static unsafe class PowerManagement
             _slpTypB = 5;
         }
 
+        // \_S3 (suspend to RAM): same Name/Package shape as \_S5. S3 has
+        // no safe fallback (the SLP_TYP values are chipset-specific), so
+        // the sleep command requires the firmware to declare \_S3.
+        if (dsdtAddr != 0)
+        {
+            var dsdt = (ACPITableHeader*)dsdtAddr;
+            _slpTypFromAml3 = Aml.TryReadNameIntegers(
+                (byte*)dsdt, dsdt->Length,
+                (byte)'_', (byte)'S', (byte)'3', (byte)'_',
+                out _slpTypA3, out _slpTypB3);
+        }
+        if (!_slpTypFromAml3)
+        {
+            var ssdt3 = ACPI.FindTable((byte)'S', (byte)'S', (byte)'D', (byte)'T');
+            if (ssdt3 != null)
+            {
+                _slpTypFromAml3 = Aml.TryReadNameIntegers(
+                    (byte*)ssdt3, ssdt3->Length,
+                    (byte)'_', (byte)'S', (byte)'3', (byte)'_',
+                    out _slpTypA3, out _slpTypB3);
+            }
+        }
+        _haveS3 = _slpTypFromAml3;
+
         _haveS5 = _pm1aCntPort != 0;
         _available = _haveS5 || _haveResetReg;
 
@@ -223,6 +253,87 @@ public static unsafe class PowerManagement
         DebugConsole.WriteLine("[power] reset fallback: keyboard controller 0x64 <- 0xFE");
         ProtonOS.Arch.CPU.OutByte(KbcCommandPort, KbcResetCommand);
         ProtonOS.Arch.CPU.HaltForever();
+    }
+
+    /// <summary>
+    /// Suspend to RAM (ACPI S3). Evaluates `_PTS(3)` when the firmware
+    /// provides the method, writes SLP_TYP|SLP_EN to PM1a/PM1b_CNT, and
+    /// evaluates `_WAK(3)` when execution resumes. On real hardware the
+    /// wake path re-enters through the firmware S3 resume vector; QEMU
+    /// resumes the vCPU right after the PM1_CNT write.
+    /// </summary>
+    public static bool Sleep()
+    {
+        if (!Initialize() || !_haveS3)
+        {
+            DebugConsole.WriteLine("[power] sleep: ACPI S3 is not available on this machine");
+            return false;
+        }
+
+        EnsureAmlIndex();
+
+        // 1. Prepare to sleep: _PTS(3) lets the firmware quiesce devices
+        //    and arm wake sources (typically stores into platform fields).
+        if (Aml.HasMethod((byte)'_', (byte)'P', (byte)'T', (byte)'S'))
+        {
+            ulong* pa = stackalloc ulong[1];
+            pa[0] = 3;
+            ulong r;
+            if (Aml.Invoke((byte)'_', (byte)'P', (byte)'T', (byte)'S', pa, 1, out r))
+                DebugConsole.WriteLine("[power] _PTS(3) evaluated");
+            else
+                DebugConsole.WriteLine("[power] _PTS(3) evaluation aborted (see [aml] log)");
+        }
+        else
+        {
+            DebugConsole.WriteLine("[power] no _PTS method in firmware AML");
+        }
+
+        // 2. Enter S3: SLP_TYP from \_S3 | SLP_EN.
+        DebugConsole.Write("[power] ACPI enter S3 (suspend to RAM): PM1a_CNT=0x");
+        DebugConsole.WriteHex(_pm1aCntPort);
+        DebugConsole.Write(" SLP_TYP=");
+        DebugConsole.WriteDecimal((int)_slpTypA3);
+        DebugConsole.Write(_slpTypFromAml3 ? " (\\_S3)" : "");
+        DebugConsole.WriteLine();
+
+        ulong valueA = (_slpTypA3 << Pm1CntSleepTypeShift) | Pm1CntSleepEnable;
+        WritePm1Cnt(_pm1aCntPort, valueA);
+        if (_havePm1b)
+        {
+            ulong valueB = (_slpTypB3 << Pm1CntSleepTypeShift) | Pm1CntSleepEnable;
+            WritePm1Cnt(_pm1bCntPort, valueB);
+        }
+
+        // 3. Execution resumes here after the wake event (RTC alarm,
+        //    power button, QEMU monitor system_wakeup, ...).
+        DebugConsole.WriteLine("[power] resumed from S3");
+
+        if (Aml.HasMethod((byte)'_', (byte)'W', (byte)'A', (byte)'K'))
+        {
+            ulong* wa = stackalloc ulong[1];
+            wa[0] = 3;
+            ulong r;
+            if (Aml.Invoke((byte)'_', (byte)'W', (byte)'A', (byte)'K', wa, 1, out r))
+                DebugConsole.WriteLine("[power] _WAK(3) evaluated");
+            else
+                DebugConsole.WriteLine("[power] _WAK(3) evaluation aborted (see [aml] log)");
+        }
+        else
+        {
+            DebugConsole.WriteLine("[power] no _WAK method in firmware AML");
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Index the DSDT and every SSDT into the AML interpreter namespace
+    /// (once) so _PTS/_WAK can be resolved.
+    /// </summary>
+    private static void EnsureAmlIndex()
+    {
+        Aml.IndexFirmwareTables();
     }
 
     private static void WritePm1Cnt(ushort port, ulong value)

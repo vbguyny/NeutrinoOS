@@ -34,6 +34,13 @@ public unsafe struct CPU : ProtonOS.Arch.ICpu<CPU>
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern void int3();
 
+    // MONITOR / MWAIT (Phase 9 C-state entry)
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void cpu_monitor(void* addr);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern void cpu_mwait(uint hints, uint extensions);
+
     // Control Registers
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern ulong read_cr0();
@@ -213,6 +220,12 @@ public unsafe struct CPU : ProtonOS.Arch.ICpu<CPU>
     /// Halt the CPU until next interrupt
     /// </summary>
     public static void Halt() => hlt();
+
+    /// <summary>Arm the address-range monitor for MWAIT (Phase 9).</summary>
+    public static void Monitor(void* addr) => cpu_monitor(addr);
+
+    /// <summary>Wait for a store to the monitored range or an interrupt (Phase 9).</summary>
+    public static void Mwait(uint hints, uint extensions) => cpu_mwait(hints, extensions);
 
     /// <summary>
     /// Spin-wait hint for busy loops

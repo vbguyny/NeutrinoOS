@@ -195,8 +195,9 @@ public static unsafe class Scheduler
     {
         while (true)
         {
-            // Halt until interrupt
-            CPU.Halt();
+            // Idle until interrupt: MWAIT-based C1 entry when the CPU and
+            // the firmware both support it (Phase 9), HLT otherwise.
+            CpuPower.IdleOnce();
         }
     }
 

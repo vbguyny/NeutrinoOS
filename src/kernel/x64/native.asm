@@ -387,6 +387,24 @@ int3:
     int3
     ret
 
+;; ==================== MONITOR / MWAIT (C-state entry) ====================
+
+global cpu_monitor, cpu_mwait
+
+; void cpu_monitor(void* addr) - arm the address-range monitor
+cpu_monitor:
+    mov rax, rcx
+    monitor
+    ret
+
+; void cpu_mwait(uint32_t hints, uint32_t extensions)
+; hints: EAX (C-state hint), extensions: ECX (C-state sub-state)
+cpu_mwait:
+    mov eax, ecx
+    mov ecx, edx
+    mwait
+    ret
+
 ;; ==================== TSC and Flags ====================
 
 global rdtsc_native, read_flags

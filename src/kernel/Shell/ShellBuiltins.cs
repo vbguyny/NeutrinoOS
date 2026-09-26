@@ -66,6 +66,9 @@ public static class ShellBuiltins
             case "version": return true && RunVersion(args, out exitCode);
             case "poweroff": return true && RunPoweroff(args, out exitCode);
             case "reboot": return true && RunReboot(args, out exitCode);
+            case "sleep": return true && RunSleep(args, out exitCode);
+            case "suspend": return true && RunSleep(args, out exitCode);
+            case "cpupower": return true && RunCpuPower(args, out exitCode);
             default: return false;
         }
     }
@@ -449,7 +452,7 @@ public static class ShellBuiltins
 
         Console.WriteLine("NeutrinoOS shell (Phase 5) - built-in commands:");
         Console.WriteLine("  cd pwd exit logout export unset history alias unalias source");
-        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot");
+        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot sleep cpupower");
         Console.WriteLine();
         Console.WriteLine("External utilities resolve through $PATH (default /bin:/apps):");
         Console.WriteLine("  ls cat echo mkdir rm cp mv touch head tail wc grep find");
@@ -497,6 +500,9 @@ public static class ShellBuiltins
             case "version": return "usage: version - print the NeutrinoOS version string";
             case "poweroff": return "usage: poweroff - shut down the system via ACPI S5 (Phase 9)";
             case "reboot": return "usage: reboot - reset the system via ACPI/PCI reset (Phase 9)";
+            case "sleep": return "usage: sleep - suspend to RAM via ACPI S3 (Phase 9); alias: suspend";
+            case "suspend": return "usage: suspend - suspend to RAM via ACPI S3 (Phase 9); alias: sleep";
+            case "cpupower": return "usage: cpupower - report ACPI C-states/P-states and idle policy (Phase 9)";
             default: return null;
         }
     }
@@ -608,6 +614,55 @@ public static class ShellBuiltins
         Console.WriteLine("Rebooting NeutrinoOS...");
         ProtonOS.Platform.PowerManagement.Reboot();
         exitCode = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// Suspends the machine to RAM (ACPI S3, Phase 9). Evaluates _PTS(3),
+    /// writes PM1_CNT and returns after the wake event resumes execution
+    /// (evaluating _WAK(3)).
+    /// </summary>
+    private static bool RunSleep(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        string name = args[0];
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: " + name);
+            Console.WriteLine("  Suspend to RAM (ACPI S3): evaluates _PTS(3), writes");
+            Console.WriteLine("  PM1_CNT with the \\_S3 SLP_TYP values, and evaluates");
+            Console.WriteLine("  _WAK(3) after the wake event resumes the system.");
+            return true;
+        }
+
+        Console.WriteLine("Suspending NeutrinoOS to RAM (ACPI S3)...");
+        if (!ProtonOS.Platform.PowerManagement.Sleep())
+        {
+            Console.Error.WriteLine(name + ": ACPI S3 is not available on this machine");
+            exitCode = 1;
+            return true;
+        }
+        Console.WriteLine("NeutrinoOS resumed from suspend.");
+        return true;
+    }
+
+    /// <summary>
+    /// Prints the CPU C-state/P-state report (Phase 9): the firmware
+    /// _CST/_PSS objects when present, the idle-entry policy (MWAIT vs
+    /// HLT), and the raw CPUID capabilities.
+    /// </summary>
+    private static bool RunCpuPower(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: cpupower");
+            Console.WriteLine("  Report ACPI C-states (_CST), P-states (_PSS), MONITOR/MWAIT");
+            Console.WriteLine("  support and the idle-entry policy used by the scheduler.");
+            return true;
+        }
+
+        ProtonOS.Platform.CpuPower.PrintReport();
         return true;
     }
 

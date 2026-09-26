@@ -543,6 +543,39 @@ public static unsafe class ACPI
     }
 
     /// <summary>
+    /// Number of tables listed by the root table (RSDT/XSDT).
+    /// </summary>
+    public static int TableCount
+    {
+        get
+        {
+            if (!_initialized)
+                return 0;
+            if (_useXsdt && _xsdt != null)
+                return (int)((_xsdt->Header.Length - (uint)sizeof(ACPITableHeader)) / 8);
+            if (_rsdt != null)
+                return (int)((_rsdt->Header.Length - (uint)sizeof(ACPITableHeader)) / 4);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Table by index from the root table (RSDT/XSDT), or null.
+    /// </summary>
+    public static ACPITableHeader* GetTable(int index)
+    {
+        if (!_initialized || index < 0 || index >= TableCount)
+            return null;
+        if (_useXsdt && _xsdt != null)
+        {
+            ulong* entries = (ulong*)((byte*)_xsdt + sizeof(ACPITableHeader));
+            return (ACPITableHeader*)entries[index];
+        }
+        uint* entries32 = (uint*)((byte*)_rsdt + sizeof(ACPITableHeader));
+        return (ACPITableHeader*)(ulong)entries32[index];
+    }
+
+    /// <summary>
     /// Find the HPET table
     /// </summary>
     public static ACPIHPET* FindHpet()

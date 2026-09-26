@@ -440,6 +440,10 @@ public static unsafe class Kernel
         // poweroff/reboot report their mechanism at boot.
         Platform.PowerManagement.Initialize();
 
+        // Phase 9: AML interpreter self-test (synthetic _PTS/_WAK-shaped
+        // methods; QEMU firmware has none of its own).
+        Platform.AmlSelfTest.Run();
+
         // Driver framework: build the device tree (PCI/VirtIO/platform)
         // and run the ABI-gated driver match pass.
         ProtonOS.Drivers.DriverFramework.Initialize();
