@@ -115,6 +115,17 @@ neutrinoos> npkg install MyApp
 Repositories can also be local paths (`file:///path` or `/path`) — handy
 on the device itself.
 
+**Priorities:** `npkg repo add <name> <url> --priority <n>` (lower number
+= preferred, default 50). `npkg repo list` shows the resolution order;
+when several repositories carry the same package version, the highest
+priority one wins, and an unreachable mirror is skipped with a warning.
+
+**HTTPS:** not available on-device yet (Phase 8 has no TLS client);
+`npkg repo add` rejects `https://` with a clear message. Ed25519
+signatures + the pinned fingerprint still protect package integrity over
+`http://` — for public hosting, terminate TLS at a reverse proxy and
+mirror for devices (see `docs/PHASE8-ECOSYSTEM.md`).
+
 ## 4. Driver packages (manifest mode)
 
 Driver packages carry a `driver` block (class/vendor/device ids +

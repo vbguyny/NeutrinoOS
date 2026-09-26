@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NeutrinoOS - a managed bare-metal operating system</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>NeutrinoOS</h1>
+    <p class="tagline">A bare-metal managed OS - C# kernel, Tier-0 JIT, .npkg ecosystem, x64 + ARM64.</p>
+    <nav>
+      <a href="#packages">Packages</a>
+      <a href="#getting-started">Getting started</a>
+      <a href="#docs">Documentation</a>
+      <a href="https://github.com/vbguyny/NeutrinoOS">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="packages">
+      <h2>Packages</h2>
+      <p class="muted">
+        This list is generated from a NeutrinoOS repository index
+        (<code>repository.json</code>). Set <code>REPO_URL</code> in
+        <code>config.js</code> to your repository (or leave it empty to see the
+        sample index below).
+      </p>
+      <table id="pkg-table">
+        <thead>
+          <tr><th>Name</th><th>Version</th><th>Arch</th><th>Description</th></tr>
+        </thead>
+        <tbody id="pkg-rows">
+          <tr><td colspan="4" class="muted">Loading...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="getting-started">
+      <h2>Getting started</h2>
+      <ol>
+        <li>Download the SDK archive (<code>neutrinoos-sdk-*.tar.gz</code>) and install the templates:
+          <pre>dotnet new install ./neutrinoos-sdk/templates</pre></li>
+        <li>Create a project and build it:
+          <pre>dotnet new neutrino-console -n MyApp
+cd MyApp
+dotnet build -c Release   # -&gt; MyApp.npkg</pre></li>
+        <li>Serve it and install it on a device:
+          <pre>scripts\start-repo-server.ps1
+neutrinoos&gt; npkg repo add local http://10.0.2.2:8080
+neutrinoos&gt; npkg install MyApp</pre></li>
+      </ol>
+    </section>
+
+    <section id="docs">
+      <h2>Documentation</h2>
+      <ul>
+        <li><a href="../docs/SDK-GETTING-STARTED.md">SDK - Getting Started</a></li>
+        <li><a href="../docs/SDK-PACKAGING.md">SDK - Packaging, signing, repositories</a></li>
+        <li><a href="../docs/SDK-TESTING.md">SDK - Testing in QEMU/VirtualBox</a></li>
+        <li><a href="../docs/SDK-CICD.md">SDK - CI/CD</a></li>
+        <li><a href="../docs/PACKAGE-GUIDELINES.md">Package guidelines</a></li>
+        <li><a href="../docs/COMMUNITY-GUIDE.md">Community guide</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted">NeutrinoOS - <span id="year"></span> - MIT license</p>
+  </footer>
+
+  <script src="config.js"></script>
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+
+    var sample = [
+      { name: "com.example.hello-app", version: "1.0.0", architecture: "any", description: "Example application (sample index)" },
+      { name: "com.example.hello-tool", version: "1.0.0", architecture: "any", description: "Example shell utility (sample index)" },
+      { name: "com.example.hello-driver", version: "1.0.0", architecture: "any", description: "Example driver (sample index)" }
+    ];
+
+    function render(packages) {
+      var tbody = document.getElementById("pkg-rows");
+      tbody.innerHTML = "";
+      if (!packages.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="muted">No packages found.</td></tr>';
+        return;
+      }
+      packages.forEach(function (p) {
+        var tr = document.createElement("tr");
+        ["name", "version", "architecture", "description"].forEach(function (k) {
+          var td = document.createElement("td");
+          td.textContent = p[k] || "";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    if (typeof REPO_URL === "string" && REPO_URL.length > 0) {
+      fetch(REPO_URL.replace(/\/$/, "") + "/repository.json")
+        .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (index) { render(index.packages || []); })
+        .catch(function (e) {
+          document.getElementById("pkg-rows").innerHTML =
+            '<tr><td colspan="4" class="muted">Could not load ' + REPO_URL + " (" + e.message + ")</td></tr>";
+        });
+    } else {
+      render(sample);
+    }
+  </script>
+</body>
+</html>

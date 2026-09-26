@@ -1,0 +1,16 @@
+{
+  "format": "npkg/1",
+  "name": "com.example.hello-app",
+  "version": "1.0.0",
+  "architecture": "any",
+  "author": "Example Author",
+  "description": "Example application package (edit me).",
+  "license": "MIT",
+  "homepage": "",
+  "provides": ["application"],
+  "installPath": "/apps",
+  "entryPoints": { "helloapp": "helloapp.dll" },
+  "dependencies": {},
+  "scripts": {},
+  "signer": ""
+}

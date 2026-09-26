@@ -1,0 +1,60 @@
+/* NeutrinoOS website - minimal static styling. */
+:root {
+  --bg: #0b0f14;
+  --panel: #111823;
+  --text: #d7e1ee;
+  --muted: #7d8ca0;
+  --accent: #4cc2ff;
+  --border: #1e2a3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+header {
+  padding: 3rem 1.5rem 1.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 { margin: 0; font-size: 2.6rem; letter-spacing: 0.02em; }
+.tagline { color: var(--muted); margin-top: 0.5rem; }
+
+nav a {
+  color: var(--accent);
+  margin: 0 0.6rem;
+  text-decoration: none;
+}
+nav a:hover { text-decoration: underline; }
+
+main { max-width: 860px; margin: 0 auto; padding: 1.5rem; }
+
+section { margin: 2.5rem 0; }
+
+h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
+
+pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+}
+
+code { color: var(--accent); }
+pre code, td code { color: inherit; }
+
+.muted { color: var(--muted); }
+
+footer { text-align: center; padding: 2rem 1rem; border-top: 1px solid var(--border); }

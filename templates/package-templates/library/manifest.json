@@ -1,0 +1,14 @@
+{
+  "format": "npkg/1",
+  "name": "com.example.hello-lib",
+  "version": "1.0.0",
+  "architecture": "any",
+  "author": "Example Author",
+  "description": "Example shared library package (edit me).",
+  "license": "MIT",
+  "provides": ["library"],
+  "installPath": "/lib",
+  "dependencies": {},
+  "scripts": {},
+  "signer": ""
+}

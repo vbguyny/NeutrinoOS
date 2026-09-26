@@ -120,11 +120,11 @@ Guest (`npkg` on NeutrinoOS):
 | `npkg list` | installed packages (name, version, arch, signer, description) |
 | `npkg search <query>` | search all repository indexes |
 | `npkg info <name>` | installed-first package details (dependencies, entry points, files) |
-| `npkg repo add <name> <url> [--fingerprint <hex>]` / `repo list` / `repo remove <name>` | repository management (futures an index signature + trust pin) |
+| `npkg repo add <name> <url> [--priority <n>] [--fingerprint <hex>]` / `repo list` / `repo remove <name>` | repository management (trust pin + priority ordering; lower priority number = preferred source, default 50) |
 | `npkg verify <file.npkg>` | checksums + signature against trusted keys |
 
 Host (`sdk/npkg`, runs on Windows 11 / WSL2): `keygen`, `fingerprint`,
-`pack`, `sign`, `verify`, `repo-index`, `publish`.
+`pack`, `sign`, `verify`, `list`, `repo-index`, `publish`.
 
 ## 6. Trust and signing
 
@@ -133,7 +133,15 @@ Host (`sdk/npkg`, runs on Windows 11 / WSL2): `keygen`, `fingerprint`,
   (64-hex text or raw 32-byte file). Anything else is rejected unless
   `--allow-untrusted` is given (loud warning, `--force` recommended).
 - `npkg repo add` prints the repository fingerprint; pass
-  `--fingerprint <hex>` to pin it (mismatch aborts).
+  `--fingerprint <hex>` to pin it (mismatch aborts). Repositories are
+  ordered by priority (lower = higher; `npkg repo list` shows the
+  resolution order) and version ties across repositories are resolved in
+  that order.
+- Repository URLs: `http://` and local paths (`file:///...`, `/path`)
+  are supported. `https://` is not available on-device yet (no TLS
+  client in Phase 8; `npkg repo add` rejects it clearly) — integrity is
+  still protected by the Ed25519 signatures above; see
+  `docs/PHASE8-ECOSYSTEM.md`.
 - Key generation: `npkg-host keygen` writes `private.key` (64-hex seed)
   and `public.key` (64-hex public key) to `~/.neutrinoos`.
 - The Phase 8 test key in `tests/npkg/keys/` is **test-only**.

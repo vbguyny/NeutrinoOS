@@ -1,0 +1,15 @@
+{
+  "format": "npkg/1",
+  "name": "com.example.hello-tool",
+  "version": "1.0.0",
+  "architecture": "any",
+  "author": "Example Author",
+  "description": "Example shell utility package (edit me).",
+  "license": "MIT",
+  "provides": ["utility"],
+  "installPath": "/bin",
+  "entryPoints": { "hellotool": "hellotool.dll" },
+  "dependencies": {},
+  "scripts": {},
+  "signer": ""
+}

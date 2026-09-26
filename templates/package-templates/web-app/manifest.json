@@ -1,0 +1,15 @@
+{
+  "format": "npkg/1",
+  "name": "com.example.hello-webapp",
+  "version": "1.0.0",
+  "architecture": "any",
+  "author": "Example Author",
+  "description": "Example web application package (edit me).",
+  "license": "MIT",
+  "provides": ["application", "web"],
+  "installPath": "/apps",
+  "entryPoints": { "helloweb": "helloweb.dll" },
+  "dependencies": {},
+  "scripts": {},
+  "signer": ""
+}
