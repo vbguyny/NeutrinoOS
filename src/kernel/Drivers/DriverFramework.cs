@@ -78,6 +78,7 @@ public static class DriverFramework
         DriverManager.Register(new Builtin.AhciDriver());
         DriverManager.Register(new Builtin.VirtioNetDriver());
         DriverManager.Register(new Builtin.VirtioBlkDriver());
+        DriverManager.Register(new Builtin.XhciDriver());
     }
 
     /// <summary>Legacy platform devices that are not on a discoverable bus.</summary>

@@ -39,14 +39,27 @@ public sealed unsafe class KernelDriverServices : IDriverServices
     {
     }
 
-    /// <summary>Map a physical MMIO region; the kernel is identity-mapped.</summary>
+    /// <summary>
+    /// Map a physical MMIO region through the higher-half physical map
+    /// window (cache disabled), like the DDK Kernel_MapMMIO export. Low
+    /// BARs also remain identity-mapped, but 64-bit BARs assigned above
+    /// 4 GiB (e.g. the qemu-xhci register window) only exist in this
+    /// window.
+    /// </summary>
     public ulong MapMmio(ulong physicalAddress, ulong size)
     {
-        // The kernel runs on an identity mapping (physical == virtual), and
-        // MMIO windows enumerated by the PCI bus are identity-mapped by the
-        // paging setup. No translation is required.
-        _ = size;
-        return physicalAddress;
+        ulong virtAddr = VirtualMemory.PhysToVirt(physicalAddress);
+
+        ulong physStart = physicalAddress & ~(VirtualMemory.LargePageSize - 1);
+        ulong physEnd = (physicalAddress + size + VirtualMemory.LargePageSize - 1)
+                      & ~(VirtualMemory.LargePageSize - 1);
+        for (ulong phys = physStart; phys < physEnd; phys += VirtualMemory.LargePageSize)
+        {
+            ulong virt = VirtualMemory.PhysToVirt(phys);
+            // Page might already be mapped - treat as success for MMIO.
+            VirtualMemory.MapLargePage(virt, phys, PageFlags.KernelRW | PageFlags.CacheDisable);
+        }
+        return virtAddr;
     }
 
     /// <summary>Unmap a region returned by MapMmio (no-op on identity map).</summary>

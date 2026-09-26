@@ -265,6 +265,17 @@ public static unsafe class ConsoleAbstractionLayer
     [UnmanagedCallersOnly]
     private static void OnKeyboardByte(byte b)
     {
+        FeedKeyboardByte(b);
+    }
+
+    /// <summary>
+    /// External keyboard byte source (USB HID, Phase 9): feeds an ANSI
+    /// byte into the same line discipline as the UART/PS/2 and marks the
+    /// keyboard console as the active input. Callable from any context
+    /// (the USB poll drains completions from the shell idle pump).
+    /// </summary>
+    public static void FeedKeyboardByte(byte b)
+    {
         LineDiscipline.FeedByte(b);
 
         if (!_keyboardIsActiveInput)

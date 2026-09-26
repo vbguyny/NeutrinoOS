@@ -100,6 +100,15 @@ public static unsafe class ShellMain
         // loads/unloads drivers when devices are added/removed on a slot.
         ProtonOS.Drivers.PcieHotplug.Poll();
 
+        // Phase 9: USB poll - event ring drain (hot-plug), HID interrupt
+        // endpoints and CDC-ACM receive drains.
+        if (ProtonOS.Usb.UsbStack.ControllerPresent)
+        {
+            ProtonOS.Usb.UsbStack.Poll();
+            ProtonOS.Usb.UsbHid.Poll();
+            ProtonOS.Usb.UsbSerial.Poll();
+        }
+
         if (!JobManager.HasQueuedJobs)
             return;
         JobManager.Pump();

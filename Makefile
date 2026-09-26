@@ -171,7 +171,7 @@ EXT2_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ext2.dll
 TEST_DRIVER_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Test.dll
 
 # Targets
-.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
+.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-usb run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
 
 all: $(BUILD_DIR)/$(EFI_NAME)
 
@@ -463,6 +463,11 @@ run: image
 # OVMF (pflash) + neutrinoos.img on virtio, no graphics, serial on stdio
 run-qemu: image
 	./tools/run-qemu.sh
+
+# Phase 9: USB 3.x (xHCI) with a USB keyboard, mouse and mass storage
+# stick attached (hot-plug via the QEMU monitor; see the script header).
+run-qemu-usb: image
+	bash build/run-qemu-usb.sh
 
 # Phase 8: ARM64 console under QEMU 'virt' with the AAVMF firmware.
 # The PL011 UART at 0x09000000 carries the serial console.

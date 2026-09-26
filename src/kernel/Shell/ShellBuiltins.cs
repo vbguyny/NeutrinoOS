@@ -69,6 +69,7 @@ public static class ShellBuiltins
             case "sleep": return true && RunSleep(args, out exitCode);
             case "suspend": return true && RunSleep(args, out exitCode);
             case "cpupower": return true && RunCpuPower(args, out exitCode);
+            case "usb": return true && RunUsb(args, out exitCode);
             default: return false;
         }
     }
@@ -452,7 +453,7 @@ public static class ShellBuiltins
 
         Console.WriteLine("NeutrinoOS shell (Phase 5) - built-in commands:");
         Console.WriteLine("  cd pwd exit logout export unset history alias unalias source");
-        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot sleep cpupower");
+        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot sleep cpupower usb");
         Console.WriteLine();
         Console.WriteLine("External utilities resolve through $PATH (default /bin:/apps):");
         Console.WriteLine("  ls cat echo mkdir rm cp mv touch head tail wc grep find");
@@ -503,6 +504,7 @@ public static class ShellBuiltins
             case "sleep": return "usage: sleep - suspend to RAM via ACPI S3 (Phase 9); alias: suspend";
             case "suspend": return "usage: suspend - suspend to RAM via ACPI S3 (Phase 9); alias: sleep";
             case "cpupower": return "usage: cpupower - report ACPI C-states/P-states and idle policy (Phase 9)";
+            case "usb": return "usage: usb - list USB controllers, devices, disks and serial ports (Phase 9)";
             default: return null;
         }
     }
@@ -664,6 +666,101 @@ public static class ShellBuiltins
 
         ProtonOS.Platform.CpuPower.PrintReport();
         return true;
+    }
+
+    /// <summary>
+    /// Lists the USB stack state (Phase 9): controller port counts,
+    /// enumerated devices with their bound class driver, mass-storage
+    /// disks and CDC-ACM serial ports. Stable "[usb]" lines for tests.
+    /// </summary>
+    private static unsafe bool RunUsb(string[] args, out int exitCode)
+    {
+        exitCode = 0;
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: usb");
+            Console.WriteLine("  List USB controllers, devices, disks (/dev/sda class)");
+            Console.WriteLine("  and CDC-ACM serial ports (/dev/ttyUSB0 class).");
+            return true;
+        }
+
+        var controller = ProtonOS.Usb.UsbStack.Controller;
+        if (controller == null)
+        {
+            Console.WriteLine("[usb] no xHCI controller bound");
+            return true;
+        }
+
+        Console.Write("[usb] xHCI: ports=");
+        Console.Write(controller.MaxPorts.ToString());
+        Console.Write(" devices=");
+        Console.Write(ProtonOS.Usb.UsbStack.DeviceCount.ToString());
+        Console.Write(" failures=");
+        Console.Write(ProtonOS.Usb.UsbStack.EnumerationFailures.ToString());
+        Console.WriteLine();
+
+        for (int i = 0; i < ProtonOS.Usb.UsbStack.DeviceCount; i++)
+        {
+            var dev = ProtonOS.Usb.UsbStack.GetDevice(i);
+            if (dev == null)
+                continue;
+            Console.Write("[usb] dev");
+            Console.Write(i.ToString());
+            Console.Write(": port=");
+            Console.Write((dev.Port + 1).ToString());
+            Console.Write(" ");
+            Console.Write(ProtonOS.Usb.UsbStack.SpeedName(dev.Speed));
+            Console.Write(" ");
+            Console.Write(Hex4(dev.VendorId));
+            Console.Write(":");
+            Console.Write(Hex4(dev.ProductId));
+            Console.Write(" ");
+            Console.WriteLine(dev.Status);
+        }
+
+        for (int i = 0; i < ProtonOS.Usb.UsbStorage.DiskCount; i++)
+        {
+            var disk = ProtonOS.Usb.UsbStorage.GetDisk(i);
+            if (disk == null)
+                continue;
+            Console.Write("[usb] disk ");
+            Console.Write(ProtonOS.Usb.UsbStorage.DiskName(disk));
+            Console.Write(": " );
+            Console.Write(disk.Vendor);
+            Console.Write(" ");
+            Console.Write(disk.Product);
+            Console.Write(" sectors=");
+            Console.Write(disk.BlockCount.ToString());
+            Console.Write(" ready=");
+            Console.WriteLine(disk.Ready ? "1" : "0");
+        }
+
+        for (int i = 0; i < ProtonOS.Usb.UsbSerial.PortCount; i++)
+        {
+            var port = ProtonOS.Usb.UsbSerial.GetPort(i);
+            if (port == null)
+                continue;
+            Console.Write("[usb] serial ");
+            Console.Write(port.Name);
+            Console.Write(": ready=");
+            Console.Write(port.Ready ? "1" : "0");
+            Console.Write(" rx=");
+            Console.Write(ProtonOS.Usb.UsbSerial.Available(port).ToString());
+            Console.WriteLine();
+        }
+
+        return true;
+    }
+
+    private static string Hex4(ushort v)
+    {
+        string s = "";
+        for (int i = 12; i >= 0; i -= 4)
+        {
+            int nibble = (v >> i) & 0xF;
+            s += (char)(nibble < 10 ? '0' + nibble : 'A' + nibble - 10);
+        }
+        return s;
     }
 
     /// <summary>Prints the recorded boot timeline (Phase 7 boot profiling).</summary>
