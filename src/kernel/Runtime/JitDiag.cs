@@ -11,9 +11,16 @@ public static class JitDiag
 {
     /// <summary>
     /// Enable verbose JIT emission traces (per call-site, per local, and
-    /// per type resolution). Selected by the "verbose-jit" boot marker.
+    /// per type resolution). Defaults to true in trace builds
+    /// (NEUTRINO_TRACE: TRACE=1 / build.sh --trace); otherwise the
+    /// "verbose-jit" boot marker can enable it at runtime for debugging.
     /// </summary>
-    public static bool VerboseJit;
+    public static bool VerboseJit =
+#if NEUTRINO_TRACE
+        true;
+#else
+        false;
+#endif
 
     /// <summary>
     /// Number of methods compiled by the Tier-0 JIT so far. Printed as a

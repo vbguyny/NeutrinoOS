@@ -4,6 +4,7 @@
 
 ```bash
 ./build.sh    # Clean and build (kills QEMU, cleans, builds, generates IL)
+./build.sh --trace  # Same, but compiles the JIT/AOT trace prints in (slow, for debugging)
 ./run.sh      # Run in QEMU (boots in ~3 seconds)
 ./kill.sh     # Kill any running QEMU instances
 ```

@@ -2614,7 +2614,7 @@ public static unsafe class MetadataIntegration
         if (NameEquals(typeName, "System.Collections.ObjectModel.ReadOnlyCollection`1") &&
             NameEquals(memberName, "get_Item") && !firstGenericArgIsRefType)
         {
-            DebugConsole.WriteLine("[AotMemberRef] ReadOnlyCollection.get_Item: T is value type, skip AOT");
+            JitTrace.WriteLine("[AotMemberRef] ReadOnlyCollection.get_Item: T is value type, skip AOT");
             return false;  // Fall through to JIT for value types
         }
 
@@ -2629,28 +2629,28 @@ public static unsafe class MetadataIntegration
             // pos 1: param count (compressed)
             // pos 2+: return type (void = 0x01), then param types
             // Debug: dump first 6 bytes of signature
-            DebugConsole.Write("[AotMemberRef] String..ctor sig: ");
+            JitTrace.Write("[AotMemberRef] String..ctor sig: ");
             for (int d = 0; d < 6 && d < sigLen; d++)
             {
-                DebugConsole.WriteHex(sig[d]);
-                DebugConsole.Write(" ");
+                JitTrace.WriteHex(sig[d]);
+                JitTrace.Write(" ");
             }
-            DebugConsole.WriteLine();
+            JitTrace.WriteLine();
 
             int pos = sigPos;  // Continue from where param count was decoded
             // Skip return type - void is 0x01
             pos++;
             // Now at first param type - check for pointer (0x0F = ELEMENT_TYPE_PTR)
-            DebugConsole.Write("[AotMemberRef] First param type at pos ");
-            DebugConsole.WriteDecimal((uint)pos);
-            DebugConsole.Write(" = 0x");
-            DebugConsole.WriteHex(sig[pos]);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[AotMemberRef] First param type at pos ");
+            JitTrace.WriteDecimal((uint)pos);
+            JitTrace.Write(" = 0x");
+            JitTrace.WriteHex(sig[pos]);
+            JitTrace.WriteLine();
 
             if (sig[pos] == 0x0F)  // PTR
             {
                 useCharPtrVariant = true;
-                DebugConsole.WriteLine("[AotMemberRef] String..ctor detected char* variant");
+                JitTrace.WriteLine("[AotMemberRef] String..ctor detected char* variant");
             }
         }
 
@@ -2677,18 +2677,18 @@ public static unsafe class MetadataIntegration
             // 0x1D = SZARRAY (Exception[]) - default array variant
             // 0x15 = GENERICINST (List<Exception>) - list variant
             // 0x12 = CLASS (single Exception) - single exception variant
-            DebugConsole.Write("[AotMemberRef] AggregateException..ctor second param type = 0x");
-            DebugConsole.WriteHex(sig[pos]);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[AotMemberRef] AggregateException..ctor second param type = 0x");
+            JitTrace.WriteHex(sig[pos]);
+            JitTrace.WriteLine();
             if (sig[pos] == 0x15)  // GENERICINST - List<Exception>
             {
                 useListVariant = true;
-                DebugConsole.WriteLine("[AotMemberRef] AggregateException..ctor detected List variant");
+                JitTrace.WriteLine("[AotMemberRef] AggregateException..ctor detected List variant");
             }
             else if (sig[pos] == 0x12)  // CLASS - single Exception
             {
                 useSingleExceptionVariant = true;
-                DebugConsole.WriteLine("[AotMemberRef] AggregateException..ctor detected single Exception variant");
+                JitTrace.WriteLine("[AotMemberRef] AggregateException..ctor detected single Exception variant");
             }
             // else 0x1D = SZARRAY - array variant (default)
         }
@@ -6117,11 +6117,11 @@ public static unsafe class MetadataIntegration
             // Tokens 0xF6, 0xFA, 0xFE are the delegate ctors based on error messages
             if (methodRow >= 0xF0 && methodRow <= 0xFF)
             {
-                DebugConsole.Write("[ResolveMethod] MethodDef 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.Write(" asm=");
-                DebugConsole.WriteDecimal(_currentAssemblyId);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[ResolveMethod] MethodDef 0x");
+                JitTrace.WriteHex(token);
+                JitTrace.Write(" asm=");
+                JitTrace.WriteDecimal(_currentAssemblyId);
+                JitTrace.WriteLine();
             }
         }
 
@@ -6151,9 +6151,9 @@ public static unsafe class MetadataIntegration
                 // Method is being compiled - this is a recursive call
                 // We need to emit an indirect call through the registry entry
                 // The native code will be filled in when compilation completes
-                // DebugConsole.Write("[MetaInt] RECURSIVE CALL detected for token 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.WriteLine(" - using indirect call");
+                // JitTrace.Write("[MetaInt] RECURSIVE CALL detected for token 0x");
+                JitTrace.WriteHex(token);
+                JitTrace.WriteLine(" - using indirect call");
                 result.NativeCode = null;  // Will be filled in later
                 result.ArgCount = info->ArgCount;
                 result.ReturnKind = info->ReturnKind;
@@ -6216,13 +6216,13 @@ public static unsafe class MetadataIntegration
             int delegateArgCount;
             if (AssemblyLoader.IsDelegateConstructor(_currentAssemblyId, token, out delegateMT, out delegateArgCount))
             {
-                DebugConsole.Write("[ResolveMethod] Delegate ctor detected 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.Write(" MT=0x");
-                DebugConsole.WriteHex((ulong)delegateMT);
-                DebugConsole.Write(" args=");
-                DebugConsole.WriteDecimal((uint)delegateArgCount);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[ResolveMethod] Delegate ctor detected 0x");
+                JitTrace.WriteHex(token);
+                JitTrace.Write(" MT=0x");
+                JitTrace.WriteHex((ulong)delegateMT);
+                JitTrace.Write(" args=");
+                JitTrace.WriteDecimal((uint)delegateArgCount);
+                JitTrace.WriteLine();
                 result.IsValid = true;
                 result.NativeCode = null;  // No native code - runtime handled
                 result.HasThis = true;  // Constructor is instance method

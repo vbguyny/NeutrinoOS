@@ -6,6 +6,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Optional: --trace compiles in the runtime JIT/AOT trace prints
+# (see src/kernel/Runtime/JitTrace.cs).
+for arg in "$@"; do
+    case "$arg" in
+        --trace) export TRACE=1 ;;
+        *) echo "build.sh: unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+
 ARCH="${ARCH:-x64}"
 BUILD_DIR="build/${ARCH}"
 TEST_DISK="${BUILD_DIR}/test.img"

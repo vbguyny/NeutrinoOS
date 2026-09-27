@@ -2275,9 +2275,9 @@ public static unsafe class Tier0JIT
         // Compute the vtable slot for this method within the declaring type
         int vtableSlot = ComputeVtableSlot(assembly, owningTypeRow, methodRid);
 
-        DebugConsole.Write("[Tier0JIT] Abstract method vtable slot=");
-        DebugConsole.WriteDecimal((uint)vtableSlot);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[Tier0JIT] Abstract method vtable slot=");
+        JitTrace.WriteDecimal((uint)vtableSlot);
+        JitTrace.WriteLine();
 
         // Register as a virtual method (no native code - dispatch is via vtable at runtime)
         CompiledMethodRegistry.RegisterVirtual(

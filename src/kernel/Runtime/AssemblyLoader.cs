@@ -7762,9 +7762,9 @@ public static unsafe class AssemblyLoader
         LoadedAssembly* asm = GetAssembly(asmId);
         if (asm == null)
         {
-            DebugConsole.Write("[IsDelegateCtor] asm null for ");
-            DebugConsole.WriteDecimal(asmId);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateCtor] asm null for ");
+            JitTrace.WriteDecimal(asmId);
+            JitTrace.WriteLine();
             return false;
         }
 
@@ -7779,17 +7779,17 @@ public static unsafe class AssemblyLoader
         // Debug: trace ctor name check for delegate candidate tokens
         if (methodRow >= 0xF0 && methodRow <= 0xFF)
         {
-            DebugConsole.Write("[IsDelegateCtor] token 0x");
-            DebugConsole.WriteHex(methodDefToken);
-            DebugConsole.Write(" name='");
+            JitTrace.Write("[IsDelegateCtor] token 0x");
+            JitTrace.WriteHex(methodDefToken);
+            JitTrace.Write(" name='");
             if (methodName != null)
             {
                 for (int i = 0; i < 10 && methodName[i] != 0; i++)
-                    DebugConsole.WriteByte(methodName[i]);
+                    JitTrace.WriteByte(methodName[i]);
             }
-            DebugConsole.Write("' isCtorName=");
-            DebugConsole.Write((methodName != null && IsCtorName(methodName)) ? "Y" : "N");
-            DebugConsole.WriteLine();
+            JitTrace.Write("' isCtorName=");
+            JitTrace.Write((methodName != null && IsCtorName(methodName)) ? "Y" : "N");
+            JitTrace.WriteLine();
         }
 
         if (methodName == null || !IsCtorName(methodName))
@@ -7802,9 +7802,9 @@ public static unsafe class AssemblyLoader
         // Debug: passed name check, now finding owner type
         if (methodRow >= 0xF0 && methodRow <= 0xFF)
         {
-            DebugConsole.Write("[IsDelegateCtor] passed name check, typeDefCount=");
-            DebugConsole.WriteDecimal(typeDefCount);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateCtor] passed name check, typeDefCount=");
+            JitTrace.WriteDecimal(typeDefCount);
+            JitTrace.WriteLine();
         }
 
         for (uint t = 1; t <= typeDefCount; t++)
@@ -7825,9 +7825,9 @@ public static unsafe class AssemblyLoader
         {
             if (methodRow >= 0xF0 && methodRow <= 0xFF)
             {
-                DebugConsole.Write("[IsDelegateCtor] ownerTypeRow=0 for method ");
-                DebugConsole.WriteDecimal(methodRow);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[IsDelegateCtor] ownerTypeRow=0 for method ");
+                JitTrace.WriteDecimal(methodRow);
+                JitTrace.WriteLine();
             }
             return false;
         }
@@ -7835,9 +7835,9 @@ public static unsafe class AssemblyLoader
         // Debug: found owner type
         if (methodRow >= 0xF0 && methodRow <= 0xFF)
         {
-            DebugConsole.Write("[IsDelegateCtor] ownerTypeRow=");
-            DebugConsole.WriteDecimal(ownerTypeRow);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateCtor] ownerTypeRow=");
+            JitTrace.WriteDecimal(ownerTypeRow);
+            JitTrace.WriteLine();
         }
 
         // Get or create the type's MethodTable
@@ -7850,7 +7850,7 @@ public static unsafe class AssemblyLoader
         if (delegateMT == null)
         {
             if (methodRow >= 0xF0 && methodRow <= 0xFF)
-                DebugConsole.WriteLine("[IsDelegateCtor] delegateMT null after create");
+                JitTrace.WriteLine("[IsDelegateCtor] delegateMT null after create");
             return false;
         }
 
@@ -7859,11 +7859,11 @@ public static unsafe class AssemblyLoader
         {
             if (methodRow >= 0xF0 && methodRow <= 0xFF)
             {
-                DebugConsole.Write("[IsDelegateCtor] MT not delegate. MT=0x");
-                DebugConsole.WriteHex((ulong)delegateMT);
-                DebugConsole.Write(" flags=0x");
-                DebugConsole.WriteHex(delegateMT->CombinedFlags);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[IsDelegateCtor] MT not delegate. MT=0x");
+                JitTrace.WriteHex((ulong)delegateMT);
+                JitTrace.Write(" flags=0x");
+                JitTrace.WriteHex(delegateMT->CombinedFlags);
+                JitTrace.WriteLine();
             }
             return false;
         }
@@ -7921,17 +7921,17 @@ public static unsafe class AssemblyLoader
         // Debug: trace Invoke check for delegate candidate tokens
         if (methodRow >= 0xF0 && methodRow <= 0xFF)
         {
-            DebugConsole.Write("[IsDelegateInvoke] token 0x");
-            DebugConsole.WriteHex(methodDefToken);
-            DebugConsole.Write(" name='");
+            JitTrace.Write("[IsDelegateInvoke] token 0x");
+            JitTrace.WriteHex(methodDefToken);
+            JitTrace.Write(" name='");
             if (methodName != null)
             {
                 for (int i = 0; i < 10 && methodName[i] != 0; i++)
-                    DebugConsole.WriteByte(methodName[i]);
+                    JitTrace.WriteByte(methodName[i]);
             }
-            DebugConsole.Write("' isInvoke=");
-            DebugConsole.Write((methodName != null && IsInvokeName(methodName)) ? "Y" : "N");
-            DebugConsole.WriteLine();
+            JitTrace.Write("' isInvoke=");
+            JitTrace.Write((methodName != null && IsInvokeName(methodName)) ? "Y" : "N");
+            JitTrace.WriteLine();
         }
 
         if (methodName == null || !IsInvokeName(methodName))
@@ -8032,12 +8032,12 @@ public static unsafe class AssemblyLoader
         // Debug: Show method name check for Invoke methods
         if (memberName != null && IsInvokeName(memberName))
         {
-            DebugConsole.Write("[IsDelegateInvoke] asm=");
-            DebugConsole.WriteDecimal(sourceAsmId);
-            DebugConsole.Write(" MemberRef 0x");
-            DebugConsole.WriteHex(memberRefToken);
-            DebugConsole.Write(" name=Invoke");
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateInvoke] asm=");
+            JitTrace.WriteDecimal(sourceAsmId);
+            JitTrace.Write(" MemberRef 0x");
+            JitTrace.WriteHex(memberRefToken);
+            JitTrace.Write(" name=Invoke");
+            JitTrace.WriteLine();
         }
 
         if (memberName == null || !IsInvokeName(memberName))
@@ -8056,34 +8056,34 @@ public static unsafe class AssemblyLoader
             // MemberRef in another assembly via TypeRef
             if (!ResolveTypeRefToTypeDef(sourceAsm, classRef.RowId, out targetAsm, out typeDefToken))
             {
-                DebugConsole.Write("[IsDelegateInvoke] TypeRef resolve FAILED row=");
-                DebugConsole.WriteDecimal(classRef.RowId);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[IsDelegateInvoke] TypeRef resolve FAILED row=");
+                JitTrace.WriteDecimal(classRef.RowId);
+                JitTrace.WriteLine();
                 return false;
             }
 
-            DebugConsole.Write("[IsDelegateInvoke] TypeRef resolved: asm=");
-            DebugConsole.WriteDecimal(targetAsm->AssemblyId);
-            DebugConsole.Write(" token=0x");
-            DebugConsole.WriteHex(typeDefToken);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateInvoke] TypeRef resolved: asm=");
+            JitTrace.WriteDecimal(targetAsm->AssemblyId);
+            JitTrace.Write(" token=0x");
+            JitTrace.WriteHex(typeDefToken);
+            JitTrace.WriteLine();
 
             delegateMT = targetAsm->Types.Lookup(typeDefToken);
             if (delegateMT == null)
             {
-                DebugConsole.WriteLine("[IsDelegateInvoke] Creating MT...");
+                JitTrace.WriteLine("[IsDelegateInvoke] Creating MT...");
                 delegateMT = CreateTypeDefMethodTable(targetAsm, typeDefToken);
             }
-            DebugConsole.Write("[IsDelegateInvoke] MT=0x");
-            DebugConsole.WriteHex((ulong)delegateMT);
+            JitTrace.Write("[IsDelegateInvoke] MT=0x");
+            JitTrace.WriteHex((ulong)delegateMT);
             if (delegateMT != null)
             {
-                DebugConsole.Write(" IsDelegate=");
-                DebugConsole.Write(delegateMT->IsDelegate ? "Y" : "N");
-                DebugConsole.Write(" flags=0x");
-                DebugConsole.WriteHex(delegateMT->CombinedFlags);
+                JitTrace.Write(" IsDelegate=");
+                JitTrace.Write(delegateMT->IsDelegate ? "Y" : "N");
+                JitTrace.Write(" flags=0x");
+                JitTrace.WriteHex(delegateMT->CombinedFlags);
             }
-            DebugConsole.WriteLine();
+            JitTrace.WriteLine();
         }
         else if (classRef.Table == MetadataTableId.TypeDef)
         {
@@ -8110,20 +8110,20 @@ public static unsafe class AssemblyLoader
 
         if (delegateMT == null)
         {
-            DebugConsole.Write("[IsDelegateInvoke] delegateMT null for ");
-            DebugConsole.WriteHex(memberRefToken);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateInvoke] delegateMT null for ");
+            JitTrace.WriteHex(memberRefToken);
+            JitTrace.WriteLine();
             return false;
         }
 
         // Check if it's a delegate type
         if (!delegateMT->IsDelegate)
         {
-            DebugConsole.Write("[IsDelegateInvoke] MT 0x");
-            DebugConsole.WriteHex((ulong)delegateMT);
-            DebugConsole.Write(" not delegate, flags=0x");
-            DebugConsole.WriteHex(delegateMT->CombinedFlags);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[IsDelegateInvoke] MT 0x");
+            JitTrace.WriteHex((ulong)delegateMT);
+            JitTrace.Write(" not delegate, flags=0x");
+            JitTrace.WriteHex(delegateMT->CombinedFlags);
+            JitTrace.WriteLine();
             return false;
         }
 

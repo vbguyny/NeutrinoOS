@@ -181,10 +181,15 @@ public static unsafe class Kernel
 
         // Verbose JIT tracing emits megabytes of serial output, which is
         // very slow on hypervisors that trap every serial byte (e.g.
-        // VirtualBox under NEM). Enable it only via the verbose-jit marker.
-        JitDiag.VerboseJit = BootInfoAccess.FindFile("verbose-jit", out ulong _verboseJitSize) != null;
-        if (JitDiag.VerboseJit)
+        // VirtualBox under NEM). Trace builds (TRACE=1 / build.sh --trace)
+        // compile the traces in and enable them from the start; otherwise
+        // the verbose-jit marker can turn them on for debugging.
+#if NEUTRINO_TRACE
+        DebugConsole.WriteLine("[Kernel] Trace build: JIT/AOT tracing enabled");
+#endif
+        if (BootInfoAccess.FindFile("verbose-jit", out ulong _verboseJitSize) != null)
         {
+            JitDiag.VerboseJit = true;
             DebugConsole.WriteLine("[Kernel] Verbose JIT tracing enabled (verbose-jit marker)");
         }
 

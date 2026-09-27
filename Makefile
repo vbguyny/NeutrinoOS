@@ -69,6 +69,12 @@ else ifeq ($(ARCH),apple)
     BFLAT_FLAGS += -d ARCH_ARM64 -d BOOT_M1N1
 endif
 
+# Optional trace build: TRACE=1 (or ./build.sh --trace) compiles the
+# runtime JIT/AOT trace prints in (src/kernel/Runtime/JitTrace.cs).
+ifdef TRACE
+    BFLAT_FLAGS += -d NEUTRINO_TRACE
+endif
+
 # Recursive wildcard function
 rwildcard=$(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 

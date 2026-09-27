@@ -8,6 +8,12 @@ export PATH="/usr/share/dotnet:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 
+# Optional: TRACE=1 in the environment (or --trace as the first argument)
+# compiles the runtime trace prints in (src/kernel/Runtime/JitTrace.cs).
+if [ "${1:-}" = "--trace" ]; then
+  export TRACE=1
+fi
+
 SRC=/mnt/d/Projects/Code/NeutrinoOS
 cd /root/neutrino
 if command -v rsync >/dev/null 2>&1; then
