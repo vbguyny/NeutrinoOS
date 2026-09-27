@@ -71,10 +71,32 @@ powershell -ExecutionPolicy Bypass -File tests\run-phase10-tests.ps1
 | Test suite | `tests/run-phase10-tests.ps1` (6 legs) — host smoke, interop 90/90, corruption 41/41, QEMU 25/25, npkg 8/8, docs |
 | Docs | `PHASE10-EXFAT.md`, `PHASE10-TOOLS.md`, `PHASE10-INTEROP.md`, `PHASE10-EXFAT-PERF.md`, `PHASE10-ACCEPTANCE.md`, `PHASE10-REPORT.md` |
 
+## VirtualBox (real-hypervisor) acceptance
+
+`powershell -ExecutionPolicy Bypass -File scripts\test-vbox-exfat.ps1` boots the
+deployed image in VirtualBox 7.1 (EFI, IntelAhci SATA, 2 vCPUs) — a hypervisor
+completely different from QEMU/KVM — with an exFAT data disk on SATA port 1 and
+a blank disk on port 2, drives the guest over the emulated COM1 console, then
+extracts the disks and reads them back from Linux (FUSE + exfatprogs):
+
+- guest side (10 checks): shell boot, `mount`, `ls`, `cat`, redirect write,
+  `mkdir`, `mv`, `df -T`, `umount`, in-guest `fsck.exfat` clean,
+  `mkexfat` on the blank disk, `fsck.exfat` clean, `exfatlabel` readback
+- host side (8 checks): exfat-fuse mounts the guest-written volume,
+  guest-written file content, guest-created directory, rename, big.bin
+  intact, fsck clean; blank data disk shows the in-guest `mkexfat` label
+  and is fsck-clean
+
+Result: **VBOXP10: ALL-PASS (18/18)**. Guest writes made through VirtualBox's
+AHCI emulation are byte-visible to Linux tooling, and a volume formatted by our
+in-guest `mkexfat` passes exfatprogs validation.
+
 ## Honest limitations
 
 - No native Windows `chkdsk`/format cross-run in this environment
-  (Linux exfatprogs + exfat-fuse stand in).
+  (Linux exfatprogs + exfat-fuse stand in; the VirtualBox leg adds a third
+  hypervisor/OS round-trip — guest writes on a Windows host are read back
+  through WSL).
 - Tab completion is verified by code path + manual interaction, not by
   the scripted QEMU legs.
 - The 10 000-entry and 4.5 GiB cases run via `build/p10-big-tests.sh` and
