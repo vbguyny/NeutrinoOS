@@ -68,13 +68,13 @@ public static unsafe class ReflectionRuntime
         // Debug log for assembly 5 (FullTest.dll)
         if (assemblyId == 5)
         {
-            DebugConsole.Write("[ReflRuntime.Register] asmId=");
-            DebugConsole.WriteDecimal(assemblyId);
-            DebugConsole.Write(" token=0x");
-            DebugConsole.WriteHex(typeDefToken);
-            DebugConsole.Write(" MT=0x");
-            DebugConsole.WriteHex((ulong)mt);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[ReflRuntime.Register] asmId=");
+            JitTrace.WriteDecimal(assemblyId);
+            JitTrace.Write(" token=0x");
+            JitTrace.WriteHex(typeDefToken);
+            JitTrace.Write(" MT=0x");
+            JitTrace.WriteHex((ulong)mt);
+            JitTrace.WriteLine();
         }
 
         // Check if already registered - iterate through blocks

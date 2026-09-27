@@ -88,13 +88,13 @@ public unsafe struct TypeRegistry
         // Debug: log registrations for assembly 5
         if (AssemblyId == 5)
         {
-            DebugConsole.Write("[TypeReg.Register] asm=");
-            DebugConsole.WriteDecimal(AssemblyId);
-            DebugConsole.Write(" token=0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" MT=0x");
-            DebugConsole.WriteHex((ulong)mt);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[TypeReg.Register] asm=");
+            JitTrace.WriteDecimal(AssemblyId);
+            JitTrace.Write(" token=0x");
+            JitTrace.WriteHex(token);
+            JitTrace.Write(" MT=0x");
+            JitTrace.WriteHex((ulong)mt);
+            JitTrace.WriteLine();
         }
 
         fixed (BlockChain* chainPtr = &Chain)
@@ -548,7 +548,7 @@ public unsafe struct LoadedAssembly
         {
             for (int i = 0; i < MaxNameLength && name[i] != 0; i++)
             {
-                DebugConsole.WriteChar((char)name[i]);
+                JitTrace.WriteChar((char)name[i]);
             }
         }
     }
@@ -829,7 +829,7 @@ public static unsafe class AssemblyLoader
         _nextAssemblyId = 1;  // Start at 1 (0 is invalid)
         _initialized = true;
 
-        DebugConsole.WriteLine("[AsmLoader] Initialized assembly loader");
+        JitTrace.WriteLine("[AsmLoader] Initialized assembly loader");
     }
 
     // ============================================================================
@@ -918,21 +918,21 @@ public static unsafe class AssemblyLoader
             return InvalidAssemblyId;
         }
         // Debug: log blob heap for each assembly
-        DebugConsole.Write("[AsmLoader] Assembly ID ");
-        DebugConsole.WriteDecimal(assemblyId);
-        DebugConsole.Write(" blob heap at 0x");
-        DebugConsole.WriteHex((ulong)asm->Metadata.BlobHeap);
-        DebugConsole.Write(" size=");
-        DebugConsole.WriteDecimal(asm->Metadata.BlobHeapSize);
+        JitTrace.Write("[AsmLoader] Assembly ID ");
+        JitTrace.WriteDecimal(assemblyId);
+        JitTrace.Write(" blob heap at 0x");
+        JitTrace.WriteHex((ulong)asm->Metadata.BlobHeap);
+        JitTrace.Write(" size=");
+        JitTrace.WriteDecimal((uint)asm->Metadata.BlobHeapSize);
         // Check bytes at indices 0x44 and 0x4D for size=8480 (korlib)
         if (asm->Metadata.BlobHeapSize == 8480)
         {
-            DebugConsole.Write(" [0x44]=0x");
-            DebugConsole.WriteHex(asm->Metadata.BlobHeap[0x44]);
-            DebugConsole.Write(" [0x4D]=0x");
-            DebugConsole.WriteHex(asm->Metadata.BlobHeap[0x4D]);
+            JitTrace.Write(" [0x44]=0x");
+            JitTrace.WriteHex(asm->Metadata.BlobHeap[0x44]);
+            JitTrace.Write(" [0x4D]=0x");
+            JitTrace.WriteHex(asm->Metadata.BlobHeap[0x4D]);
         }
-        DebugConsole.WriteLine("");
+        JitTrace.WriteLine();
 
         // Parse tables header
         if (!MetadataReader.ParseTablesHeader(ref asm->Metadata, out asm->Tables))
@@ -958,11 +958,11 @@ public static unsafe class AssemblyLoader
         asm->Flags = AssemblyFlags.Loaded | extraFlags;
         _assemblyCount++;
 
-        DebugConsole.Write("[AsmLoader] Loaded assembly ");
+        JitTrace.Write("[AsmLoader] Loaded assembly ");
         asm->PrintName();
-        DebugConsole.Write(" (ID ");
-        DebugConsole.WriteDecimal(assemblyId);
-        DebugConsole.WriteLine(")");
+        JitTrace.Write(" (ID ");
+        JitTrace.WriteDecimal(assemblyId);
+        JitTrace.WriteLine(")");
 
         return assemblyId;
     }
@@ -2258,23 +2258,23 @@ public static unsafe class AssemblyLoader
             uint nameIdx = MetadataReader.GetTypeDefName(ref asm->Tables, ref asm->Sizes, rowId);
             byte* typeName = MetadataReader.GetString(ref asm->Metadata, nameIdx);
 
-            DebugConsole.Write("[BaseClass] row=0x");
-            DebugConsole.WriteHex(rowId);
-            DebugConsole.Write(" '");
+            JitTrace.Write("[BaseClass] row=0x");
+            JitTrace.WriteHex(rowId);
+            JitTrace.Write(" '");
             if (typeName != null)
             {
                 for (int i = 0; i < 30 && typeName[i] != 0; i++)
-                    DebugConsole.WriteByte(typeName[i]);
+                    JitTrace.WriteByte(typeName[i]);
             }
-            DebugConsole.Write("' isVT=");
-            DebugConsole.Write(isValueType ? "Y" : "N");
-            DebugConsole.Write(" isIF=");
-            DebugConsole.Write(isInterface ? "Y" : "N");
-            DebugConsole.Write(" extRow=");
-            DebugConsole.WriteDecimal(extendsIdx.RowId);
-            DebugConsole.Write(" extTab=");
-            DebugConsole.WriteDecimal((uint)extendsIdx.Table);
-            DebugConsole.WriteLine();
+            JitTrace.Write("' isVT=");
+            JitTrace.Write(isValueType ? "Y" : "N");
+            JitTrace.Write(" isIF=");
+            JitTrace.Write(isInterface ? "Y" : "N");
+            JitTrace.Write(" extRow=");
+            JitTrace.WriteDecimal(extendsIdx.RowId);
+            JitTrace.Write(" extTab=");
+            JitTrace.WriteDecimal((uint)extendsIdx.Table);
+            JitTrace.WriteLine();
         }
 
         if (!isValueType && !isInterface)
@@ -2285,11 +2285,11 @@ public static unsafe class AssemblyLoader
                 bool isObj = IsObjectBase(asm, extendsIdx);
                 if (debugBase)
                 {
-                    DebugConsole.Write("[BaseClass] baseMT=0x");
-                    DebugConsole.WriteHex((ulong)baseMT);
-                    DebugConsole.Write(" isObj=");
-                    DebugConsole.Write(isObj ? "Y" : "N");
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[BaseClass] baseMT=0x");
+                    JitTrace.WriteHex((ulong)baseMT);
+                    JitTrace.Write(" isObj=");
+                    JitTrace.Write(isObj ? "Y" : "N");
+                    JitTrace.WriteLine();
                 }
                 if (baseMT != null)
                 {
@@ -2307,7 +2307,7 @@ public static unsafe class AssemblyLoader
                 // System.Object has 3 virtual methods: ToString, Equals, GetHashCode
                 if (debugBase)
                 {
-                    DebugConsole.WriteLine("[BaseClass] No extends -> implicit Object");
+                    JitTrace.WriteLine("[BaseClass] No extends -> implicit Object");
                 }
                 baseVtableSlots = 3;
             }
@@ -3163,12 +3163,12 @@ public static unsafe class AssemblyLoader
                     vtableSlot = FindVtableSlotInBaseClass(asm, typeDefRow, methodName);
                     if (vtableSlot < 0)
                     {
-                        DebugConsole.Write("[LazyJIT] WARN: Could not find vtable slot for override '");
+                        JitTrace.Write("[LazyJIT] WARN: Could not find vtable slot for override '");
                         for (int k = 0; methodName[k] != 0 && k < 32; k++)
-                            DebugConsole.WriteChar((char)methodName[k]);
-                        DebugConsole.Write("' in type row ");
-                        DebugConsole.WriteDecimal(typeDefRow);
-                        DebugConsole.WriteLine();
+                            JitTrace.WriteChar((char)methodName[k]);
+                        JitTrace.Write("' in type row ");
+                        JitTrace.WriteDecimal(typeDefRow);
+                        JitTrace.WriteLine();
                     }
                 }
 
@@ -3179,13 +3179,13 @@ public static unsafe class AssemblyLoader
                     JIT.CompiledMethodRegistry.RegisterUncompiledOverride(
                         methodToken, asm->AssemblyId, mt, vtableSlot);
 
-                    DebugConsole.Write("[LazyJIT] Registered override slot ");
-                    DebugConsole.WriteDecimal((uint)vtableSlot);
-                    DebugConsole.Write(" token 0x");
-                    DebugConsole.WriteHex(methodToken);
-                    DebugConsole.Write(" MT 0x");
-                    DebugConsole.WriteHex((ulong)mt);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[LazyJIT] Registered override slot ");
+                    JitTrace.WriteDecimal((uint)vtableSlot);
+                    JitTrace.Write(" token 0x");
+                    JitTrace.WriteHex(methodToken);
+                    JitTrace.Write(" MT 0x");
+                    JitTrace.WriteHex((ulong)mt);
+                    JitTrace.WriteLine();
                 }
             }
         }
@@ -4163,16 +4163,16 @@ public static unsafe class AssemblyLoader
                 if ((typeDefToken >> 24) == 0xF0)
                 {
                     MethodTable* wkMt = JIT.MetadataIntegration.LookupType(typeDefToken);
-                    DebugConsole.Write("[GetBaseMT] WK token=0x");
-                    DebugConsole.WriteHex(typeDefToken);
-                    DebugConsole.Write(" MT=0x");
-                    DebugConsole.WriteHex((ulong)wkMt);
+                    JitTrace.Write("[GetBaseMT] WK token=0x");
+                    JitTrace.WriteHex(typeDefToken);
+                    JitTrace.Write(" MT=0x");
+                    JitTrace.WriteHex((ulong)wkMt);
                     if (wkMt != null)
                     {
-                        DebugConsole.Write(" slots=");
-                        DebugConsole.WriteDecimal(wkMt->_usNumVtableSlots);
+                        JitTrace.Write(" slots=");
+                        JitTrace.WriteDecimal(wkMt->_usNumVtableSlots);
                     }
-                    DebugConsole.WriteLine();
+                    JitTrace.WriteLine();
                     return wkMt;
                 }
                 if (targetAsm != null && typeDefToken != 0)
@@ -4185,9 +4185,9 @@ public static unsafe class AssemblyLoader
         {
             // TypeSpec - base class is a generic type instantiation (e.g., EqualityComparer<T>)
             // We need to resolve the generic type definition to get vtable slot information
-            DebugConsole.Write("[GetBaseMT] TypeSpec row=");
-            DebugConsole.WriteDecimal(extendsIdx.RowId);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[GetBaseMT] TypeSpec row=");
+            JitTrace.WriteDecimal(extendsIdx.RowId);
+            JitTrace.WriteLine();
             uint tsBlobIdx = MetadataReader.GetTypeSpecSignature(ref asm->Tables, ref asm->Sizes, extendsIdx.RowId);
             byte* tsSig = MetadataReader.GetBlob(ref asm->Metadata, tsBlobIdx, out uint tsSigLen);
 
@@ -4204,9 +4204,9 @@ public static unsafe class AssemblyLoader
                     uint table = genDefToken >> 24;
                     uint row = genDefToken & 0x00FFFFFF;
 
-                    DebugConsole.Write("[GetBaseMT] TypeSpec generic def token=0x");
-                    DebugConsole.WriteHex(genDefToken);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[GetBaseMT] TypeSpec generic def token=0x");
+                    JitTrace.WriteHex(genDefToken);
+                    JitTrace.WriteLine();
 
                     if (table == 0x02)  // TypeDef - in same assembly
                     {
@@ -4214,29 +4214,29 @@ public static unsafe class AssemblyLoader
                     }
                     else if (table == 0x01)  // TypeRef - resolve to target assembly
                     {
-                        DebugConsole.Write("[GetBaseMT] TypeRef row=");
-                        DebugConsole.WriteDecimal(row);
-                        DebugConsole.WriteLine();
+                        JitTrace.Write("[GetBaseMT] TypeRef row=");
+                        JitTrace.WriteDecimal(row);
+                        JitTrace.WriteLine();
                         LoadedAssembly* targetAsm;
                         uint typeDefToken;
                         if (ResolveTypeRefToTypeDef(asm, row, out targetAsm, out typeDefToken))
                         {
-                            DebugConsole.Write("[GetBaseMT] Resolved to asm=");
-                            DebugConsole.WriteDecimal(targetAsm != null ? targetAsm->AssemblyId : 0);
-                            DebugConsole.Write(" token=0x");
-                            DebugConsole.WriteHex(typeDefToken);
-                            DebugConsole.WriteLine();
+                            JitTrace.Write("[GetBaseMT] Resolved to asm=");
+                            JitTrace.WriteDecimal(targetAsm != null ? targetAsm->AssemblyId : 0);
+                            JitTrace.Write(" token=0x");
+                            JitTrace.WriteHex(typeDefToken);
+                            JitTrace.WriteLine();
                             if (targetAsm != null && typeDefToken != 0)
                             {
                                 MethodTable* result = ResolveType(targetAsm->AssemblyId, typeDefToken);
-                                DebugConsole.Write("[GetBaseMT] ResolveType returned MT=0x");
-                                DebugConsole.WriteHex((ulong)result);
+                                JitTrace.Write("[GetBaseMT] ResolveType returned MT=0x");
+                                JitTrace.WriteHex((ulong)result);
                                 if (result != null)
                                 {
-                                    DebugConsole.Write(" slots=");
-                                    DebugConsole.WriteDecimal(result->_usNumVtableSlots);
+                                    JitTrace.Write(" slots=");
+                                    JitTrace.WriteDecimal(result->_usNumVtableSlots);
                                 }
-                                DebugConsole.WriteLine();
+                                JitTrace.WriteLine();
                                 return result;
                             }
                         }
@@ -5789,12 +5789,12 @@ public static unsafe class AssemblyLoader
             if (nestedName == null)
                 return false;
 
-            DebugConsole.Write("[AsmLoader] ResolveTypeRef nested type: ");
+            JitTrace.Write("[AsmLoader] ResolveTypeRef nested type: ");
             for (int i = 0; nestedName[i] != 0 && i < 32; i++)
-                DebugConsole.WriteChar((char)nestedName[i]);
-            DebugConsole.Write(" enclosing TypeRef row=");
-            DebugConsole.WriteDecimal(resScope.RowId);
-            DebugConsole.WriteLine();
+                JitTrace.WriteChar((char)nestedName[i]);
+            JitTrace.Write(" enclosing TypeRef row=");
+            JitTrace.WriteDecimal(resScope.RowId);
+            JitTrace.WriteLine();
 
             // Recursively resolve the enclosing type
             LoadedAssembly* enclosingAsm = null;
@@ -5828,11 +5828,11 @@ public static unsafe class AssemblyLoader
                 if (StringsEqual(nestedName, nestedDefName))
                 {
                     typeDefToken = 0x02000000 | nestedTypeRow;
-                    DebugConsole.Write("[AsmLoader] Found nested type at row ");
-                    DebugConsole.WriteDecimal(nestedTypeRow);
-                    DebugConsole.Write(" -> token 0x");
-                    DebugConsole.WriteHex(typeDefToken);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[AsmLoader] Found nested type at row ");
+                    JitTrace.WriteDecimal(nestedTypeRow);
+                    JitTrace.Write(" -> token 0x");
+                    JitTrace.WriteHex(typeDefToken);
+                    JitTrace.WriteLine();
                     return true;
                 }
             }
@@ -8936,7 +8936,7 @@ public static unsafe class AssemblyLoader
     /// </summary>
     public static void InitializeKorlibInterfaces(uint korlibId)
     {
-        DebugConsole.WriteLine("[AsmLoader] Initializing korlib interfaces...");
+        JitTrace.WriteLine("[AsmLoader] Initializing korlib interfaces...");
 
         // Find and create IDisposable MethodTable
         uint iDisposableToken = FindTypeDefByFullName(korlibId, "System", "IDisposable");
@@ -10536,17 +10536,17 @@ public static unsafe class AssemblyLoader
 
         _korlibTypeCacheInitialized = true;
 
-        DebugConsole.Write("[AsmLoader] Korlib type cache: ");
-        DebugConsole.WriteDecimal(inserted);
-        DebugConsole.Write("/");
-        DebugConsole.WriteDecimal(typeCount);
-        DebugConsole.Write(" types cached, ");
-        DebugConsole.WriteDecimal(collisions);
-        DebugConsole.Write(" probes (");
+        JitTrace.Write("[AsmLoader] Korlib type cache: ");
+        JitTrace.WriteDecimal(inserted);
+        JitTrace.Write("/");
+        JitTrace.WriteDecimal(typeCount);
+        JitTrace.Write(" types cached, ");
+        JitTrace.WriteDecimal(collisions);
+        JitTrace.Write(" probes (");
         // Calculate load factor percentage
         uint loadPct = (inserted * 100) / KorlibTypeCacheSize;
-        DebugConsole.WriteDecimal(loadPct);
-        DebugConsole.WriteLine("% load)");
+        JitTrace.WriteDecimal(loadPct);
+        JitTrace.WriteLine("% load)");
     }
 
     /// <summary>
@@ -10687,13 +10687,13 @@ public static unsafe class AssemblyLoader
                 // Use PEHelper.RvaToFilePointer to do proper section-aware conversion
                 byte* dataAddress = (byte*)PEHelper.RvaToFilePointer(asm->ImageBase, rva);
 
-                DebugConsole.Write("[AsmLoader] GetFieldDataAddress: field row ");
-                DebugConsole.WriteDecimal(fieldDefRowId);
-                DebugConsole.Write(" RVA=0x");
-                DebugConsole.WriteHex(rva);
-                DebugConsole.Write(" addr=0x");
-                DebugConsole.WriteHex((ulong)dataAddress);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[AsmLoader] GetFieldDataAddress: field row ");
+                JitTrace.WriteDecimal(fieldDefRowId);
+                JitTrace.Write(" RVA=0x");
+                JitTrace.WriteHex(rva);
+                JitTrace.Write(" addr=0x");
+                JitTrace.WriteHex((ulong)dataAddress);
+                JitTrace.WriteLine();
 
                 return dataAddress;
             }

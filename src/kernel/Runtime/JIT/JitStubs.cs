@@ -57,7 +57,7 @@ public static unsafe class JitStubs
         _getInterfaceMethodExportAddress = (nint)(delegate* unmanaged<nint, MethodTable*, int, nint>)&GetInterfaceMethodExport;
 
         _initialized = true;
-        DebugConsole.WriteLine("[JitStubs] Initialized");
+        JitTrace.WriteLine("[JitStubs] Initialized");
     }
 
     /// <summary>
@@ -524,13 +524,13 @@ public static unsafe class JitStubs
                 }
 
                 // Debug: print what we're about to compile
-                DebugConsole.Write("[JitStubs] Compiling slot ");
-                DebugConsole.WriteDecimal((uint)vtableSlot);
-                DebugConsole.Write(" token=0x");
-                DebugConsole.WriteHex(info->Token);
-                DebugConsole.Write(" asm=");
-                DebugConsole.WriteDecimal(info->AssemblyId);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[JitStubs] Compiling slot ");
+                JitTrace.WriteDecimal((uint)vtableSlot);
+                JitTrace.Write(" token=0x");
+                JitTrace.WriteHex(info->Token);
+                JitTrace.Write(" asm=");
+                JitTrace.WriteDecimal((uint)info->AssemblyId);
+                JitTrace.WriteLine();
 
                 var result = Tier0JIT.CompileMethod(info->AssemblyId, info->Token);
 
@@ -639,20 +639,20 @@ public static unsafe class JitStubs
                 // This slot belongs to this interface
                 int methodIndex = vtableSlot - startSlot;
 
-                DebugConsole.Write("[JitStubs] VTable slot ");
-                DebugConsole.WriteDecimal((uint)vtableSlot);
-                DebugConsole.Write(" is interface method ");
-                DebugConsole.WriteDecimal((uint)methodIndex);
-                DebugConsole.Write(" of interface MT 0x");
-                DebugConsole.WriteHex((ulong)interfaceMT);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[JitStubs] VTable slot ");
+                JitTrace.WriteDecimal((uint)vtableSlot);
+                JitTrace.Write(" is interface method ");
+                JitTrace.WriteDecimal((uint)methodIndex);
+                JitTrace.Write(" of interface MT 0x");
+                JitTrace.WriteHex((ulong)interfaceMT);
+                JitTrace.WriteLine();
 
                 // Look up the interface type info to get its assembly ID and type token
                 Reflection.ReflectionRuntime.LookupTypeInfo(interfaceMT, out uint interfaceAsmId, out uint interfaceTypeToken);
 
                 if (interfaceAsmId == 0 || interfaceTypeToken == 0)
                 {
-                    DebugConsole.WriteLine("[JitStubs] Could not resolve interface type info");
+                    JitTrace.WriteLine("[JitStubs] Could not resolve interface type info");
                     continue;
                 }
 
@@ -662,23 +662,23 @@ public static unsafe class JitStubs
 
                 if (interfaceMethodToken == 0)
                 {
-                    DebugConsole.Write("[JitStubs] Could not find interface method token at index ");
-                    DebugConsole.WriteDecimal((uint)methodIndex);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[JitStubs] Could not find interface method token at index ");
+                    JitTrace.WriteDecimal((uint)methodIndex);
+                    JitTrace.WriteLine();
                     continue;
                 }
 
-                DebugConsole.Write("[JitStubs] Interface method token: 0x");
-                DebugConsole.WriteHex(interfaceMethodToken);
-                DebugConsole.Write(" asm ");
-                DebugConsole.WriteDecimal(interfaceAsmId);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[JitStubs] Interface method token: 0x");
+                JitTrace.WriteHex(interfaceMethodToken);
+                JitTrace.Write(" asm ");
+                JitTrace.WriteDecimal(interfaceAsmId);
+                JitTrace.WriteLine();
 
                 // Check if this method has a body (is not abstract)
                 bool hasBody = MetadataIntegration.InterfaceMethodHasBody(interfaceAsmId, interfaceMethodToken);
                 if (!hasBody)
                 {
-                    DebugConsole.WriteLine("[JitStubs] Interface method is abstract, looking for impl in class");
+                    JitTrace.WriteLine("[JitStubs] Interface method is abstract, looking for impl in class");
 
                     // Interface method is abstract - find the implementing method in the concrete class
                     // Get the concrete class's type info
@@ -686,7 +686,7 @@ public static unsafe class JitStubs
 
                     if (classAsmId == 0 || classTypeToken == 0)
                     {
-                        DebugConsole.WriteLine("[JitStubs] Could not get concrete class type info");
+                        JitTrace.WriteLine("[JitStubs] Could not get concrete class type info");
                         continue;
                     }
 
@@ -694,23 +694,23 @@ public static unsafe class JitStubs
                     byte* interfaceMethodName = MetadataIntegration.GetMethodName(interfaceAsmId, interfaceMethodToken);
                     if (interfaceMethodName == null)
                     {
-                        DebugConsole.WriteLine("[JitStubs] Could not get interface method name");
+                        JitTrace.WriteLine("[JitStubs] Could not get interface method name");
                         continue;
                     }
 
                     // Get the interface method's parameter count for overload resolution
                     int interfaceParamCount = MetadataIntegration.GetMethodParamCount(interfaceAsmId, interfaceMethodToken);
 
-                    DebugConsole.Write("[JitStubs] Looking for '");
+                    JitTrace.Write("[JitStubs] Looking for '");
                     byte* p = interfaceMethodName;
-                    while (*p != 0) { DebugConsole.WriteChar((char)*p++); }
-                    DebugConsole.Write("' params=");
-                    DebugConsole.WriteDecimal((uint)(interfaceParamCount < 0 ? 0 : interfaceParamCount));
-                    DebugConsole.Write(" in type 0x");
-                    DebugConsole.WriteHex(classTypeToken);
-                    DebugConsole.Write(" asm ");
-                    DebugConsole.WriteDecimal(classAsmId);
-                    DebugConsole.WriteLine();
+                    while (*p != 0) { JitTrace.WriteChar((char)*p++); }
+                    JitTrace.Write("' params=");
+                    JitTrace.WriteDecimal((uint)(interfaceParamCount < 0 ? 0 : interfaceParamCount));
+                    JitTrace.Write(" in type 0x");
+                    JitTrace.WriteHex(classTypeToken);
+                    JitTrace.Write(" asm ");
+                    JitTrace.WriteDecimal(classAsmId);
+                    JitTrace.WriteLine();
 
                     // Find the implementing method by name AND parameter count
                     uint implMethodToken = MetadataIntegration.FindMethodByNameWithParamCount(
@@ -718,7 +718,7 @@ public static unsafe class JitStubs
 
                     if (implMethodToken == 0)
                     {
-                        DebugConsole.WriteLine("[JitStubs] Could not find implementing method, checking base class");
+                        JitTrace.WriteLine("[JitStubs] Could not find implementing method, checking base class");
                         // Try searching in parent classes (for inherited implementations)
                         MethodTable* parentMT = mt->GetParentType();
                         while (parentMT != null && implMethodToken == 0)
@@ -731,9 +731,9 @@ public static unsafe class JitStubs
                                 if (implMethodToken != 0)
                                 {
                                     classAsmId = parentAsmId;  // Update to use parent's assembly for compilation
-                                    DebugConsole.Write("[JitStubs] Found in base class, token=0x");
-                                    DebugConsole.WriteHex(implMethodToken);
-                                    DebugConsole.WriteLine();
+                                    JitTrace.Write("[JitStubs] Found in base class, token=0x");
+                                    JitTrace.WriteHex(implMethodToken);
+                                    JitTrace.WriteLine();
                                 }
                             }
                             parentMT = parentMT->GetParentType();
@@ -742,15 +742,15 @@ public static unsafe class JitStubs
 
                     if (implMethodToken == 0)
                     {
-                        DebugConsole.WriteLine("[JitStubs] No implementing method found in class hierarchy");
+                        JitTrace.WriteLine("[JitStubs] No implementing method found in class hierarchy");
                         continue;
                     }
 
-                    DebugConsole.Write("[JitStubs] Found implementing method: 0x");
-                    DebugConsole.WriteHex(implMethodToken);
-                    DebugConsole.Write(" asm ");
-                    DebugConsole.WriteDecimal(classAsmId);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[JitStubs] Found implementing method: 0x");
+                    JitTrace.WriteHex(implMethodToken);
+                    JitTrace.Write(" asm ");
+                    JitTrace.WriteDecimal(classAsmId);
+                    JitTrace.WriteLine();
 
                     // Set type context for generic instantiation
                     // Get all type arguments from cache for proper multi-arg generic support
@@ -765,10 +765,10 @@ public static unsafe class JitStubs
                         {
                             MetadataIntegration.SetTypeTypeArgs(typeArgs, typeArgCount);
                             hasTypeContext = true;
-                            DebugConsole.Write("[JitStubs] Set type context: ");
-                            DebugConsole.WriteDecimal((uint)typeArgCount);
-                            DebugConsole.Write(" args");
-                            DebugConsole.WriteLine();
+                            JitTrace.Write("[JitStubs] Set type context: ");
+                            JitTrace.WriteDecimal((uint)typeArgCount);
+                            JitTrace.Write(" args");
+                            JitTrace.WriteLine();
                         }
                         else if (mt->GetFirstTypeArgument() != null)
                         {
@@ -776,9 +776,9 @@ public static unsafe class JitStubs
                             typeArgs[0] = mt->GetFirstTypeArgument();
                             MetadataIntegration.SetTypeTypeArgs(typeArgs, 1);
                             hasTypeContext = true;
-                            DebugConsole.Write("[JitStubs] Set type context (single arg): T=0x");
-                            DebugConsole.WriteHex((ulong)typeArgs[0]);
-                            DebugConsole.WriteLine();
+                            JitTrace.Write("[JitStubs] Set type context (single arg): T=0x");
+                            JitTrace.WriteHex((ulong)typeArgs[0]);
+                            JitTrace.WriteLine();
                         }
                     }
 
@@ -793,9 +793,9 @@ public static unsafe class JitStubs
 
                     if (implResult.Success && implResult.CodeAddress != null)
                     {
-                        DebugConsole.Write("[JitStubs] Impl compiled at 0x");
-                        DebugConsole.WriteHex((ulong)implResult.CodeAddress);
-                        DebugConsole.WriteLine();
+                        JitTrace.Write("[JitStubs] Impl compiled at 0x");
+                        JitTrace.WriteHex((ulong)implResult.CodeAddress);
+                        JitTrace.WriteLine();
                         return (nint)implResult.CodeAddress;
                     }
                     else
@@ -805,15 +805,15 @@ public static unsafe class JitStubs
                     continue;
                 }
 
-                DebugConsole.WriteLine("[JitStubs] Found default interface method - compiling");
+                JitTrace.WriteLine("[JitStubs] Found default interface method - compiling");
 
                 // Compile the interface's default implementation
                 var result = Tier0JIT.CompileMethod(interfaceAsmId, interfaceMethodToken);
                 if (result.Success && result.CodeAddress != null)
                 {
-                    DebugConsole.Write("[JitStubs] Default impl compiled at 0x");
-                    DebugConsole.WriteHex((ulong)result.CodeAddress);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[JitStubs] Default impl compiled at 0x");
+                    JitTrace.WriteHex((ulong)result.CodeAddress);
+                    JitTrace.WriteLine();
                     return (nint)result.CodeAddress;
                 }
                 else

@@ -486,41 +486,41 @@ public static unsafe class Tier0JIT
         // Debug: Track TestConstraintNew compilation
         if (NameEquals(dbgMethodName, "TestConstraintNew"))
         {
-            DebugConsole.Write("[Tier0JIT] TestConstraintNew token=0x");
-            DebugConsole.WriteHex(methodToken);
-            DebugConsole.Write(" asm=");
-            DebugConsole.WriteDecimal(assemblyId);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[Tier0JIT] TestConstraintNew token=0x");
+            JitTrace.WriteHex(methodToken);
+            JitTrace.Write(" asm=");
+            JitTrace.WriteDecimal(assemblyId);
+            JitTrace.WriteLine();
         }
 
         // Debug: Track TestDictForeach and MoveNext compilation
         if (NameEquals(dbgMethodName, "TestDictForeach"))
         {
-            DebugConsole.Write("[Tier0JIT] TestDictForeach token=0x");
-            DebugConsole.WriteHex(methodToken);
-            DebugConsole.Write(" asm=");
-            DebugConsole.WriteDecimal(assemblyId);
-            DebugConsole.Write(" hasThis=");
-            DebugConsole.Write(hasThis ? "Y" : "N");
-            DebugConsole.Write(" args=");
-            DebugConsole.WriteDecimal((uint)jitArgCount);
-            DebugConsole.Write(" locals=");
-            DebugConsole.WriteDecimal((uint)localCount);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[Tier0JIT] TestDictForeach token=0x");
+            JitTrace.WriteHex(methodToken);
+            JitTrace.Write(" asm=");
+            JitTrace.WriteDecimal(assemblyId);
+            JitTrace.Write(" hasThis=");
+            JitTrace.Write(hasThis ? "Y" : "N");
+            JitTrace.Write(" args=");
+            JitTrace.WriteDecimal((uint)jitArgCount);
+            JitTrace.Write(" locals=");
+            JitTrace.WriteDecimal((uint)localCount);
+            JitTrace.WriteLine();
         }
         if (NameEquals(dbgMethodName, "MoveNext"))
         {
-            DebugConsole.Write("[Tier0JIT] MoveNext token=0x");
-            DebugConsole.WriteHex(methodToken);
-            DebugConsole.Write(" asm=");
-            DebugConsole.WriteDecimal(assemblyId);
-            DebugConsole.Write(" hasThis=");
-            DebugConsole.Write(hasThis ? "Y" : "N");
-            DebugConsole.Write(" args=");
-            DebugConsole.WriteDecimal((uint)jitArgCount);
-            DebugConsole.Write(" locals=");
-            DebugConsole.WriteDecimal((uint)localCount);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[Tier0JIT] MoveNext token=0x");
+            JitTrace.WriteHex(methodToken);
+            JitTrace.Write(" asm=");
+            JitTrace.WriteDecimal(assemblyId);
+            JitTrace.Write(" hasThis=");
+            JitTrace.Write(hasThis ? "Y" : "N");
+            JitTrace.Write(" args=");
+            JitTrace.WriteDecimal((uint)jitArgCount);
+            JitTrace.Write(" locals=");
+            JitTrace.WriteDecimal((uint)localCount);
+            JitTrace.WriteLine();
         }
 
         // Targeted debug: inspect VirtioDevice.Initialize (asm 3, token 0x06000015)
@@ -566,11 +566,11 @@ public static unsafe class Tier0JIT
             void* recursiveTarget = CompiledMethodRegistry.GetRecursiveCallTarget(methodToken, assemblyId);
             if (recursiveTarget != null)
             {
-                DebugConsole.Write("[Tier0JIT] Recursive call 0x");
-                DebugConsole.WriteHex(methodToken);
-                DebugConsole.Write(" -> 0x");
-                DebugConsole.WriteHex((ulong)recursiveTarget);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[Tier0JIT] Recursive call 0x");
+                JitTrace.WriteHex(methodToken);
+                JitTrace.Write(" -> 0x");
+                JitTrace.WriteHex((ulong)recursiveTarget);
+                JitTrace.WriteLine();
                 RestoreContext(savedAsmId);
                 return JitResult.Ok(recursiveTarget, 0);
             }
@@ -862,9 +862,9 @@ public static unsafe class Tier0JIT
         // Debug: Track TestConstraintNew completion
         if (NameEquals(dbgMethodName, "TestConstraintNew"))
         {
-            DebugConsole.Write("[Tier0JIT] TestConstraintNew DONE native=0x");
-            DebugConsole.WriteHex((ulong)code);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[Tier0JIT] TestConstraintNew DONE native=0x");
+            JitTrace.WriteHex((ulong)code);
+            JitTrace.WriteLine();
         }
 
         // Register method with exception handling system

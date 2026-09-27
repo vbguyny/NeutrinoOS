@@ -329,9 +329,9 @@ public unsafe struct JITMethodInfo
             if (kind == EHClauseKind.Typed || kind == EHClauseKind.Filter)
             {
                 WriteNativeUnsigned(ref ptr, clause.LeaveTargetOffset);
-                DebugConsole.Write("[AddEHClause] leaveTarget=0x");
-                DebugConsole.WriteHex(clause.LeaveTargetOffset);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[AddEHClause] leaveTarget=0x");
+                JitTrace.WriteHex(clause.LeaveTargetOffset);
+                JitTrace.WriteLine();
             }
 
             EHClauseCount++;
@@ -854,7 +854,7 @@ public static unsafe class JITMethodRegistry
 
         _initialized = true;
 
-        DebugConsole.WriteLine("[JITRegistry] Initialized with block allocator");
+        JitTrace.WriteLine("[JITRegistry] Initialized with block allocator");
         return true;
     }
 

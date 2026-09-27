@@ -249,11 +249,11 @@ public static unsafe class CompiledMethodRegistry
         _totalCount = 0;
         _initialized = true;
 
-        DebugConsole.Write("[JIT Registry] Initialized (");
-        DebugConsole.WriteDecimal((uint)_blockCapacity);
-        DebugConsole.Write(" block slots, ");
-        DebugConsole.WriteDecimal((uint)(_blockCapacity * MethodBlock.EntriesPerBlock));
-        DebugConsole.WriteLine(" max methods before growth)");
+        JitTrace.Write("[JIT Registry] Initialized (");
+        JitTrace.WriteDecimal((uint)_blockCapacity);
+        JitTrace.Write(" block slots, ");
+        JitTrace.WriteDecimal((uint)(_blockCapacity * MethodBlock.EntriesPerBlock));
+        JitTrace.WriteLine(" max methods before growth)");
     }
 
     /// <summary>
@@ -1499,11 +1499,11 @@ public static unsafe class CompiledMethodRegistry
         _blocks = newBlocks;
         _blockCapacity = newCapacity;
 
-        DebugConsole.Write("[JIT Registry] Grew block array to ");
-        DebugConsole.WriteDecimal((uint)_blockCapacity);
-        DebugConsole.Write(" slots (");
-        DebugConsole.WriteDecimal((uint)(_blockCapacity * MethodBlock.EntriesPerBlock));
-        DebugConsole.WriteLine(" max methods)");
+        JitTrace.Write("[JIT Registry] Grew block array to ");
+        JitTrace.WriteDecimal((uint)_blockCapacity);
+        JitTrace.Write(" slots (");
+        JitTrace.WriteDecimal((uint)(_blockCapacity * MethodBlock.EntriesPerBlock));
+        JitTrace.WriteLine(" max methods)");
 
         return true;
     }

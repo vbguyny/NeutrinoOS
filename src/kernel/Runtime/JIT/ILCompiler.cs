@@ -6885,21 +6885,21 @@ public unsafe struct ILCompiler
                             }
                         }
 
-                        DebugConsole.Write("[constrained] iface on VT: slot=");
-                        DebugConsole.WriteDecimal((uint)(ifaceSlot < 0 ? 0xFFFF : ifaceSlot));
-                        DebugConsole.Write(" impl=0x");
-                        DebugConsole.WriteHex((ulong)ifaceImpl);
-                        DebugConsole.Write(" cmt=0x");
-                        DebugConsole.WriteHex((ulong)constraintMT);
+                        JitTrace.Write("[constrained] iface on VT: slot=");
+                        JitTrace.WriteDecimal((uint)(ifaceSlot < 0 ? 0xFFFF : ifaceSlot));
+                        JitTrace.Write(" impl=0x");
+                        JitTrace.WriteHex((ulong)ifaceImpl);
+                        JitTrace.Write(" cmt=0x");
+                        JitTrace.WriteHex((ulong)constraintMT);
                         {
                             uint dbgAsmId, dbgTok;
                             Reflection.ReflectionRuntime.LookupTypeInfo(constraintMT, out dbgAsmId, out dbgTok);
-                            DebugConsole.Write(" tv=");
-                            DebugConsole.WriteDecimal(dbgAsmId);
-                            DebugConsole.Write("/0x");
-                            DebugConsole.WriteHex(dbgTok);
+                            JitTrace.Write(" tv=");
+                            JitTrace.WriteDecimal(dbgAsmId);
+                            JitTrace.Write("/0x");
+                            JitTrace.WriteHex(dbgTok);
                         }
-                        DebugConsole.WriteLine();
+                        JitTrace.WriteLine();
 
                         if (ifaceImpl != 0)
                         {
@@ -11271,22 +11271,22 @@ public unsafe struct ILCompiler
                 uint baseSize = mt->BaseSize;
                 uint combinedFlags = mt->CombinedFlags;
 
-                DebugConsole.Write("[box] token=0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.Write(" mt=0x");
-                DebugConsole.WriteHex((uint)mtAddress);
-                DebugConsole.Write(" baseSize=");
-                DebugConsole.WriteHex(baseSize);
-                DebugConsole.Write(" flags=0x");
-                DebugConsole.WriteHex(combinedFlags);
-                DebugConsole.Write(" isVT=");
-                DebugConsole.Write(mt->IsValueType ? "Y" : "N");
+                JitTrace.Write("[box] token=0x");
+                JitTrace.WriteHex(token);
+                JitTrace.Write(" mt=0x");
+                JitTrace.WriteHex((uint)mtAddress);
+                JitTrace.Write(" baseSize=");
+                JitTrace.WriteHex(baseSize);
+                JitTrace.Write(" flags=0x");
+                JitTrace.WriteHex(combinedFlags);
+                JitTrace.Write(" isVT=");
+                JitTrace.Write(mt->IsValueType ? "Y" : "N");
 
                 // Check for Nullable<T> - requires special boxing semantics
                 if (mt->IsNullable)
                 {
                     isNullable = true;
-                    DebugConsole.Write(" NULLABLE");
+                    JitTrace.Write(" NULLABLE");
 
                     // Get the inner type's MethodTable (Nullable<T> -> T)
                     MethodTable* innerMt = mt->GetNullableUnderlyingType();
@@ -11297,10 +11297,10 @@ public unsafe struct ILCompiler
                         innerValueSize = innerMt->_usComponentSize > 0 ? innerMt->_usComponentSize :
                             (innerMt->BaseSize >= 8 ? innerMt->BaseSize - 8 : innerMt->BaseSize);
 
-                        DebugConsole.Write(" innerMT=0x");
-                        DebugConsole.WriteHex((uint)innerMtAddress);
-                        DebugConsole.Write(" innerSize=");
-                        DebugConsole.WriteHex(innerValueSize);
+                        JitTrace.Write(" innerMT=0x");
+                        JitTrace.WriteHex((uint)innerMtAddress);
+                        JitTrace.Write(" innerSize=");
+                        JitTrace.WriteHex(innerValueSize);
                     }
                 }
 
@@ -11321,14 +11321,14 @@ public unsafe struct ILCompiler
                         // For JIT-resolved value types, baseSize includes 8-byte header
                         valueSize = baseSize >= 8 ? baseSize - 8 : baseSize;
                     }
-                    DebugConsole.Write(" valueSize=");
-                    DebugConsole.WriteHex(valueSize);
-                    DebugConsole.WriteLine("");
+                    JitTrace.Write(" valueSize=");
+                    JitTrace.WriteHex(valueSize);
+                    JitTrace.WriteLine();
                 }
                 else
                 {
                     // Reference type - box is a no-op, just leave value on stack
-                    DebugConsole.WriteLine(" REF-NOOP");
+                    JitTrace.WriteLine(" REF-NOOP");
                     return true;
                 }
             }
@@ -12566,11 +12566,11 @@ public unsafe struct ILCompiler
                     {
                         // Field has static data - return actual address
                         handleValue = (ulong)fieldData;
-                        DebugConsole.Write("[JIT] ldtoken field 0x");
-                        DebugConsole.WriteHex(token);
-                        DebugConsole.Write(" -> data addr 0x");
-                        DebugConsole.WriteHex(handleValue);
-                        DebugConsole.WriteLine();
+                        JitTrace.Write("[JIT] ldtoken field 0x");
+                        JitTrace.WriteHex(token);
+                        JitTrace.Write(" -> data addr 0x");
+                        JitTrace.WriteHex(handleValue);
+                        JitTrace.WriteLine();
                     }
                     else
                     {
@@ -14309,7 +14309,7 @@ public unsafe struct ILCompiler
     /// </summary>
     private bool CompileInitializeArray()
     {
-        DebugConsole.WriteLine("[JIT] CompileInitializeArray - inlining array initialization");
+        JitTrace.WriteLine("[JIT] CompileInitializeArray - inlining array initialization");
 
         // Stack has: [array, fieldHandle] with fieldHandle on top
         // The fieldHandle.Value is a pointer to the static data in the assembly
@@ -14389,7 +14389,7 @@ public unsafe struct ILCompiler
         // pop rsi
         _code.EmitByte(0x5E);
 
-        DebugConsole.WriteLine("[JIT] CompileInitializeArray done");
+        JitTrace.WriteLine("[JIT] CompileInitializeArray done");
         return true;
     }
 }

@@ -304,12 +304,12 @@ public static unsafe class MetadataIntegration
             _argIteratorMT->_usNumVtableSlots = 0;
             _argIteratorMT->_usNumInterfaces = 0;
             _argIteratorMT->_uHashCode = 0;
-            DebugConsole.WriteLine("[MetaInt] Created ArgIterator synthetic MethodTable");
+            JitTrace.WriteLine("[MetaInt] Created ArgIterator synthetic MethodTable");
         }
 
         _initialized = true;
 
-        DebugConsole.WriteLine("[MetaInt] Initialized metadata integration layer");
+        JitTrace.WriteLine("[MetaInt] Initialized metadata integration layer");
     }
 
     /// <summary>
@@ -322,7 +322,7 @@ public static unsafe class MetadataIntegration
         _tablesHeader = tables;
         _tableSizes = sizes;
 
-        DebugConsole.WriteLine("[MetaInt] Metadata context set");
+        JitTrace.WriteLine("[MetaInt] Metadata context set");
     }
 
     /// <summary>
@@ -483,9 +483,9 @@ public static unsafe class MetadataIntegration
         // Also register in the type chain so LookupType can find it
         RegisterType(WellKnownTypes.IDisposable, mt);
 
-        DebugConsole.Write("[MetaInt] Registered IDisposable MT: 0x");
-        DebugConsole.WriteHex((ulong)mt);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[MetaInt] Registered IDisposable MT: 0x");
+        JitTrace.WriteHex((ulong)mt);
+        JitTrace.WriteLine();
     }
 
     /// <summary>
@@ -545,9 +545,9 @@ public static unsafe class MetadataIntegration
         // Reflection types: Type and RuntimeType for GetType() support
         count += RegisterReflectionTypes();
 
-        DebugConsole.Write("[MetaInt] Registered ");
-        DebugConsole.WriteDecimal((uint)count);
-        DebugConsole.WriteLine(" well-known AOT types");
+        JitTrace.Write("[MetaInt] Registered ");
+        JitTrace.WriteDecimal((uint)count);
+        JitTrace.WriteLine(" well-known AOT types");
     }
 
     /// <summary>
@@ -828,15 +828,15 @@ public static unsafe class MetadataIntegration
 
         // Debug: verify slots were written
         nint* vtable = mt->GetVtablePtr();
-        DebugConsole.Write("[MetaInt] MT@0x");
-        DebugConsole.WriteHex((ulong)mt);
-        DebugConsole.Write(" slots[0]=0x");
-        DebugConsole.WriteHex((ulong)vtable[0]);
-        DebugConsole.Write(" [1]=0x");
-        DebugConsole.WriteHex((ulong)vtable[1]);
-        DebugConsole.Write(" [2]=0x");
-        DebugConsole.WriteHex((ulong)vtable[2]);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[MetaInt] MT@0x");
+        JitTrace.WriteHex((ulong)mt);
+        JitTrace.Write(" slots[0]=0x");
+        JitTrace.WriteHex((ulong)vtable[0]);
+        JitTrace.Write(" [1]=0x");
+        JitTrace.WriteHex((ulong)vtable[1]);
+        JitTrace.Write(" [2]=0x");
+        JitTrace.WriteHex((ulong)vtable[2]);
+        JitTrace.WriteLine();
     }
 
     /// <summary>
@@ -866,13 +866,13 @@ public static unsafe class MetadataIntegration
         _objectEquals = objectEquals;
         _objectGetHashCode = objectGetHashCode;
 
-        DebugConsole.Write("[MetaInt] AOT vtable ptrs: ToString=0x");
-        DebugConsole.WriteHex((ulong)objectToString);
-        DebugConsole.Write(" Equals=0x");
-        DebugConsole.WriteHex((ulong)objectEquals);
-        DebugConsole.Write(" GetHashCode=0x");
-        DebugConsole.WriteHex((ulong)objectGetHashCode);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[MetaInt] AOT vtable ptrs: ToString=0x");
+        JitTrace.WriteHex((ulong)objectToString);
+        JitTrace.Write(" Equals=0x");
+        JitTrace.WriteHex((ulong)objectEquals);
+        JitTrace.Write(" GetHashCode=0x");
+        JitTrace.WriteHex((ulong)objectGetHashCode);
+        JitTrace.WriteLine();
 
         // Fallback: if AOT methods not found, use null (will crash but provides debug info)
         if (objectToString == 0)
@@ -3145,7 +3145,7 @@ public static unsafe class MetadataIntegration
         uint memberRefRowId = token & 0x00FFFFFF;
         if (IsRuntimeHelpersInitializeArrayMemberRef(memberRefRowId))
         {
-            DebugConsole.WriteLine("[MetaInt] Detected RuntimeHelpers.InitializeArray - handling as JIT intrinsic");
+            JitTrace.WriteLine("[MetaInt] Detected RuntimeHelpers.InitializeArray - handling as JIT intrinsic");
             result.IsValid = true;
             result.IsInitializeArray = true;
             result.NativeCode = null;  // Handled inline by JIT

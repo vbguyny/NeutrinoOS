@@ -422,13 +422,13 @@ public static unsafe class NetExecutable
             }
         }
 
-        DebugConsole.Write("[NetExec] Main signature: params=");
-        DebugConsole.WriteDecimal(paramCount);
-        DebugConsole.Write(", returnsInt=");
-        DebugConsole.WriteDecimal(info.ReturnsInt ? 1u : 0u);
-        DebugConsole.Write(", takesArgs=");
-        DebugConsole.WriteDecimal(info.TakesStringArrayArg ? 1u : 0u);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[NetExec] Main signature: params=");
+        JitTrace.WriteDecimal((uint)paramCount);
+        JitTrace.Write(", returnsInt=");
+        JitTrace.WriteDecimal(info.ReturnsInt ? 1u : 0u);
+        JitTrace.Write(", takesArgs=");
+        JitTrace.WriteDecimal(info.TakesStringArrayArg ? 1u : 0u);
+        JitTrace.WriteLine();
 
         return info;
     }

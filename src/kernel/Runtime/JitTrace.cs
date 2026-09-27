@@ -40,4 +40,7 @@ public static class JitTrace
 
     [Conditional("NEUTRINO_TRACE")]
     public static void WriteByte(byte value) => DebugConsole.WriteByte(value);
+
+    [Conditional("NEUTRINO_TRACE")]
+    public static void WriteChar(char value) => DebugConsole.WriteChar(value);
 }

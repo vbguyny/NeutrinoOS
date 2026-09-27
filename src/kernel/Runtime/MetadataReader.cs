@@ -4233,39 +4233,39 @@ public static unsafe class MetadataReader
         // The compiler embeds the MethodTable pointer in the object header
         string emptyStr = "";
         _stringMethodTable = (void*)emptyStr.m_pMethodTable;
-        DebugConsole.Write("[MetadataReader] String MethodTable cached at 0x");
-        DebugConsole.WriteHex((ulong)_stringMethodTable);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[MetadataReader] String MethodTable cached at 0x");
+        JitTrace.WriteHex((ulong)_stringMethodTable);
+        JitTrace.WriteLine();
 
         // Debug: dump raw bytes of string MT
         byte* raw = (byte*)_stringMethodTable;
-        DebugConsole.Write("[StringMT] raw bytes:");
+        JitTrace.Write("[StringMT] raw bytes:");
         for (int i = 0; i < 48; i++)
         {
             if (i % 8 == 0)
             {
-                DebugConsole.Write(" [");
-                DebugConsole.WriteDecimal((uint)i);
-                DebugConsole.Write("]");
+                JitTrace.Write(" [");
+                JitTrace.WriteDecimal((uint)i);
+                JitTrace.Write("]");
             }
-            DebugConsole.Write(" ");
-            DebugConsole.WriteHex(raw[i]);
+            JitTrace.Write(" ");
+            JitTrace.WriteHex(raw[i]);
         }
-        DebugConsole.WriteLine();
+        JitTrace.WriteLine();
 
         // Also show the parsed fields
         MethodTable* strMT = (MethodTable*)_stringMethodTable;
-        DebugConsole.Write("[StringMT] compSize=");
-        DebugConsole.WriteDecimal(strMT->_usComponentSize);
-        DebugConsole.Write(" flags=0x");
-        DebugConsole.WriteHex(strMT->_usFlags);
-        DebugConsole.Write(" baseSize=");
-        DebugConsole.WriteDecimal(strMT->_uBaseSize);
-        DebugConsole.Write(" numSlots=");
-        DebugConsole.WriteDecimal(strMT->_usNumVtableSlots);
-        DebugConsole.Write(" numIfaces=");
-        DebugConsole.WriteDecimal(strMT->_usNumInterfaces);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[StringMT] compSize=");
+        JitTrace.WriteDecimal(strMT->_usComponentSize);
+        JitTrace.Write(" flags=0x");
+        JitTrace.WriteHex(strMT->_usFlags);
+        JitTrace.Write(" baseSize=");
+        JitTrace.WriteDecimal(strMT->_uBaseSize);
+        JitTrace.Write(" numSlots=");
+        JitTrace.WriteDecimal(strMT->_usNumVtableSlots);
+        JitTrace.Write(" numIfaces=");
+        JitTrace.WriteDecimal(strMT->_usNumInterfaces);
+        JitTrace.WriteLine();
     }
 
     /// <summary>
