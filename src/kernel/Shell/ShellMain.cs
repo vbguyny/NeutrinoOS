@@ -20,6 +20,19 @@ public static unsafe class ShellMain
     private static bool _waitingForInput;
 
     /// <summary>
+    /// Figlet-style (standard font) launch title, one string per row.
+    /// Shown on a freshly cleared console once boot has completed.
+    /// </summary>
+    private static readonly string[] BannerRows =
+    {
+        @" _   _ _____ _   _ _____ ____  ___ _   _  ___",
+        @"| \ | | ____| | | |_   _|  _ \|_ _| \ | |/ _ \",
+        @"|  \| |  _| | | | | | | | |_) || ||  \| | | | |",
+        @"| |\  | |___| |_| | | | |  _ < | || |\  | |_| |",
+        @"|_| \_|_____|\___/  |_| |_| \_\___|_| \_|\___/",
+    };
+
+    /// <summary>
     /// Runs the interactive session. Returns after EOF / exit; the caller
     /// halts the CPU.
     /// </summary>
@@ -28,6 +41,15 @@ public static unsafe class ShellMain
         ShellInit.Initialize();
 
         Console.WriteLine("[SHELL] NeutrinoOS console ready.");
+
+        // Boot completed: wipe the boot log from the live console (serial
+        // terminals receive ESC[2J ESC[H, the VGA text console is cleared)
+        // and show the launch title, then drop into the first prompt.
+        Console.Clear();
+        for (int i = 0; i < BannerRows.Length; i++)
+            Console.WriteLine(BannerRows[i]);
+        Console.WriteLine();
+
         Console.WriteLine("Type 'help' for available commands.");
 
         // Background jobs execute while the shell waits for input.
