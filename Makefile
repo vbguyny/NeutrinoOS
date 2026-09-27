@@ -158,6 +158,7 @@ VIRTIO_BLK_DIR := $(DRIVERS_DIR)/shared/storage/virtio-blk
 VIRTIO_NET_DIR := $(DRIVERS_DIR)/shared/network/virtio-net
 FAT_DIR := $(DRIVERS_DIR)/shared/storage/fat
 AHCI_DIR := $(DRIVERS_DIR)/shared/storage/ahci
+NVME_DIR := $(DRIVERS_DIR)/shared/storage/nvme
 EXT2_DIR := $(DRIVERS_DIR)/shared/storage/ext2
 TEST_DRIVER_DIR := $(DRIVERS_DIR)/shared/test
 
@@ -167,6 +168,7 @@ VIRTIO_BLK_DLL := $(BUILD_DIR)/ProtonOS.Drivers.VirtioBlk.dll
 VIRTIO_NET_DLL := $(BUILD_DIR)/ProtonOS.Drivers.VirtioNet.dll
 FAT_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Fat.dll
 AHCI_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ahci.dll
+NVME_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Nvme.dll
 EXT2_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ext2.dll
 TEST_DRIVER_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Test.dll
 
@@ -331,6 +333,12 @@ $(AHCI_DLL): $(AHCI_SRC) $(AHCI_DIR)/Ahci.csproj $(DDK_DLL) $(FAT_DLL) | $(BUILD
 	@echo "DOTNET build ProtonOS.Drivers.Ahci"
 	dotnet build $(AHCI_DIR)/Ahci.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
+# Build NVMe driver (Phase 9)
+NVME_SRC := $(call rwildcard,$(NVME_DIR),*.cs)
+$(NVME_DLL): $(NVME_SRC) $(NVME_DIR)/Nvme.csproj $(DDK_DLL) | $(BUILD_DIR)
+	@echo "DOTNET build ProtonOS.Drivers.Nvme"
+	dotnet build $(NVME_DIR)/Nvme.csproj -c Release -o $(BUILD_DIR) --nologo -v q
+
 # EXT2 filesystem driver
 EXT2_SRC := $(call rwildcard,$(EXT2_DIR),*.cs)
 $(EXT2_DLL): $(EXT2_SRC) $(EXT2_DIR)/Ext2.csproj $(DDK_DLL) | $(BUILD_DIR)
@@ -343,7 +351,7 @@ $(TEST_DRIVER_DLL): $(TEST_DRIVER_SRC) $(TEST_DRIVER_DIR)/TestDriver.csproj $(DD
 	@echo "DOTNET build ProtonOS.Drivers.Test"
 	dotnet build $(TEST_DRIVER_DIR)/TestDriver.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
-drivers: $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+drivers: $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 
 # Link UEFI executable with debug symbols
 $(BUILD_DIR)/$(EFI_NAME): $(NATIVE_OBJ) $(KERNEL_OBJ)
@@ -372,7 +380,7 @@ image: $(BUILD_DIR)/$(EFI_NAME)
 	@echo "Boot image: $(IMG)"
 	@mdir -i $(IMG) ::/
 else
-image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
@@ -399,6 +407,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mcopy -i $(IMG) $(VIRTIO_NET_DLL) ::/drivers/
 	mcopy -i $(IMG) $(FAT_DLL) ::/drivers/
 	mcopy -i $(IMG) $(AHCI_DLL) ::/drivers/
+	mcopy -i $(IMG) $(NVME_DLL) ::/drivers/
 	mcopy -i $(IMG) $(EXT2_DLL) ::/drivers/
 	mcopy -i $(IMG) $(PROTONOS_NET_DLL) ::/lib/
 	@echo "Boot image: $(IMG)"

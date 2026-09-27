@@ -34,8 +34,7 @@ public static unsafe class Kernel
     private static byte* _ext2DriverBytes;
     private static ulong _ext2DriverSize;
     private static byte* _ahciDriverBytes;
-    private static ulong _ahciDriverSize;
-    private static byte* _virtioNetDriverBytes;
+    private static ulong _ahciDriverSize;    private static byte* _virtioNetDriverBytes;
     private static ulong _virtioNetDriverSize;
 
     // korlib IL assembly (for JIT generic instantiation and token-based AOT lookup)
@@ -78,6 +77,11 @@ public static unsafe class Kernel
     private static uint _fatDriverId;
     private static uint _ext2DriverId;
     private static uint _ahciDriverId;
+
+    // Phase 9: NVMe driver assembly.
+    private static byte* _nvmeDriverBytes;
+    private static ulong _nvmeDriverSize;
+    private static uint _nvmeDriverId;
     private static uint _virtioNetDriverId;
     private static uint _korlibId;
     private static uint _protonOsNetId;
@@ -362,6 +366,11 @@ public static unsafe class Kernel
             _ahciDriverId = AssemblyLoader.Load(_ahciDriverBytes, _ahciDriverSize);
         }
 
+        if (_nvmeDriverBytes != null)
+        {
+            _nvmeDriverId = AssemblyLoader.Load(_nvmeDriverBytes, _nvmeDriverSize);
+        }
+
         if (_virtioNetDriverBytes != null)
         {
             _virtioNetDriverId = AssemblyLoader.Load(_virtioNetDriverBytes, _virtioNetDriverSize);
@@ -598,6 +607,7 @@ public static unsafe class Kernel
         _fatDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Fat.dll", out _fatDriverSize);
         _ext2DriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Ext2.dll", out _ext2DriverSize);
         _ahciDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Ahci.dll", out _ahciDriverSize);
+        _nvmeDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Nvme.dll", out _nvmeDriverSize);
         _virtioNetDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.VirtioNet.dll", out _virtioNetDriverSize);
 
         // Load korlib.dll (IL assembly for JIT generic instantiation)
@@ -1771,6 +1781,9 @@ public static unsafe class Kernel
         // Now try AHCI driver
         BindAhciDriver();
 
+        // Phase 9: NVMe driver
+        BindNvmeDriver();
+
         // Now try VirtioNet driver
         BindVirtioNetDriver();
     }
@@ -1883,6 +1896,81 @@ public static unsafe class Kernel
         {
             TestAhciIO(ahciEntryToken);
         }
+    }
+
+    /// <summary>
+    /// Bind the NVMe driver to detected NVMe controllers (Phase 9).
+    /// </summary>
+    private static void BindNvmeDriver()
+    {
+        if (_nvmeDriverId == AssemblyLoader.InvalidAssemblyId)
+        {
+            DebugConsole.WriteLine("[Drivers] No NVMe driver loaded, skipping NVMe binding");
+            return;
+        }
+
+        uint nvmeEntryToken = AssemblyLoader.FindTypeDefByFullName(
+            _nvmeDriverId, "ProtonOS.Drivers.Storage.Nvme", "NvmeEntry");
+        if (nvmeEntryToken == 0)
+        {
+            DebugConsole.WriteLine("[Drivers] ERROR: Could not find NvmeEntry type");
+            return;
+        }
+
+        uint probeToken = AssemblyLoader.FindMethodDefByName(_nvmeDriverId, nvmeEntryToken, "Probe");
+        uint bindToken = AssemblyLoader.FindMethodDefByName(_nvmeDriverId, nvmeEntryToken, "Bind");
+        if (probeToken == 0 || bindToken == 0)
+        {
+            DebugConsole.WriteLine("[Drivers] ERROR: Could not find NVMe Probe/Bind");
+            return;
+        }
+
+        var probeResult = Runtime.JIT.Tier0JIT.CompileMethod(_nvmeDriverId, probeToken);
+        if (!probeResult.Success)
+        {
+            DebugConsole.WriteLine("[Drivers] ERROR: Failed to JIT compile NVMe Probe");
+            return;
+        }
+        var bindResult = Runtime.JIT.Tier0JIT.CompileMethod(_nvmeDriverId, bindToken);
+        if (!bindResult.Success)
+        {
+            DebugConsole.WriteLine("[Drivers] ERROR: Failed to JIT compile NVMe Bind");
+            return;
+        }
+
+        var probeFunc = (delegate* unmanaged<ushort, ushort, byte, byte, byte, bool>)probeResult.CodeAddress;
+        var bindFunc = (delegate* unmanaged<byte, byte, byte, bool>)bindResult.CodeAddress;
+
+        int deviceCount = Platform.PCI.DeviceCount;
+        int boundCount = 0;
+        for (int i = 0; i < deviceCount; i++)
+        {
+            var device = Platform.PCI.GetDevice(i);
+            if (device == null)
+                continue;
+
+            bool probeSuccess = probeFunc(device->VendorId, device->DeviceId,
+                device->BaseClass, device->SubClass, device->ProgIF);
+            if (!probeSuccess)
+                continue;
+
+            DebugConsole.WriteLine(string.Format("[Drivers] NVMe matched {0}:{1}.{2} (Class:{3}/{4}/{5})",
+                device->Bus.ToString("X2", null), device->Device.ToString("X2", null), device->Function.ToString("X2", null),
+                device->BaseClass.ToString("X2", null), device->SubClass.ToString("X2", null), device->ProgIF.ToString("X2", null)));
+
+            bool bindSuccess = bindFunc(device->Bus, device->Device, device->Function);
+            if (bindSuccess)
+            {
+                DebugConsole.WriteLine("[Drivers]   NVMe Bind successful");
+                boundCount++;
+            }
+            else
+            {
+                DebugConsole.WriteLine("[Drivers]   NVMe Bind failed");
+            }
+        }
+
+        DebugConsole.WriteLine(string.Format("[Drivers] Bound {0} NVMe driver(s)", boundCount));
     }
 
     /// <summary>
