@@ -18,6 +18,11 @@ cd /root/neutrino
 SRC=build/x64/neutrinoos.img
 DST=build/x64/neutrinoos-gui.img
 
+# Prefer the deploy image (kernel + /bin utilities + /etc, built by
+# p5-deploy.sh): the GUI VM is used interactively, so it needs the shell
+# utilities (ls, mount, mkexfat, ...) on its single disk.
+if [ -f /root/run.img ]; then SRC=/root/run.img; fi
+
 [ -f "$SRC" ] || { echo "ERROR: $SRC not found - build first"; exit 1; }
 
 cp -f "$SRC" "$DST"

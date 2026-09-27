@@ -12,11 +12,11 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1            # create/recreate the VM from the GUI image + start it (window)
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -Rebuild   # rebuild the kernel in WSL first, then regenerate the image
+powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -Rebuild   # rebuild kernel + utilities in WSL, then regenerate the image
 powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -NoStart   # create the VM only
 ```
 
-- Boots `build\neutrinoos-gui.img`, produced by `bash build/gui-image.sh` (VGA console mirrored from early boot, PS/2 input active, boot tests skipped).
+- Boots `build\neutrinoos-gui.img`, produced by `bash build/gui-image.sh` from the deploy image (`/root/run.img`: kernel + `/bin` utilities + `/etc`), with VGA console mirrored from early boot, PS/2 input active, boot tests skipped.
 - The VM window shows the `[Boot]` status timeline and the shell; type commands directly in the window.
 - Serial transcript: `build\vbox-gui-serial.log`.
 - Independent of `scripts/test-vbox.ps1` (which owns the "NeutrinoOSTest" VM); both can coexist.

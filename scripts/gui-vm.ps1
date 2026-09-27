@@ -34,8 +34,11 @@ $vdiUuid = "5a2b8c41-2f7e-4d9a-b6c3-1d4e5f6a7b8c"
 # --- 1. Ensure the GUI image exists ------------------------------------------
 if ($Rebuild -or -not (Test-Path $img)) {
     if ($Rebuild) {
-        Write-Host "Rebuilding kernel + GUI image in WSL (this takes ~60s)..."
-        wsl.exe -d Ubuntu-24.04 -u root -- timeout 150 bash -c "cd /root/neutrino; bash /mnt/d/Projects/Code/NeutrinoOS/build/wsl-rebuild.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh 2>&1 | tail -3"
+        # Full chain: kernel -> utilities -> deploy image (/root/run.img, the
+        # source gui-image.sh prefers) -> GUI image. A kernel-only rebuild
+        # would produce an image without the /bin shell utilities.
+        Write-Host "Rebuilding kernel + utilities + images in WSL (this takes a few minutes)..."
+        wsl.exe -d Ubuntu-24.04 -u root -- timeout 480 bash -c "cd /root/neutrino; bash /mnt/d/Projects/Code/NeutrinoOS/build/wsl-rebuild.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-apps-build.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-deploy.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh 2>&1 | tail -6"
     } else {
         Write-Host "GUI image missing - generating it with build/gui-image.sh..."
         wsl.exe -d Ubuntu-24.04 -u root -- timeout 60 bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh
