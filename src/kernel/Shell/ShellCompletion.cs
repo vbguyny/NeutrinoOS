@@ -136,28 +136,44 @@ public static class ShellCompletion
         }
         else
         {
-            // Path completion in the directory named by dirPart.
-            string dirResolved = dirPart.Length == 0 ? "." : dirPart;
-            if (!Directory.Exists(dirResolved))
-                return -1;
-
-            string[] entries;
-            try
+            if (IsDevDirectory(dirPart))
             {
-                entries = Directory.GetFileSystemEntries(dirResolved);
-            }
-            catch (Exception)
-            {
-                return -1;
-            }
-
-            for (int i = 0; i < entries.Length; i++)
-            {
-                string baseName = Path.GetFileName(entries[i]);
-                if (StartsWithIgnoreCase(baseName, namePart))
+                // /dev/<name>: the block device registry (hda, nvme0,
+                // sda...) - synthetic names with no real directory entry.
+                int deviceCount = ProtonOS.Storage.BlockDeviceRegistry.Count();
+                for (int i = 0; i < deviceCount; i++)
                 {
-                    bool isDir = Directory.Exists(entries[i]);
-                    AddUnique(candidates, dirPart + baseName + (isDir ? "/" : ""));
+                    var dev = ProtonOS.Storage.BlockDeviceRegistry.Get(
+                        ProtonOS.Storage.BlockDeviceRegistry.HandleAt(i));
+                    if (dev != null && StartsWithIgnoreCase(dev.Name, namePart))
+                        AddUnique(candidates, dirPart + dev.Name);
+                }
+            }
+            else
+            {
+                // Path completion in the directory named by dirPart.
+                string dirResolved = dirPart.Length == 0 ? "." : dirPart;
+                if (!Directory.Exists(dirResolved))
+                    return -1;
+
+                string[] entries;
+                try
+                {
+                    entries = Directory.GetFileSystemEntries(dirResolved);
+                }
+                catch (Exception)
+                {
+                    return -1;
+                }
+
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    string baseName = Path.GetFileName(entries[i]);
+                    if (StartsWithIgnoreCase(baseName, namePart))
+                    {
+                        bool isDir = Directory.Exists(entries[i]);
+                        AddUnique(candidates, dirPart + baseName + (isDir ? "/" : ""));
+                    }
                 }
             }
         }
@@ -232,6 +248,13 @@ public static class ShellCompletion
                 return;
         }
         list.Add(value);
+    }
+
+    /// <summary>True for the synthetic /dev/ directory (block devices).</summary>
+    private static bool IsDevDirectory(string dirPart)
+    {
+        return dirPart.Length == 5 && dirPart[0] == '/' && dirPart[1] == 'd'
+            && dirPart[2] == 'e' && dirPart[3] == 'v' && dirPart[4] == '/';
     }
 
     private static int CommonPrefixLength(string[] items)

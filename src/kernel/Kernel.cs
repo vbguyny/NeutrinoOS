@@ -1891,6 +1891,13 @@ public static unsafe class Kernel
 
         DebugConsole.WriteLine(string.Format("[Drivers] Bound {0} AHCI driver(s)", boundCount));
 
+        // Phase 10: publish the attached drives to the block device registry
+        // (hda, hdb, ...) for the storage tooling and the exFAT driver.
+        if (boundCount > 0)
+        {
+            Platform.BlockDeviceBootstrap.RegisterAhciDevices(_ahciDriverId);
+        }
+
         // Test AHCI I/O if a driver was bound
         if (boundCount > 0)
         {
@@ -1971,6 +1978,12 @@ public static unsafe class Kernel
         }
 
         DebugConsole.WriteLine(string.Format("[Drivers] Bound {0} NVMe driver(s)", boundCount));
+
+        // Phase 10: publish the NVMe namespace to the block device registry.
+        if (boundCount > 0)
+        {
+            Platform.BlockDeviceBootstrap.RegisterNvmeDevice(_nvmeDriverId);
+        }
     }
 
     /// <summary>

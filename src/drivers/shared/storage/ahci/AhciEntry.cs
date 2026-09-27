@@ -194,6 +194,55 @@ public static unsafe class AhciEntry
     /// </summary>
     public static int DeviceCount => _deviceCount;
 
+    // ---- Phase 10: block device registry accessors ----------------------
+    // Uniform JIT shape shared with NVMe and the kernel registry:
+    //   count/size/index queries are plain scalars; read/write return
+    //   blocks transferred (negative = error); flush returns 0 on success.
+
+    /// <summary>Bound drives (registry enumeration).</summary>
+    public static int BlockDeviceCount() => _deviceCount;
+
+    /// <summary>Sector count of drive <paramref name="index"/> (0 = absent).</summary>
+    public static ulong BlockDeviceSectorCount(int index)
+    {
+        var d = GetDevice(index);
+        return d == null ? 0 : d.BlockCount;
+    }
+
+    /// <summary>Sector size of drive <paramref name="index"/> (0 = absent).</summary>
+    public static uint BlockDeviceSectorSize(int index)
+    {
+        var d = GetDevice(index);
+        return d == null ? 0 : d.BlockSize;
+    }
+
+    /// <summary>Reads sectors from drive index (blocks read or negative).</summary>
+    public static int BlockDeviceRead(int index, ulong startBlock, uint blockCount, byte* buffer)
+    {
+        var d = GetDevice(index);
+        if (d == null || buffer == null || blockCount == 0)
+            return (int)BlockResult.InvalidParameter;
+        return d.Read(startBlock, blockCount, buffer);
+    }
+
+    /// <summary>Writes sectors to drive index (blocks written or negative).</summary>
+    public static int BlockDeviceWrite(int index, ulong startBlock, uint blockCount, byte* buffer)
+    {
+        var d = GetDevice(index);
+        if (d == null || buffer == null || blockCount == 0)
+            return (int)BlockResult.InvalidParameter;
+        return d.Write(startBlock, blockCount, buffer);
+    }
+
+    /// <summary>Flushes drive index (0 on success, negative on error).</summary>
+    public static int BlockDeviceFlush(int index)
+    {
+        var d = GetDevice(index);
+        if (d == null)
+            return (int)BlockResult.InvalidParameter;
+        return d.Flush() == BlockResult.Success ? 0 : (int)BlockResult.IoError;
+    }
+
     /// <summary>
     /// Get a device by index.
     /// </summary>
@@ -218,6 +267,51 @@ public static unsafe class AhciEntry
     public static AhciDriver? GetLastDevice()
     {
         return _deviceCount > 0 ? _devices[_deviceCount - 1] : null;
+    }
+
+    // ---- Phase 10: robust boot (FAT) volume selection -------------------
+    // The boot-file helpers historically used GetLastDevice(), which
+    // breaks as soon as a second disk (e.g. an exFAT data disk) is
+    // attached on a later port: command resolution would then read the
+    // wrong volume. The helper below finds the drive that actually
+    // carries the FAT boot volume (first FAT-probing drive wins) and
+    // falls back to the historical GetLastDevice() pick.
+
+    private static AhciDriver? _bootFatDevice;
+
+    /// <summary>Drive carrying the FAT boot volume (cached; see above).</summary>
+    public static AhciDriver? GetBootFatDevice()
+    {
+        if (_bootFatDevice != null && IsBoundDevice(_bootFatDevice))
+            return _bootFatDevice;
+
+        for (int i = 0; i < _deviceCount; i++)
+        {
+            var d = _devices[i];
+            if (d == null)
+                continue;
+            var fat = new FatFileSystem();
+            fat.Initialize();
+            bool ok = fat.Probe(d);
+            fat.Shutdown();
+            if (ok)
+            {
+                _bootFatDevice = d;
+                return d;
+            }
+        }
+        return GetLastDevice();
+    }
+
+    /// <summary>True when the drive instance is still one of the bound devices.</summary>
+    private static bool IsBoundDevice(AhciDriver d)
+    {
+        for (int i = 0; i < _deviceCount; i++)
+        {
+            if (_devices[i] == d)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -504,7 +598,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -546,7 +640,7 @@ public static unsafe class AhciEntry
     public static unsafe int GetBootVolumeStats(char* labelBuf, int labelCapacity,
                                                 ulong* totalBytes, ulong* freeBytes)
     {
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -593,7 +687,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -652,7 +746,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -708,7 +802,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -746,7 +840,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -783,7 +877,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -824,7 +918,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -1;
 
@@ -884,7 +978,7 @@ public static unsafe class AhciEntry
         string path = new string(pathBuf, 0, pathLen);
         _pinnedBootPath = path;
 
-        var device = GetLastDevice();
+        var device = GetBootFatDevice();
         if (device == null)
             return -2;
 

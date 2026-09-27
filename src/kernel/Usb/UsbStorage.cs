@@ -101,6 +101,10 @@ public static unsafe class UsbStorage
             disk.Ready = true;
             UsbLog("disk " + DiskName(disk) + ": " + disk.Vendor + " " + disk.Product
                 + " sectors=" + disk.BlockCount.ToString());
+
+            // Phase 10: publish the drive to the block device registry so
+            // the exFAT driver and disk tooling can open it (/dev/sda...).
+            ProtonOS.Storage.BlockDeviceRegistry.RegisterUsb(disk, DiskName(disk));
         }
         else
         {
@@ -116,6 +120,8 @@ public static unsafe class UsbStorage
             var d = _disks[i];
             if (d == null || d.Device != device)
                 continue;
+            // Phase 10: drop the drive from the block device registry first.
+            ProtonOS.Storage.BlockDeviceRegistry.UnregisterUsb(d);
             UsbDma t;
             t = d.Cbw; UsbDma.Free(ref t);
             t = d.Csw; UsbDma.Free(ref t);
@@ -263,8 +269,10 @@ public static unsafe class UsbStorage
             return false;
 
         byte* d = disk.Data.Virtual;
-        uint lastLba = Read32(d, 0);
-        uint blockLen = Read32(d, 4);
+        // SCSI parameter data is big-endian (Phase 10 fix: the original
+        // little-endian parse produced byte-swapped capacities).
+        uint lastLba = Read32Be(d, 0);
+        uint blockLen = Read32Be(d, 4);
         disk.BlockCount = lastLba + 1;
         disk.BlockSize = blockLen == 0 ? 512 : blockLen;
         return true;
@@ -338,5 +346,12 @@ public static unsafe class UsbStorage
     {
         return (uint)p[off] | ((uint)p[off + 1] << 8)
              | ((uint)p[off + 2] << 16) | ((uint)p[off + 3] << 24);
+    }
+
+    /// <summary>Big-endian 32-bit read (SCSI parameter data fields).</summary>
+    private static uint Read32Be(byte* p, int off)
+    {
+        return ((uint)p[off] << 24) | ((uint)p[off + 1] << 16)
+             | ((uint)p[off + 2] << 8) | (uint)p[off + 3];
     }
 }

@@ -62,7 +62,49 @@ public static unsafe class KernelExportInit
         // Register shell bridge exports (Phase 6 remote sessions)
         RegisterShellExports();
 
+        // Register block device bridge exports (Phase 10 storage tooling)
+        RegisterStorageExports();
+
         KernelExportRegistry.DebugPrint();
+    }
+
+    /// <summary>
+    /// Phase 10: block device registry bridge consumed by the
+    /// ProtonOS.DDK storage tooling (mount, mkexfat, fsck.exfat, the
+    /// exFAT driver) and the DDK AutoMount service.
+    /// </summary>
+    private static void RegisterStorageExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_BlockDeviceName",
+            (void*)(delegate* unmanaged<int, char*, int, int>)&Exports.DDK.StorageExports.BlockDeviceName);
+        Reg(n, "Kernel_BlockDeviceSectorCount",
+            (void*)(delegate* unmanaged<int, ulong>)&Exports.DDK.StorageExports.BlockDeviceSectorCount);
+        Reg(n, "Kernel_BlockDeviceSectorSize",
+            (void*)(delegate* unmanaged<int, uint>)&Exports.DDK.StorageExports.BlockDeviceSectorSize);
+        Reg(n, "Kernel_BlockDeviceRemovable",
+            (void*)(delegate* unmanaged<int, int>)&Exports.DDK.StorageExports.BlockDeviceRemovable);
+        Reg(n, "Kernel_BlockDevicePresent",
+            (void*)(delegate* unmanaged<int, int>)&Exports.DDK.StorageExports.BlockDevicePresent);
+        Reg(n, "Kernel_BlockDeviceRead",
+            (void*)(delegate* unmanaged<int, ulong, uint, byte*, int>)&Exports.DDK.StorageExports.BlockDeviceRead);
+        Reg(n, "Kernel_BlockDeviceWrite",
+            (void*)(delegate* unmanaged<int, ulong, uint, byte*, int>)&Exports.DDK.StorageExports.BlockDeviceWrite);
+        Reg(n, "Kernel_BlockDeviceFlush",
+            (void*)(delegate* unmanaged<int, int>)&Exports.DDK.StorageExports.BlockDeviceFlush);
+        Reg(n, "Kernel_BlockDeviceCount",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.StorageExports.BlockDeviceCount);
+        Reg(n, "Kernel_BlockDeviceHandleAt",
+            (void*)(delegate* unmanaged<int, int>)&Exports.DDK.StorageExports.BlockDeviceHandleAt);
+        Reg(n, "Kernel_BlockDeviceGeneration",
+            (void*)(delegate* unmanaged<int>)&Exports.DDK.StorageExports.BlockDeviceGeneration);
+        Reg(n, "Kernel_BlockDeviceInfoAt",
+            (void*)(delegate* unmanaged<int, Exports.DDK.RawBlockDeviceInfo*, int>)&Exports.DDK.StorageExports.BlockDeviceInfoAt);
+        Reg(n, "Kernel_AutoMountNote",
+            (void*)(delegate* unmanaged<char*, int, char*, int, int>)&Exports.DDK.StorageExports.AutoMountNote);
+        Reg(n, "Kernel_AutoMountForget",
+            (void*)(delegate* unmanaged<char*, int, int>)&Exports.DDK.StorageExports.AutoMountForget);
     }
 
     /// <summary>

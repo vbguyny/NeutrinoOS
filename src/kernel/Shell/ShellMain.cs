@@ -109,6 +109,10 @@ public static unsafe class ShellMain
             ProtonOS.Usb.UsbSerial.Poll();
         }
 
+        // Phase 10: auto-mount removable exFAT volumes (USB sticks) at
+        // /mnt/usb/<device>; unmounts them when the disk goes away.
+        ProtonOS.Platform.AutoMountBridge.Poll();
+
         if (!JobManager.HasQueuedJobs)
             return;
         JobManager.Pump();

@@ -26,6 +26,70 @@ public static unsafe class NvmeEntry
     /// <summary>Namespace 1 logical sector size.</summary>
     public static int SectorSize => _controller?.SectorSize ?? 0;
 
+    // ---- Phase 10: block device registry accessors ----------------------
+    // Uniform JIT shape shared with AHCI and the kernel registry (see
+    // AhciEntry). The NVMe namespace is device index 0.
+
+    /// <summary>Namespaces exposed to the registry (0 or 1).</summary>
+    public static int BlockDeviceCount() => SectorCount > 0 ? 1 : 0;
+
+    /// <summary>Sector count of namespace <paramref name="index"/>.</summary>
+    public static ulong BlockDeviceSectorCount(int index) => index == 0 ? SectorCount : 0;
+
+    /// <summary>Sector size of namespace <paramref name="index"/>.</summary>
+    public static uint BlockDeviceSectorSize(int index) => index == 0 ? (uint)SectorSize : 0;
+
+    /// <summary>Reads sectors from namespace 0 (blocks read or negative).</summary>
+    public static int BlockDeviceRead(int index, ulong startBlock, uint blockCount, byte* buffer)
+    {
+        if (index != 0 || buffer == null || blockCount == 0)
+            return -1;
+        if (startBlock + blockCount > SectorCount)
+            return -2;
+
+        // Chunk transfers: bounded work per submission.
+        uint done = 0;
+        while (done < blockCount)
+        {
+            uint chunk = blockCount - done;
+            if (chunk > 128)
+                chunk = 128;
+            if (!ReadSectors(startBlock + done, (int)chunk, buffer + done * 512))
+                return (int)done;
+            done += chunk;
+        }
+        return (int)done;
+    }
+
+    /// <summary>Writes sectors to namespace 0 (blocks written or negative).</summary>
+    public static int BlockDeviceWrite(int index, ulong startBlock, uint blockCount, byte* buffer)
+    {
+        if (index != 0 || buffer == null || blockCount == 0)
+            return -1;
+        if (startBlock + blockCount > SectorCount)
+            return -2;
+
+        uint done = 0;
+        while (done < blockCount)
+        {
+            uint chunk = blockCount - done;
+            if (chunk > 128)
+                chunk = 128;
+            if (!WriteSectors(startBlock + done, (int)chunk, buffer + done * 512))
+                return (int)done;
+            done += chunk;
+        }
+        return (int)done;
+    }
+
+    /// <summary>Flushes namespace 0 (0 on success, negative on error).</summary>
+    public static int BlockDeviceFlush(int index)
+    {
+        if (index != 0)
+            return -1;
+        return Flush() ? 0 : -1;
+    }
+
     /// <summary>
     /// Match NVMe controllers: PCI class 0x01 (mass storage), subclass
     /// 0x08 (NVM), programming interface 0x02 (NVMe). A few known device

@@ -1,45 +1,100 @@
-// NeutrinoOS Phase 5 utility: df - filesystem usage
+// NeutrinoOS utility: df - filesystem usage.
 //
-// usage: df
-//   Shows the boot (FAT32) volume: label, total size, used and free
-//   space (from the FAT driver's cluster accounting through
-//   Kernel_GetBootVolumeStats) plus the active VFS mount points.
+// usage: df [-T]
+//   -T  accepted for POSIX compatibility; the type column is always
+//       shown ("Filesystem Type ... Mounted on").
+//
+// Lists every mounted volume: the boot (FAT32) volume served by the
+// AHCI driver, then each VFS mount point (exFAT sticks, procfs, ...)
+// with size, used, free (KB) and use percentage.
 
 using System;
 using NeutrinoOS.Utils;
 using ProtonOS.DDK.Kernel;
+using ProtonOS.DDK.Storage;
 
 namespace NeutrinoOS.Utility.Df;
 
 /// <summary>The df utility (see file header).</summary>
 public static class Program
 {
-    /// <summary>Entry point; returns 1 when the volume statistics are unavailable.</summary>
+    /// <summary>Entry point; returns 1 when no filesystem info is available.</summary>
     public static int Main(string[] args)
     {
         if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
-        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+        bool types = false;
+        for (int i = 0; i < args.Length; i++)
         {
-            return Util.Help(
-                "usage: df",
-                "  Show boot-volume usage (FAT32: label, size, used, free)");
+            if (args[i] == "-T")
+                types = true;
+            else if (args[i] == "--help" || args[i] == "-h")
+            {
+                return Util.Help(
+                    "usage: df [-T]",
+                    "  Show usage for the boot volume and every VFS mount",
+                    "  (exFAT USB sticks, procfs, ...). -T is accepted;",
+                    "  the filesystem type column is always shown.");
+            }
+            else
+                return Util.Fail("df", "unknown option: " + args[i]);
         }
-        if (args.Length > 0)
-            return Util.Fail("df", "usage: df");
+        _ = types;
 
-        if (!SysInfo.TryGetBootVolumeStats(out string label, out ulong totalBytes, out ulong freeBytes))
-            return Util.Fail("df", "boot volume statistics unavailable (driver not bound?)");
+        Console.WriteLine("Filesystem        Type   Size      Used     Avail  Use%  Mounted on");
 
+        int rows = 0;
+
+        // Boot (FAT32) volume: served by the AHCI driver's on-demand
+        // helpers rather than the VFS table.
+        if (SysInfo.TryGetBootVolumeStats(out string label, out ulong totalBytes, out ulong freeBytes))
+        {
+            if (label.Length == 0)
+                label = "NEUTRINOOS";
+            WriteRow(label, "fat32", totalBytes, freeBytes, "/boot");
+            rows++;
+        }
+
+        // VFS mount points (exFAT, procfs, ...).
+        var mounts = VFS.MountPoints;
+        for (int i = 0; i < mounts.Count; i++)
+        {
+            MountPoint mp = mounts[i];
+            string name = mp.FileSystem.VolumeLabel ?? "";
+            if (name.Length == 0)
+            {
+                if (mp.Device != null)
+                    name = "/dev/" + mp.Device.DeviceName;
+                else
+                    name = "-";
+            }
+            string type = mp.FileSystem.FilesystemName;
+            WriteRow(name, type, mp.FileSystem.TotalBytes, mp.FileSystem.FreeBytes, mp.Path);
+            rows++;
+        }
+
+        if (rows == 0)
+        {
+            return Util.Fail("df", "no filesystem statistics available (driver not bound?)");
+        }
+
+        Console.WriteLine();
+        Console.Write("(");
+        Console.Write(rows.ToString());
+        Console.WriteLine(" filesystems; sizes in KB; df -T accepted)");
+        return 0;
+    }
+
+    /// <summary>Writes one aligned usage row.</summary>
+    private static void WriteRow(string name, string type, ulong totalBytes, ulong freeBytes, string mountPath)
+    {
         ulong usedBytes = totalBytes >= freeBytes ? totalBytes - freeBytes : 0;
         int usedPercent = totalBytes == 0 ? 0 : (int)(usedBytes * 100 / totalBytes);
 
-        if (label.Length == 0)
-            label = "NEUTRINOOS";
-
-        Console.WriteLine("Filesystem        Size      Used     Avail  Use%  Mounted on");
         var sb = new System.Text.StringBuilder();
-        sb.Append(PadRight(label, 12));
+        sb.Append(Fit(name, 16));
+        sb.Append("  ");
+        sb.Append(Fit(type, 5));
         sb.Append("  ");
         sb.Append(Util.PadLeft((long)(totalBytes / 1024), 8));
         sb.Append("  ");
@@ -48,19 +103,16 @@ public static class Program
         sb.Append(Util.PadLeft((long)(freeBytes / 1024), 8));
         sb.Append("  ");
         sb.Append(Util.PadLeft(usedPercent, 3));
-        sb.Append("%  /boot (Ahci/Fat32)");
+        sb.Append("%  ");
+        sb.Append(mountPath);
         Console.WriteLine(sb.ToString());
-
-        Console.WriteLine();
-        Console.WriteLine("(sizes in KB; the boot volume is mounted read-only by the");
-        Console.WriteLine(" AHCI driver; mount lists the VFS mount table)");
-        return 0;
     }
 
-    private static string PadRight(string s, int width)
+    /// <summary>Pads or truncates to an exact width.</summary>
+    private static string Fit(string s, int width)
     {
-        if (s.Length >= width)
-            return s;
+        if (s.Length > width)
+            return s.Substring(0, width);
         var sb = new System.Text.StringBuilder(s);
         for (int i = s.Length; i < width; i++)
             sb.Append(' ');

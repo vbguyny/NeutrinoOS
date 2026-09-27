@@ -1,6 +1,7 @@
 
 # Future / TODOS
 
+- Move all previous phase reports under the "/docs" folder.
 - Make the version number be 0.1.x where 0 is the major, 1 is the minor, and x is the build number.
 - Make sure that the build number auto increments on every build
 - Rename ProtonOS with NeutrinoOS

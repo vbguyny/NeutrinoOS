@@ -1,0 +1,17 @@
+{
+  "format": "npkg/1",
+  "name": "neutrinoos.utils.exfat",
+  "version": "1.0.0",
+  "architecture": "any",
+  "description": "exFAT userspace tooling: mkexfat, fsck.exfat, exfatlabel, exfatattrib (Phase 10)",
+  "license": "MIT",
+  "installPath": "/bin",
+  "provides": ["utility"],
+  "entryPoints": {
+    "mkexfat": "mkexfat.dll",
+    "fsck.exfat": "fsck.exfat.dll",
+    "exfatlabel": "exfatlabel.dll",
+    "exfatattrib": "exfatattrib.dll"
+  },
+  "signer": ""
+}

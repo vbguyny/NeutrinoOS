@@ -39,6 +39,127 @@ public static unsafe class FileExports
     private static void* _fnGetBootVolumeStats;
     private static bool _ensureInProgress;
 
+    // ==================== Phase 10: DDK VFS path bridge ====================
+    // Paths under non-root VFS mounts (exFAT disks auto-mounted under
+    // /mnt/usb, /proc) are served by the DDK VfsPathBridge before any
+    // boot-volume fallback. The statics are JIT-compiled once, lazily
+    // (the DDK is loaded later than the first System.IO users, so the
+    // lookup simply retries until it succeeds).
+
+    private static void* _fnVfsExists;
+    private static void* _fnVfsSize;
+    private static void* _fnVfsRead;
+    private static void* _fnVfsWrite;
+    private static void* _fnVfsDirEntry;
+    private static void* _fnVfsDirCreate;
+    private static void* _fnVfsDirDelete;
+    private static void* _fnVfsFileDelete;
+
+    /// <summary>VfsPathBridge.NotHandled ("no non-root mount covers the path").</summary>
+    private const int VfsNotHandled = -100;
+
+    /// <summary>
+    /// JIT-compiles the DDK VFS path bridge (once). Returns false while
+    /// the DDK is unavailable or any bridge static fails to compile.
+    /// </summary>
+    private static bool EnsureVfsBridge()
+    {
+        if (_fnVfsRead != null)
+            return true;
+
+        uint ddkId = Kernel.DdkAssemblyId;
+        if (ddkId == AssemblyLoader.InvalidAssemblyId)
+            return false;
+
+        uint typeToken = AssemblyLoader.FindTypeDefByFullName(
+            ddkId, "ProtonOS.DDK.Storage", "VfsPathBridge");
+        if (typeToken == 0)
+            return false;
+
+        if (_fnVfsExists == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "Exists");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsExists = r.CodeAddress;
+        }
+        if (_fnVfsSize == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "GetSize");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsSize = r.CodeAddress;
+        }
+        if (_fnVfsRead == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "Read");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsRead = r.CodeAddress;
+        }
+        if (_fnVfsWrite == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "Write");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsWrite = r.CodeAddress;
+        }
+        if (_fnVfsDirEntry == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "DirEntry");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsDirEntry = r.CodeAddress;
+        }
+        if (_fnVfsDirCreate == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "DirCreate");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsDirCreate = r.CodeAddress;
+        }
+        if (_fnVfsDirDelete == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "DirDelete");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsDirDelete = r.CodeAddress;
+        }
+        if (_fnVfsFileDelete == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, "FileDelete");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(ddkId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnVfsFileDelete = r.CodeAddress;
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Find and JIT-compile the AHCI driver file helpers (once per boot;
     /// requires the driver to be bound first). Reentrancy: compiling the
@@ -192,6 +313,16 @@ public static unsafe class FileExports
         if (VirtualDevices.IsVirtual(path, pathLen))
             return VirtualDevices.Size(path, pathLen);
 
+        // Phase 10: paths under non-root VFS mounts (exFAT disks, /proc)
+        // are served by the mounted filesystem.
+        if (EnsureVfsBridge())
+        {
+            var vfsSize = (delegate*<char*, int, int>)_fnVfsSize;
+            int vfs = vfsSize(path, pathLen);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
+
         if (!EnsureDriverHelpers())
             return -1;
         var getSize = (delegate*<char*, int, int>)_fnGetBootFileSize;
@@ -218,6 +349,15 @@ public static unsafe class FileExports
         // Phase 7: virtual /dev files are served before the FAT driver.
         if (VirtualDevices.IsVirtual(path, pathLen))
             return VirtualDevices.Read(path, pathLen, buffer, capacity);
+
+        // Phase 10: paths under non-root VFS mounts (exFAT disks, /proc).
+        if (EnsureVfsBridge())
+        {
+            var vfsRead = (delegate*<char*, int, byte*, int, int>)_fnVfsRead;
+            int vfs = vfsRead(path, pathLen, buffer, capacity);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
 
         if (!EnsureDriverHelpers())
             return -1;
@@ -252,6 +392,16 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "FileBootWrite")]
     public static int FileBootWrite(char* path, int pathLen, byte* data, int length, int append)
     {
+        // Phase 10: writes under non-root VFS mounts (e.g. an auto-mounted
+        // exFAT stick) go to the mounted filesystem.
+        if (EnsureVfsBridge())
+        {
+            var vfsWrite = (delegate*<char*, int, byte*, int, int, int>)_fnVfsWrite;
+            int vfs = vfsWrite(path, pathLen, data, length, append);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
+
         if (!EnsureDriverHelpers())
             return -1;
         var writeFile = (delegate*<char*, int, byte*, int, int, int>)_fnWriteBootFile;
@@ -270,6 +420,16 @@ public static unsafe class FileExports
         // Phase 7: virtual /dev files are served before the FAT driver.
         if (VirtualDevices.IsVirtual(path, pathLen))
             return 1;
+
+        // Phase 10: paths under non-root VFS mounts (exFAT disks, /proc).
+        if (EnsureVfsBridge())
+        {
+            var vfsExists = (delegate*<char*, int, int, int>)_fnVfsExists;
+            int vfs = vfsExists(path, pathLen, 0);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
+
         if (!EnsureDriverHelpers())
             return -1;
         var pathExists = (delegate*<char*, int, int, int>)_fnBootPathExists;
@@ -280,6 +440,13 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "FileBootDelete")]
     public static int FileBootDelete(char* path, int pathLen)
     {
+        if (EnsureVfsBridge())
+        {
+            var vfsDelete = (delegate*<char*, int, int>)_fnVfsFileDelete;
+            int vfs = vfsDelete(path, pathLen);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
         if (!EnsureDriverHelpers())
             return -2;
         var deleteFile = (delegate*<char*, int, int>)_fnDeleteBootFile;
@@ -292,6 +459,13 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "DirBootExists")]
     public static int DirBootExists(char* path, int pathLen)
     {
+        if (EnsureVfsBridge())
+        {
+            var vfsExists = (delegate*<char*, int, int, int>)_fnVfsExists;
+            int vfs = vfsExists(path, pathLen, 1);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
         if (!EnsureDriverHelpers())
             return -1;
         var pathExists = (delegate*<char*, int, int, int>)_fnBootPathExists;
@@ -302,6 +476,13 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "DirBootCreate")]
     public static int DirBootCreate(char* path, int pathLen)
     {
+        if (EnsureVfsBridge())
+        {
+            var vfsCreate = (delegate*<char*, int, int>)_fnVfsDirCreate;
+            int vfs = vfsCreate(path, pathLen);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
         if (!EnsureDriverHelpers())
             return -2;
         var createDir = (delegate*<char*, int, int>)_fnCreateBootDir;
@@ -312,6 +493,13 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "DirBootDelete")]
     public static int DirBootDelete(char* path, int pathLen)
     {
+        if (EnsureVfsBridge())
+        {
+            var vfsDelete = (delegate*<char*, int, int>)_fnVfsDirDelete;
+            int vfs = vfsDelete(path, pathLen);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
         if (!EnsureDriverHelpers())
             return -2;
         var deleteDir = (delegate*<char*, int, int>)_fnDeleteBootDir;
@@ -327,6 +515,13 @@ public static unsafe class FileExports
     [UnmanagedCallersOnly(EntryPoint = "DirBootEntry")]
     public static int DirBootEntry(char* path, int pathLen, int index, char* nameBuf, int nameCapacity, int* isDir)
     {
+        if (EnsureVfsBridge())
+        {
+            var vfsEntry = (delegate*<char*, int, int, char*, int, int*, int>)_fnVfsDirEntry;
+            int vfs = vfsEntry(path, pathLen, index, nameBuf, nameCapacity, isDir);
+            if (vfs != VfsNotHandled)
+                return vfs;
+        }
         if (!EnsureDriverHelpers())
             return -3;
         var listEntry = (delegate*<char*, int, int, char*, int, int*, int>)_fnListBootDirEntry;
