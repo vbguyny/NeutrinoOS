@@ -70,9 +70,12 @@ else ifeq ($(ARCH),apple)
 endif
 
 # Optional trace build: TRACE=1 (or ./build.sh --trace) compiles the
-# runtime JIT/AOT trace prints in (src/kernel/Runtime/JitTrace.cs).
+# runtime JIT/AOT trace prints in (src/kernel/Runtime/JitTrace.cs) and the
+# DDK/driver Debug traces (src/ddk/Kernel/Debug.cs). The exported property
+# is picked up by the dotnet-built drivers/apps via src/Directory.Build.props.
 ifdef TRACE
     BFLAT_FLAGS += -d NEUTRINO_TRACE
+    export NeutrinoTrace := 1
 endif
 
 # Recursive wildcard function

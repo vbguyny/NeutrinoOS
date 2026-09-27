@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- NeutrinoOS trace builds.
+       Passing -p:NeutrinoTrace=1 (or exporting NeutrinoTrace=1, which make
+       does for TRACE=1) compiles the DDK/utility/driver trace output in:
+       every project under src/ gets NEUTRINO_TRACE defined, matching the
+       kernel's -d NEUTRINO_TRACE and the [Conditional("NEUTRINO_TRACE")]
+       attributes on the DDK Debug class (src/ddk/Kernel/Debug.cs).
+       Default builds leave the symbol undefined, so the compiler drops
+       every trace call site. -->
+  <PropertyGroup Condition="'$(NeutrinoTrace)' == '1'">
+    <DefineConstants>$(DefineConstants);NEUTRINO_TRACE</DefineConstants>
+  </PropertyGroup>
+
+</Project>

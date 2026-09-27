@@ -1,7 +1,13 @@
 // ProtonOS DDK - Debug Output
 // Provides debug logging for drivers.
+//
+// Trace output is compiled in only in trace builds (TRACE=1 / --trace):
+// every method is [Conditional("NEUTRINO_TRACE")], so default builds drop
+// all Debug.* call sites (both inside the DDK and in every utility that
+// references it) entirely.
 
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace ProtonOS.DDK.Kernel;
@@ -41,6 +47,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a string.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void Write(string s)
     {
         fixed (char* ptr = s)
@@ -52,6 +59,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a string with newline.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteLine(string s)
     {
         fixed (char* ptr = s)
@@ -63,6 +71,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write an empty newline.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteLine()
     {
         WriteLine("");
@@ -71,6 +80,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void Write(string format, object? arg0)
     {
         Write(string.Format(format, arg0));
@@ -79,6 +89,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void Write(string format, object? arg0, object? arg1)
     {
         Write(string.Format(format, arg0, arg1));
@@ -87,6 +98,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void Write(string format, object? arg0, object? arg1, object? arg2)
     {
         Write(string.Format(format, arg0, arg1, arg2));
@@ -95,6 +107,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string with newline.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteLine(string format, object? arg0)
     {
         WriteLine(string.Format(format, arg0));
@@ -103,6 +116,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string with newline.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteLine(string format, object? arg0, object? arg1)
     {
         WriteLine(string.Format(format, arg0, arg1));
@@ -111,6 +125,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a formatted string with newline.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteLine(string format, object? arg0, object? arg1, object? arg2)
     {
         WriteLine(string.Format(format, arg0, arg1, arg2));
@@ -119,6 +134,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a hex value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteHex(ulong value)
     {
         Kernel_DebugWriteHex64(value);
@@ -127,6 +143,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a hex value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteHex(uint value)
     {
         Kernel_DebugWriteHex32(value);
@@ -135,6 +152,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a hex value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteHex(ushort value)
     {
         Kernel_DebugWriteHex16(value);
@@ -143,6 +161,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a hex value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteHex(byte value)
     {
         Kernel_DebugWriteHex8(value);
@@ -151,6 +170,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write a signed decimal value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteDecimal(int value)
     {
         Kernel_DebugWriteDecimal(value);
@@ -159,6 +179,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write an unsigned decimal value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteDecimal(uint value)
     {
         Kernel_DebugWriteDecimalU(value);
@@ -167,6 +188,7 @@ public static unsafe class Debug
     /// <summary>
     /// Write an unsigned 64-bit decimal value.
     /// </summary>
+    [Conditional("NEUTRINO_TRACE")]
     public static void WriteDecimal(ulong value)
     {
         Kernel_DebugWriteDecimal64(value);

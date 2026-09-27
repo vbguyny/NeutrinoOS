@@ -13,4 +13,11 @@
   <!-- Note: DDK compiles against standard .NET BCL for convenience.
        At runtime, the kernel JIT resolves all types from korlib. -->
 
+  <!-- NEUTRINO_TRACE (trace builds: TRACE=1): compiles the trace output
+       in; otherwise Debug.* call sites are dropped by the compiler
+       (see Kernel/Debug.cs). Passed by build/p5-apps-build.sh. -->
+  <PropertyGroup Condition="'$(NeutrinoTrace)' == '1'">
+    <DefineConstants>$(DefineConstants);NEUTRINO_TRACE</DefineConstants>
+  </PropertyGroup>
+
 </Project>

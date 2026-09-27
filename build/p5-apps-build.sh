@@ -9,6 +9,17 @@ export PATH="/usr/share/dotnet:$PATH"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 
+# Optional: TRACE=1 in the environment (or --trace as the first argument)
+# compiles the DDK/utility trace output in (the DDK Debug class is
+# [Conditional("NEUTRINO_TRACE")]; default builds drop those call sites).
+if [ "${1:-}" = "--trace" ]; then
+  export TRACE=1
+fi
+TRACEARG=""
+if [ "${TRACE:-}" = "1" ]; then
+  TRACEARG="-p:NeutrinoTrace=1"
+fi
+
 SRC=/mnt/d/Projects/Code/NeutrinoOS
 WORK=/root/phase5-utils
 OUT=/root/phase5bin
@@ -52,6 +63,9 @@ for dir in */; do
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>\$(NoWarn);CS0436</NoWarn>
   </PropertyGroup>
+  <PropertyGroup Condition="'\$(NeutrinoTrace)' == '1'">
+    <DefineConstants>\$(DefineConstants);NEUTRINO_TRACE</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Common/UtilCommon.cs" />
     <Compile Include="../Common/HttpCommon.cs" />
@@ -61,7 +75,7 @@ $extra
 </Project>
 EOF
 
-  if dotnet build "$name/$name.csproj" -c Release -o "$OUT" --nologo -v q; then
+  if dotnet build "$name/$name.csproj" -c Release -o "$OUT" --nologo -v q $TRACEARG; then
     count=$((count+1))
   else
     echo "=== BUILD FAILED: $name ==="
