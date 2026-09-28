@@ -2021,17 +2021,17 @@ public static unsafe class MetadataIntegration
                     fieldSize = 8;  // Reference types are pointers
                 }
 
-                DebugConsole.Write("[VAR-FLD] varIdx=");
-                DebugConsole.WriteDecimal(varIndex);
-                DebugConsole.Write(" MT=0x");
-                DebugConsole.WriteHex((ulong)typeArgMT);
-                DebugConsole.Write(" baseSize=");
-                DebugConsole.WriteDecimal(typeArgMT->_uBaseSize);
-                DebugConsole.Write(" fieldSize=");
-                DebugConsole.WriteDecimal(fieldSize);
-                DebugConsole.Write(" isVT=");
-                DebugConsole.Write(fieldIsValueType ? "Y" : "N");
-                DebugConsole.WriteLine();
+                JitTrace.Write("[VAR-FLD] varIdx=");
+                JitTrace.WriteDecimal((uint)varIndex);
+                JitTrace.Write(" MT=0x");
+                JitTrace.WriteHex((ulong)typeArgMT);
+                JitTrace.Write(" baseSize=");
+                JitTrace.WriteDecimal(typeArgMT->_uBaseSize);
+                JitTrace.Write(" fieldSize=");
+                JitTrace.WriteDecimal(fieldSize);
+                JitTrace.Write(" isVT=");
+                JitTrace.Write(fieldIsValueType ? "Y" : "N");
+                JitTrace.WriteLine();
 
                 size = (byte)(fieldSize > 255 ? 255 : fieldSize);
 
@@ -2041,11 +2041,11 @@ public static unsafe class MetadataIntegration
             }
             else
             {
-                DebugConsole.Write("[VAR-FLD] varIdx=");
-                DebugConsole.WriteDecimal(varIndex);
-                DebugConsole.Write(" typeArgCnt=");
-                DebugConsole.WriteDecimal((uint)GetTypeTypeArgCount());
-                DebugConsole.WriteLine(" MT=NULL (no type context)");
+                JitTrace.Write("[VAR-FLD] varIdx=");
+                JitTrace.WriteDecimal((uint)varIndex);
+                JitTrace.Write(" typeArgCnt=");
+                JitTrace.WriteDecimal((uint)GetTypeTypeArgCount());
+                JitTrace.WriteLine(" MT=NULL (no type context)");
             }
         }
 

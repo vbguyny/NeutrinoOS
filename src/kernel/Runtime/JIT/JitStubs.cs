@@ -432,13 +432,13 @@ public static unsafe class JitStubs
             }
             if (info != null)
             {
-                DebugConsole.Write("[JitStubs] slot ");
-                DebugConsole.WriteDecimal((uint)vtableSlot);
-                DebugConsole.Write(" resolved from ancestor MT 0x");
-                DebugConsole.WriteHex((ulong)ancestorMT);
-                DebugConsole.Write(" token=0x");
-                DebugConsole.WriteHex(info->Token);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[JitStubs] slot ");
+                JitTrace.WriteDecimal((uint)vtableSlot);
+                JitTrace.Write(" resolved from ancestor MT 0x");
+                JitTrace.WriteHex((ulong)ancestorMT);
+                JitTrace.Write(" token=0x");
+                JitTrace.WriteHex(info->Token);
+                JitTrace.WriteLine();
             }
         }
 

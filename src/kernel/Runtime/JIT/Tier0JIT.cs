@@ -1289,16 +1289,16 @@ public static unsafe class Tier0JIT
                             }
                         }
 
-                        DebugConsole.Write(" GENINST kind=0x");
-                        DebugConsole.WriteHex(genKind);
-                        DebugConsole.Write(" tok=0x");
-                        DebugConsole.WriteHex(fullToken);
-                        DebugConsole.Write(resolved ? " RES" : " NORES");
-                        DebugConsole.Write(isValueType[i] ? " VT" : " CLASS");
+                        JitTrace.Write(" GENINST kind=0x");
+                        JitTrace.WriteHex(genKind);
+                        JitTrace.Write(" tok=0x");
+                        JitTrace.WriteHex(fullToken);
+                        JitTrace.Write(resolved ? " RES" : " NORES");
+                        JitTrace.Write(isValueType[i] ? " VT" : " CLASS");
                         if (resolvedBaseSize > 0)
                         {
-                            DebugConsole.Write(" sz=");
-                            DebugConsole.WriteDecimal(resolvedBaseSize);
+                            JitTrace.Write(" sz=");
+                            JitTrace.WriteDecimal(resolvedBaseSize);
                         }
 
                         // Get sizes of all type arguments for proper instantiated size calculation
@@ -1307,8 +1307,8 @@ public static unsafe class Tier0JIT
                         if (ptr < end)
                         {
                             argCount = MetadataReader.ReadCompressedUInt(ref ptr);
-                            DebugConsole.Write(" argc=");
-                            DebugConsole.WriteDecimal(argCount);
+                            JitTrace.Write(" argc=");
+                            JitTrace.WriteDecimal(argCount);
                             // Parse type arguments and get their sizes
                             for (uint j = 0; j < argCount && j < 4 && ptr < end; j++)
                             {
@@ -1317,10 +1317,10 @@ public static unsafe class Tier0JIT
                                 // Reference types still take 8 bytes as pointers
                                 if (!argIsVT && typeArgSizes[j] == 0)
                                     typeArgSizes[j] = 8;
-                                DebugConsole.Write(" arg");
-                                DebugConsole.WriteDecimal(j);
-                                DebugConsole.Write("=");
-                                DebugConsole.WriteDecimal(typeArgSizes[j]);
+                                JitTrace.Write(" arg");
+                                JitTrace.WriteDecimal(j);
+                                JitTrace.Write("=");
+                                JitTrace.WriteDecimal(typeArgSizes[j]);
                             }
                             // Skip remaining args if more than 4
                             for (uint j = 4; j < argCount && ptr < end; j++)
@@ -1389,8 +1389,8 @@ public static unsafe class Tier0JIT
                                     instantiatedSize = (instantiatedSize + 7) & ~7u;
                                     typeSize[i] = (ushort)instantiatedSize;
 
-                                    DebugConsole.Write(" instSz=");
-                                    DebugConsole.WriteDecimal(instantiatedSize);
+                                    JitTrace.Write(" instSz=");
+                                    JitTrace.WriteDecimal(instantiatedSize);
                                 }
                                 else
                                 {
@@ -1410,8 +1410,7 @@ public static unsafe class Tier0JIT
                 if (elemType == 0x12) // Class
                     MetadataReader.ReadCompressedUInt(ref ptr);
             }
-            if (JitDiag.VerboseJit)
-                DebugConsole.WriteLine(); // End of this local's debug line
+            JitTrace.WriteLine(); // End of this local's debug line
         }
 
         return numLocals;
