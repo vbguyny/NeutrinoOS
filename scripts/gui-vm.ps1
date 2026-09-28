@@ -2,6 +2,7 @@ param(
     [switch]$Rebuild,
     [switch]$NoStart,
     [switch]$Net,
+    [switch]$NoNet,
     [string]$SerialPipe = ""
 )
 # Create (or recreate) a separate VirtualBox VM "NeutrinoOSCli" that boots the
@@ -10,6 +11,9 @@ param(
 #     the VM window)
 #   - PS/2 keyboard active (console-active-vga): type directly in the window
 #   - boot tests skipped for fast manual boots
+#   - virtio NIC + NAT by DEFAULT (DHCP works out of the box; `ifconfig`,
+#     `dns`, `ping www.google.com` all work in the VM). Pass -NoNet for a
+#     NIC-less VM. -Net is accepted for compatibility (= default).
 #
 # This VM is independent of scripts/test-vbox.ps1, which owns and recreates
 # the "NeutrinoOSTest" VM on every run - the two do not interfere.
@@ -66,15 +70,18 @@ Write-Host "Converting GUI image to VDI..."
 
 Write-Host "Creating VM '$name'..."
 & $vb createvm --name $name --ostype Other_64 --register | Out-Null
-if ($Net) {
+if (-not $NoNet) {
     # NAT with port forwards for the Phase 6 network tests (sshd/webhost).
     # nictype virtio: the kernel's only NIC driver is virtio-net.
-    # NIC tracing (pcap) records device-level rx/tx for diagnostics.
     & $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 nat --nictype1 virtio --hpet on | Out-Null
-    & $vb modifyvm $name --natpf1 "ssh,tcp,,2222,,22" | Out-Null
-    & $vb modifyvm $name --natpf1 "http,tcp,,8080,,80" | Out-Null
-    & $vb modifyvm $name --natpf1 "https,tcp,,8444,,443" | Out-Null
-    & $vb modifyvm $name --nictrace1 on --nictracefile1 (Join-Path $base "vbox-nic.pcap") | Out-Null
+    # Port forwards and NIC tracing are conveniences for the Phase 6 tests:
+    # if a host port is excluded/busy the VM still boots, so do not abort.
+    $ErrorActionPreference = "Continue"
+    & $vb modifyvm $name --natpf1 "ssh,tcp,,2222,,22" 2>&1 | Out-Null
+    & $vb modifyvm $name --natpf1 "http,tcp,,8080,,80" 2>&1 | Out-Null
+    & $vb modifyvm $name --natpf1 "https,tcp,,8444,,443" 2>&1 | Out-Null
+    & $vb modifyvm $name --nictrace1 on --nictracefile1 (Join-Path $base "vbox-nic.pcap") 2>&1 | Out-Null
+    $ErrorActionPreference = "Stop"
 } else {
     & $vb modifyvm $name --memory 2048 --cpus 2 --firmware efi --ioapic on --nic1 none --hpet on | Out-Null
 }

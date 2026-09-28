@@ -129,8 +129,19 @@ public static unsafe class NetworkPump
     /// </summary>
     public static bool ResolveArp(NetworkStack stack, uint ip, int maxMs)
     {
+        // ARP resolves link-layer next hops, not final destinations: an
+        // off-subnet address resolves through the gateway. The cache is
+        // keyed by next hop - BuildIPv4Frame looks the gateway up when it
+        // builds a frame for a remote destination, so resolving the raw
+        // destination here would never make the frame sendable. (QEMU's
+        // user-mode network answers ARP for any address, which masked
+        // this; VirtualBox NAT only answers for its own addresses.)
+        uint nextHop = stack.Config.IsLocalSubnet(ip) ? ip : stack.Config.Gateway;
+        if (nextHop == 0)
+            return false;
+
         byte* mac = stackalloc byte[6];
-        if (stack.ArpCache.Lookup(ip, mac))
+        if (stack.ArpCache.Lookup(nextHop, mac))
             return true;
 
         ulong start = Timer.GetUptimeMilliseconds();
@@ -141,12 +152,12 @@ public static unsafe class NetworkPump
             if (now - start - lastProbe >= 500 || lastProbe == 0)
             {
                 lastProbe = now - start;
-                int len = stack.SendArpRequest(ip);
+                int len = stack.SendArpRequest(nextHop);
                 if (len > 0)
                     TransmitTxBuffer(stack, len);
             }
             Pump(stack, 4);
-            if (stack.ArpCache.Lookup(ip, mac))
+            if (stack.ArpCache.Lookup(nextHop, mac))
                 return true;
         }
         return false;

@@ -18,6 +18,7 @@ powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -NoStart   # create 
 ```
 
 - Boots `build\neutrinoos-gui.img`, produced by `bash build/gui-image.sh` from the deploy image (`/root/run.img`: kernel + `/bin` utilities + `/etc`), with VGA console mirrored from early boot, PS/2 input active, boot tests skipped.
+- virtio NIC + NAT is ON by default: `eth0` DHCP-leases `10.0.2.15`, and `dns google.com` / `ping www.google.com` work in the VM. Pass `-NoNet` for a NIC-less VM.
 - The VM window shows the `[Boot]` status timeline and the shell; type commands directly in the window.
 - Serial transcript: `build\vbox-gui-serial.log`.
 - Independent of `scripts/test-vbox.ps1` (which owns the "NeutrinoOSTest" VM); both can coexist.

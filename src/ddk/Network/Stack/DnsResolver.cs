@@ -76,28 +76,16 @@ public unsafe class DnsResolver
         PrintIP(dnsServer);
         Debug.WriteLine();
 
-        // Send query via UDP
+        // Send query via UDP. On a cold ARP cache the first SendUdp
+        // returns 0: the stack queues an ARP request for the next hop
+        // and drops the datagram (BuildIPv4Frame). Transmit whatever the
+        // stack queued (datagram or ARP request) and retry the send on a
+        // 500 ms cadence until the query is out, then keep resending
+        // while waiting (the emulated NIC needs wall-clock time, and a
+        // lost datagram must not fail the lookup).
         ushort localPort = 53000;  // Use a high port for our queries
-        int sent = _stack.SendUdp(dnsServer, localPort, DNS.Port, queryBuffer, queryLen);
-        if (sent == 0)
-        {
-            Debug.WriteLine("[DNS] Failed to send query (ARP needed?)");
-            return 0;
-        }
-
-        // Transmit the UDP packet
-        int pendingLen = _stack.GetPendingTxLen();
-        if (pendingLen > 0)
-        {
-            byte* txBuf = _stack.GetTxBuffer();
-            transmit(txBuf, pendingLen);
-            Debug.Write("[DNS] Query sent: ");
-            Debug.WriteDecimal((uint)pendingLen);
-            Debug.WriteLine(" bytes");
-        }
-
-        // Wait for response
         ulong startTime = Timer.GetUptimeMilliseconds();
+        ulong lastSend = 0;
         byte* rxBuffer = stackalloc byte[1514];
         byte* responseBuffer = stackalloc byte[DNS.MaxMessageSize];
 
@@ -108,6 +96,23 @@ public unsafe class DnsResolver
             {
                 Debug.WriteLine("[DNS] Timeout waiting for response");
                 return 0;
+            }
+
+            if (lastSend == 0 || elapsed - lastSend >= 500)
+            {
+                lastSend = elapsed;
+                int sent = _stack.SendUdp(dnsServer, localPort, DNS.Port, queryBuffer, queryLen);
+                int pendingLen = _stack.GetPendingTxLen();
+                if (pendingLen > 0)
+                {
+                    transmit(_stack.GetTxBuffer(), pendingLen);
+                    if (sent > 0)
+                    {
+                        Debug.Write("[DNS] Query sent: ");
+                        Debug.WriteDecimal((uint)pendingLen);
+                        Debug.WriteLine(" bytes");
+                    }
+                }
             }
 
             // Receive and process frames

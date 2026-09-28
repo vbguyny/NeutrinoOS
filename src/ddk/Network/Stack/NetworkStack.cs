@@ -1613,9 +1613,14 @@ public unsafe partial class NetworkStack
         }
         else if (!_arpCache.Lookup(nextHop, destMac))
         {
-            // Send an ARP request so a retry can resolve the next hop.
-            // (The packet itself is dropped - callers retransmit.)
-            SendArpRequest(nextHop);
+            // Queue an ARP request for the next hop so the caller's pump
+            // can move it: SendArpRequest builds into the TX buffer but
+            // does not queue by itself, and without this the request was
+            // silently never transmitted (callers saw only "send failed"
+            // and timed out on a cold cache). The datagram itself is
+            // dropped - the caller retransmits once the reply lands in
+            // the cache.
+            _pendingTxLen = SendArpRequest(nextHop);
             return 0;
         }
 
