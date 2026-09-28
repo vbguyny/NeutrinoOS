@@ -88,9 +88,9 @@ public static unsafe class AssemblyRunner
 
     private static int RunFull(string path, string[] args)
     {
-        DebugConsole.Write("[run] ");
-        DebugConsole.Write(path);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[run] ");
+        JitTrace.Write(path);
+        JitTrace.WriteLine();
 
         // Phase 5: reuse an already-loaded assembly for the same path.
         // Every AssemblyLoader.Load consumes a fixed table slot and keeps
@@ -220,13 +220,13 @@ public static unsafe class AssemblyRunner
 
         if (sig.ReturnsInt)
         {
-            DebugConsole.Write("[run] exited with code ");
-            DebugConsole.WriteDecimal(exitCode);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[run] exited with code ");
+            JitTrace.WriteDecimal((uint)exitCode);
+            JitTrace.WriteLine();
         }
         else
         {
-            DebugConsole.WriteLine("[run] process exited");
+            JitTrace.WriteLine("[run] process exited");
         }
 
         return exitCode;

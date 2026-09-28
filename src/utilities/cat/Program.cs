@@ -18,15 +18,16 @@ public static class Program
         if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
-        {
-            return Util.Help(
-                "usage: cat [file...]",
-                "  Concatenate files to standard output.",
-                "  With no file (or '-'), reads standard input.");
-        }
+            return Usage();
 
+        // With no file the utility reads standard input. On the interactive
+        // console stdin is at EOF immediately (the shell owns the line
+        // discipline), so a bare `cat` would print nothing - show the usage
+        // instead. Pipes and `<` redirects still read stdin normally.
         if (args.Length == 0)
         {
+            if (!Console.IsInputRedirected)
+                return Usage();
             Console.Write(Util.ReadAllStdin());
             return 0;
         }
@@ -48,5 +49,14 @@ public static class Program
             Console.Write(text);
         }
         return rc;
+    }
+
+    /// <summary>Prints the usage block (shared by --help and a bare `cat`).</summary>
+    private static int Usage()
+    {
+        return Util.Help(
+            "usage: cat [file...]",
+            "  Concatenate files to standard output.",
+            "  With no file (or '-'), reads standard input.");
     }
 }
