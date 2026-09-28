@@ -686,11 +686,11 @@ public static unsafe class Tier0JIT
                 compiler.SetReturnType(true, returnTypeSize);
                 if (returnTypeSize > 8)
                 {
-                    DebugConsole.Write("[Tier0JIT] Struct return: size=");
-                    DebugConsole.WriteDecimal(returnTypeSize);
-                    DebugConsole.Write(" method=0x");
-                    DebugConsole.WriteHex(methodToken);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[Tier0JIT] Struct return: size=");
+                    JitTrace.WriteDecimal(returnTypeSize);
+                    JitTrace.Write(" method=0x");
+                    JitTrace.WriteHex(methodToken);
+                    JitTrace.WriteLine();
                 }
             }
         }
@@ -1674,17 +1674,17 @@ public static unsafe class Tier0JIT
                                 fullToken = 0x1B000000 | typeRid;  // TypeSpec
 
                             uint baseSize = MetadataIntegration.GetTypeSize(fullToken);
-                            DebugConsole.Write("[RetType] GENERICINST tok=0x");
-                            DebugConsole.WriteHex(fullToken);
-                            DebugConsole.Write(" baseSize=");
-                            DebugConsole.WriteDecimal(baseSize);
-                            DebugConsole.Write(" argc=");
-                            DebugConsole.WriteDecimal(argCount);
+                            JitTrace.Write("[RetType] GENERICINST tok=0x");
+                            JitTrace.WriteHex(fullToken);
+                            JitTrace.Write(" baseSize=");
+                            JitTrace.WriteDecimal(baseSize);
+                            JitTrace.Write(" argc=");
+                            JitTrace.WriteDecimal(argCount);
                             if (argCount > 0) {
-                                DebugConsole.Write(" arg0sz=");
-                                DebugConsole.WriteDecimal(typeArgSizes[0]);
+                                JitTrace.Write(" arg0sz=");
+                                JitTrace.WriteDecimal(typeArgSizes[0]);
                             }
-                            DebugConsole.WriteLine();
+                            JitTrace.WriteLine();
                             // Span<T>, ReadOnlySpan<T> and other fixed-size generic value types
                             // that don't have embedded T (just ref T which is always 8 bytes)
                             // Must check BEFORE Nullable pattern since Span<byte> has argCount==1

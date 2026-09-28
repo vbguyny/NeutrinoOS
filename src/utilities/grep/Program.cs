@@ -59,7 +59,22 @@ public static class Program
         string pattern = operands[0];
         bool fromStdin = operands.Count == 1;
         if (fromStdin)
+        {
+            // Interactive stdin blocks forever (the shell owns the line
+            // discipline); show the usage instead of hanging. Pipes and
+            // '<' redirects still read stdin normally.
+            if (!Console.IsInputRedirected)
+            {
+                return Util.Help(
+                    "usage: grep [-i] [-v] pattern [file...]",
+                    "  -i   case-insensitive",
+                    "  -v   print non-matching lines",
+                    "  Pattern is a literal substring (no regex in Phase 5).",
+                    "  With no file (or '-'), reads standard input.",
+                    "  Exit: 0 matched, 1 no match, 2 error.");
+            }
             operands.Add("-");
+        }
 
         if (ignoreCase)
             pattern = pattern.ToLower();

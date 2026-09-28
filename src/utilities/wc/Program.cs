@@ -56,7 +56,21 @@ public static class Program
 
         bool fromStdin = files.Count == 0;
         if (fromStdin)
+        {
+            // Interactive stdin blocks forever (the shell owns the line
+            // discipline); show the usage instead of hanging. Pipes and
+            // '<' redirects still read stdin normally.
+            if (!Console.IsInputRedirected)
+            {
+                return Util.Help(
+                    "usage: wc [-l] [-w] [-c] [file...]",
+                    "  -l   count lines",
+                    "  -w   count words",
+                    "  -c   count characters",
+                    "  With no file (or '-'), reads standard input.");
+            }
             files.Add("-");
+        }
 
         int rc = 0;
         long totalLines = 0, totalWords = 0, totalChars = 0;

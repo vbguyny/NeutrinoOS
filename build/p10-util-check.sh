@@ -18,6 +18,7 @@ mkfifo /root/qin-util
   -drive if=pflash,format=raw,file=/root/neutrino/build/x64/OVMF_VARS-utilcheck.fd \
   -drive id=bootdisk,if=none,format=raw,file="$WORK/run.img" \
   -device ide-hd,drive=bootdisk,bus=ide.0 \
+  -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
   -display none -serial stdio -no-reboot -no-shutdown > "$LOG" 2>&1 ) &
 
 for i in $(seq 1 120); do
@@ -54,9 +55,15 @@ cmd "df"
 cmd "gc" 4
 cmd "cpupower" 3
 cmd "usb" 3
+cmd "ifconfig" 3
+cmd "netstat" 3
 cmd "cp"
 cmd "mv"
 cmd "rm"
+cmd "head"
+cmd "tail"
+cmd "wc"
+cmd "grep"
 cmd "head /test.txt"
 cmd "tail /test.txt"
 cmd "wc /test.txt"

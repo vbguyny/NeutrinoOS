@@ -45,8 +45,21 @@ public static class Program
             }
         }
 
+        // With no file the utility reads standard input. On the interactive
+        // console that read blocks forever (the shell owns the line
+        // discipline), so show the usage instead; pipes and '<' redirects
+        // still read stdin normally.
         if (files.Count == 0)
+        {
+            if (!Console.IsInputRedirected)
+            {
+                return Util.Help(
+                    "usage: tail [-n N] [file...]",
+                    "  -n N   print the last N lines (default 10)",
+                    "  With no file (or '-'), reads standard input.");
+            }
             files.Add("-");
+        }
 
         int rc = 0;
         for (int i = 0; i < files.Count; i++)

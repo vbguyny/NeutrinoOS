@@ -1280,10 +1280,10 @@ public unsafe struct ILCompiler
             // Debug: trace locals for methods with Span locals
             if (hasSpanLocal)
             {
-                DebugConsole.Write("[Local] ");
-                DebugConsole.WriteDecimal((uint)i);
-                DebugConsole.Write(" typeSize=");
-                DebugConsole.WriteDecimal((uint)size);
+                JitTrace.Write("[Local] ");
+                JitTrace.WriteDecimal((uint)i);
+                JitTrace.Write(" typeSize=");
+                JitTrace.WriteDecimal((uint)size);
             }
 
             // Minimum 64 bytes per slot, round up to 8-byte alignment
@@ -1297,9 +1297,9 @@ public unsafe struct ILCompiler
 
             if (hasSpanLocal)
             {
-                DebugConsole.Write(" offset=-");
-                DebugConsole.WriteDecimal((uint)(-_localOffset[i]));
-                DebugConsole.WriteLine();
+                JitTrace.Write(" offset=-");
+                JitTrace.WriteDecimal((uint)(-_localOffset[i]));
+                JitTrace.WriteLine();
             }
         }
 
@@ -2754,19 +2754,19 @@ public unsafe struct ILCompiler
             // Debug: trace 16-byte struct stlocs (Span returns)
             if (copySize == 16)
             {
-                DebugConsole.Write("[stloc16] idx=");
-                DebugConsole.WriteDecimal((uint)index);
-                DebugConsole.Write(" destOff=");
-                DebugConsole.WriteDecimal((uint)(-destOffset));
-                DebugConsole.Write(" stackSz=");
-                DebugConsole.WriteDecimal((uint)stackByteSize);
-                DebugConsole.Write(" tok=0x");
-                DebugConsole.WriteHex(_debugMethodToken);
+                JitTrace.Write("[stloc16] idx=");
+                JitTrace.WriteDecimal((uint)index);
+                JitTrace.Write(" destOff=");
+                JitTrace.WriteDecimal((uint)(-destOffset));
+                JitTrace.Write(" stackSz=");
+                JitTrace.WriteDecimal((uint)stackByteSize);
+                JitTrace.Write(" tok=0x");
+                JitTrace.WriteHex(_debugMethodToken);
                 if (stackByteSize != 16)
                 {
-                    DebugConsole.Write(" MISMATCH!");
+                    JitTrace.Write(" MISMATCH!");
                 }
-                DebugConsole.WriteLine();
+                JitTrace.WriteLine();
             }
 
             // Copy from [RSP] (top of eval stack) into the local slot

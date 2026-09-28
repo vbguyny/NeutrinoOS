@@ -152,11 +152,11 @@ public static unsafe class JitStubs
         }
 
         // Slow path: Need to compile the method
-        DebugConsole.Write("[JitStubs] Lazy compile 0x");
-        DebugConsole.WriteHex(methodToken);
-        DebugConsole.Write(" asm ");
-        DebugConsole.WriteDecimal(assemblyId);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[JitStubs] Lazy compile 0x");
+        JitTrace.WriteHex(methodToken);
+        JitTrace.Write(" asm ");
+        JitTrace.WriteDecimal(assemblyId);
+        JitTrace.WriteLine();
 
         var result = Tier0JIT.CompileMethod(assemblyId, methodToken);
         if (!result.Success)
