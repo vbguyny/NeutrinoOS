@@ -7,6 +7,7 @@
 // connect/disconnect changes (called from ShellMain.IdlePump, the same
 // place the Phase 8 PCIe hot-plug scan runs).
 
+using ProtonOS.Runtime;
 using System;
 using ProtonOS.Platform;
 using ProtonOS.Usb.Xhci;
@@ -73,8 +74,8 @@ public static class UsbTrace
 {
     public static void Log(string message)
     {
-        DebugConsole.Write("[usb] ");
-        DebugConsole.WriteLine(message);
+        JitTrace.Write("[usb] ");
+        JitTrace.WriteLine(message);
     }
 }
 
@@ -504,8 +505,8 @@ public static unsafe class UsbStack
 
     private static void Log(string message)
     {
-        DebugConsole.Write("[usb] ");
-        DebugConsole.WriteLine(message);
+        JitTrace.Write("[usb] ");
+        JitTrace.WriteLine(message);
         _ = _initLogged;
     }
 

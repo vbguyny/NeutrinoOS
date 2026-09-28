@@ -23,6 +23,7 @@
 // exceptions on the probe path; all table access through raw pointers
 // (identity-mapped physical addresses, same as the Phase 1 ACPI parser).
 
+using ProtonOS.Runtime;
 using System;
 
 namespace ProtonOS.Platform;
@@ -189,8 +190,8 @@ public static unsafe class PowerManagement
         _haveS5 = _pm1aCntPort != 0;
         _available = _haveS5 || _haveResetReg;
 
-        DebugConsole.Write("[power] ACPI: ");
-        DebugConsole.WriteLine(Describe());
+        JitTrace.Write("[power] ACPI: ");
+        JitTrace.WriteLine(Describe());
         return _available;
     }
 
@@ -207,8 +208,8 @@ public static unsafe class PowerManagement
             return;
         }
 
-        DebugConsole.Write("[power] ACPI S5 power off: ");
-        DebugConsole.WriteLine(Describe());
+        JitTrace.Write("[power] ACPI S5 power off: ");
+        JitTrace.WriteLine(Describe());
 
         ulong valueA = (_slpTypA << Pm1CntSleepTypeShift) | Pm1CntSleepEnable;
         WritePm1Cnt(_pm1aCntPort, valueA);
@@ -231,26 +232,26 @@ public static unsafe class PowerManagement
     {
         if (!Initialize())
         {
-            DebugConsole.WriteLine("[power] reboot: no ACPI tables; using 0xCF9");
+            JitTrace.WriteLine("[power] reboot: no ACPI tables; using 0xCF9");
         }
 
         if (_haveResetReg)
         {
-            DebugConsole.Write("[power] ACPI reset via port 0x");
-            DebugConsole.WriteHex(_resetRegPort);
-            DebugConsole.Write(" value 0x");
-            DebugConsole.WriteHex(_resetValue);
-            DebugConsole.WriteLine();
+            JitTrace.Write("[power] ACPI reset via port 0x");
+            JitTrace.WriteHex(_resetRegPort);
+            JitTrace.Write(" value 0x");
+            JitTrace.WriteHex(_resetValue);
+            JitTrace.WriteLine();
             ProtonOS.Arch.CPU.OutByte(_resetRegPort, _resetValue);
         }
         else
         {
-            DebugConsole.WriteLine("[power] reset via PCI port 0xCF9 (0x06)");
+            JitTrace.WriteLine("[power] reset via PCI port 0xCF9 (0x06)");
             ProtonOS.Arch.CPU.OutByte(PciResetPort, PciResetValue);
         }
 
         // Fallback chain if the first pulse was ignored.
-        DebugConsole.WriteLine("[power] reset fallback: keyboard controller 0x64 <- 0xFE");
+        JitTrace.WriteLine("[power] reset fallback: keyboard controller 0x64 <- 0xFE");
         ProtonOS.Arch.CPU.OutByte(KbcCommandPort, KbcResetCommand);
         ProtonOS.Arch.CPU.HaltForever();
     }
@@ -266,7 +267,7 @@ public static unsafe class PowerManagement
     {
         if (!Initialize() || !_haveS3)
         {
-            DebugConsole.WriteLine("[power] sleep: ACPI S3 is not available on this machine");
+            JitTrace.WriteLine("[power] sleep: ACPI S3 is not available on this machine");
             return false;
         }
 
@@ -280,22 +281,22 @@ public static unsafe class PowerManagement
             pa[0] = 3;
             ulong r;
             if (Aml.Invoke((byte)'_', (byte)'P', (byte)'T', (byte)'S', pa, 1, out r))
-                DebugConsole.WriteLine("[power] _PTS(3) evaluated");
+                JitTrace.WriteLine("[power] _PTS(3) evaluated");
             else
-                DebugConsole.WriteLine("[power] _PTS(3) evaluation aborted (see [aml] log)");
+                JitTrace.WriteLine("[power] _PTS(3) evaluation aborted (see [aml] log)");
         }
         else
         {
-            DebugConsole.WriteLine("[power] no _PTS method in firmware AML");
+            JitTrace.WriteLine("[power] no _PTS method in firmware AML");
         }
 
         // 2. Enter S3: SLP_TYP from \_S3 | SLP_EN.
-        DebugConsole.Write("[power] ACPI enter S3 (suspend to RAM): PM1a_CNT=0x");
-        DebugConsole.WriteHex(_pm1aCntPort);
-        DebugConsole.Write(" SLP_TYP=");
-        DebugConsole.WriteDecimal((int)_slpTypA3);
-        DebugConsole.Write(_slpTypFromAml3 ? " (\\_S3)" : "");
-        DebugConsole.WriteLine();
+        JitTrace.Write("[power] ACPI enter S3 (suspend to RAM): PM1a_CNT=0x");
+        JitTrace.WriteHex(_pm1aCntPort);
+        JitTrace.Write(" SLP_TYP=");
+        JitTrace.WriteDecimal((int)_slpTypA3);
+        JitTrace.Write(_slpTypFromAml3 ? " (\\_S3)" : "");
+        JitTrace.WriteLine();
 
         ulong valueA = (_slpTypA3 << Pm1CntSleepTypeShift) | Pm1CntSleepEnable;
         WritePm1Cnt(_pm1aCntPort, valueA);
@@ -307,7 +308,7 @@ public static unsafe class PowerManagement
 
         // 3. Execution resumes here after the wake event (RTC alarm,
         //    power button, QEMU monitor system_wakeup, ...).
-        DebugConsole.WriteLine("[power] resumed from S3");
+        JitTrace.WriteLine("[power] resumed from S3");
 
         if (Aml.HasMethod((byte)'_', (byte)'W', (byte)'A', (byte)'K'))
         {
@@ -315,13 +316,13 @@ public static unsafe class PowerManagement
             wa[0] = 3;
             ulong r;
             if (Aml.Invoke((byte)'_', (byte)'W', (byte)'A', (byte)'K', wa, 1, out r))
-                DebugConsole.WriteLine("[power] _WAK(3) evaluated");
+                JitTrace.WriteLine("[power] _WAK(3) evaluated");
             else
-                DebugConsole.WriteLine("[power] _WAK(3) evaluation aborted (see [aml] log)");
+                JitTrace.WriteLine("[power] _WAK(3) evaluation aborted (see [aml] log)");
         }
         else
         {
-            DebugConsole.WriteLine("[power] no _WAK method in firmware AML");
+            JitTrace.WriteLine("[power] no _WAK method in firmware AML");
         }
 
         return true;

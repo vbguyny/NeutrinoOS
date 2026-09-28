@@ -11,6 +11,7 @@
 //
 // Every built-in prints a usage line for --help (or -h).
 
+using ProtonOS.Runtime;
 using System;
 using System.IO;
 using ProtonOS.Platform;
@@ -687,35 +688,35 @@ public static class ShellBuiltins
         var controller = ProtonOS.Usb.UsbStack.Controller;
         if (controller == null)
         {
-            Console.WriteLine("[usb] no xHCI controller bound");
+            JitTrace.WriteLine("[usb] no xHCI controller bound");
             return true;
         }
 
-        Console.Write("[usb] xHCI: ports=");
-        Console.Write(controller.MaxPorts.ToString());
-        Console.Write(" devices=");
-        Console.Write(ProtonOS.Usb.UsbStack.DeviceCount.ToString());
-        Console.Write(" failures=");
-        Console.Write(ProtonOS.Usb.UsbStack.EnumerationFailures.ToString());
-        Console.WriteLine();
+        JitTrace.Write("[usb] xHCI: ports=");
+        JitTrace.Write(controller.MaxPorts.ToString());
+        JitTrace.Write(" devices=");
+        JitTrace.Write(ProtonOS.Usb.UsbStack.DeviceCount.ToString());
+        JitTrace.Write(" failures=");
+        JitTrace.Write(ProtonOS.Usb.UsbStack.EnumerationFailures.ToString());
+        JitTrace.WriteLine();
 
         for (int i = 0; i < ProtonOS.Usb.UsbStack.DeviceCount; i++)
         {
             var dev = ProtonOS.Usb.UsbStack.GetDevice(i);
             if (dev == null)
                 continue;
-            Console.Write("[usb] dev");
-            Console.Write(i.ToString());
-            Console.Write(": port=");
-            Console.Write((dev.Port + 1).ToString());
-            Console.Write(" ");
-            Console.Write(ProtonOS.Usb.UsbStack.SpeedName(dev.Speed));
-            Console.Write(" ");
-            Console.Write(Hex4(dev.VendorId));
-            Console.Write(":");
-            Console.Write(Hex4(dev.ProductId));
-            Console.Write(" ");
-            Console.WriteLine(dev.Status);
+            JitTrace.Write("[usb] dev");
+            JitTrace.Write(i.ToString());
+            JitTrace.Write(": port=");
+            JitTrace.Write((dev.Port + 1).ToString());
+            JitTrace.Write(" ");
+            JitTrace.Write(ProtonOS.Usb.UsbStack.SpeedName(dev.Speed));
+            JitTrace.Write(" ");
+            JitTrace.Write(Hex4(dev.VendorId));
+            JitTrace.Write(":");
+            JitTrace.Write(Hex4(dev.ProductId));
+            JitTrace.Write(" ");
+            JitTrace.WriteLine(dev.Status);
         }
 
         for (int i = 0; i < ProtonOS.Usb.UsbStorage.DiskCount; i++)
@@ -723,16 +724,16 @@ public static class ShellBuiltins
             var disk = ProtonOS.Usb.UsbStorage.GetDisk(i);
             if (disk == null)
                 continue;
-            Console.Write("[usb] disk ");
-            Console.Write(ProtonOS.Usb.UsbStorage.DiskName(disk));
-            Console.Write(": " );
-            Console.Write(disk.Vendor);
-            Console.Write(" ");
-            Console.Write(disk.Product);
-            Console.Write(" sectors=");
-            Console.Write(disk.BlockCount.ToString());
-            Console.Write(" ready=");
-            Console.WriteLine(disk.Ready ? "1" : "0");
+            JitTrace.Write("[usb] disk ");
+            JitTrace.Write(ProtonOS.Usb.UsbStorage.DiskName(disk));
+            JitTrace.Write(": ");
+            JitTrace.Write(disk.Vendor);
+            JitTrace.Write(" ");
+            JitTrace.Write(disk.Product);
+            JitTrace.Write(" sectors=");
+            JitTrace.Write(disk.BlockCount.ToString());
+            JitTrace.Write(" ready=");
+            JitTrace.WriteLine(disk.Ready ? "1" : "0");
         }
 
         for (int i = 0; i < ProtonOS.Usb.UsbSerial.PortCount; i++)
@@ -740,13 +741,13 @@ public static class ShellBuiltins
             var port = ProtonOS.Usb.UsbSerial.GetPort(i);
             if (port == null)
                 continue;
-            Console.Write("[usb] serial ");
-            Console.Write(port.Name);
-            Console.Write(": ready=");
-            Console.Write(port.Ready ? "1" : "0");
-            Console.Write(" rx=");
-            Console.Write(ProtonOS.Usb.UsbSerial.Available(port).ToString());
-            Console.WriteLine();
+            JitTrace.Write("[usb] serial ");
+            JitTrace.Write(port.Name);
+            JitTrace.Write(": ready=");
+            JitTrace.Write(port.Ready ? "1" : "0");
+            JitTrace.Write(" rx=");
+            JitTrace.Write(ProtonOS.Usb.UsbSerial.Available(port).ToString());
+            JitTrace.WriteLine();
         }
 
         return true;

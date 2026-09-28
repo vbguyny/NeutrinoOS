@@ -36,11 +36,14 @@ public static class JitTrace
     public static void WriteHex(ulong value) => DebugConsole.WriteHex(value);
 
     [Conditional("NEUTRINO_TRACE")]
-    public static void WriteDecimal(uint value) => DebugConsole.WriteDecimal(value);
+    public static void WriteDecimal(long value) => DebugConsole.WriteDecimal(value < 0 ? 0UL : (ulong)value);
 
     [Conditional("NEUTRINO_TRACE")]
     public static void WriteByte(byte value) => DebugConsole.WriteByte(value);
 
     [Conditional("NEUTRINO_TRACE")]
     public static void WriteChar(char value) => DebugConsole.WriteChar(value);
+
+    [Conditional("NEUTRINO_TRACE")]
+    public static void Write(long value) => DebugConsole.WriteDecimal(value < 0 ? 0UL : (ulong)value);
 }

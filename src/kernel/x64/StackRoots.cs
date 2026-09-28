@@ -119,14 +119,14 @@ public static unsafe class StackRoots
                     // Print when we find roots
                     if (frameRoots > 0)
                     {
-                        DebugConsole.Write("  [StackRoot] Frame ");
-                        DebugConsole.WriteDecimal((uint)frameIndex);
-                        if (isJitFrame) DebugConsole.Write(" (JIT)");
-                        DebugConsole.Write(" offset=");
-                        DebugConsole.WriteDecimal(codeOffset);
-                        DebugConsole.Write(": ");
-                        DebugConsole.WriteDecimal((uint)frameRoots);
-                        DebugConsole.WriteLine(" root(s)");
+                        JitTrace.Write("  [StackRoot] Frame ");
+                        JitTrace.WriteDecimal((uint)frameIndex);
+                        if (isJitFrame) JitTrace.Write(" (JIT)");
+                        JitTrace.Write(" offset=");
+                        JitTrace.WriteDecimal(codeOffset);
+                        JitTrace.Write(": ");
+                        JitTrace.WriteDecimal((uint)frameRoots);
+                        JitTrace.WriteLine(" root(s)");
                     }
                     totalRoots += frameRoots;
                 }
@@ -150,15 +150,15 @@ public static unsafe class StackRoots
         }
 
         // Print summary for current thread
-        DebugConsole.Write("  [Stack] ");
-        DebugConsole.WriteDecimal((uint)totalFrames);
-        DebugConsole.Write(" frames, ");
-        DebugConsole.WriteDecimal((uint)framesWithSlots);
-        DebugConsole.Write(" with slots, ");
-        DebugConsole.WriteDecimal((uint)liveSlotsChecked);
-        DebugConsole.Write(" live, ");
-        DebugConsole.WriteDecimal((uint)slotsInHeap);
-        DebugConsole.WriteLine(" in heap");
+        JitTrace.Write("  [Stack] ");
+        JitTrace.WriteDecimal((uint)totalFrames);
+        JitTrace.Write(" frames, ");
+        JitTrace.WriteDecimal((uint)framesWithSlots);
+        JitTrace.Write(" with slots, ");
+        JitTrace.WriteDecimal((uint)liveSlotsChecked);
+        JitTrace.Write(" live, ");
+        JitTrace.WriteDecimal((uint)slotsInHeap);
+        JitTrace.WriteLine(" in heap");
 
         return totalRoots;
     }
@@ -235,34 +235,34 @@ public static unsafe class StackRoots
                 else if (objRef != null)
                 {
                     // Debug: print live slot not in heap with slot details
-                    DebugConsole.Write("    [NotInHeap] slot=");
-                    DebugConsole.WriteDecimal(slotIndex);
+                    JitTrace.Write("    [NotInHeap] slot=");
+                    JitTrace.WriteDecimal(slotIndex);
                     if (slot.IsRegister)
                     {
-                        DebugConsole.Write(" REG=");
-                        DebugConsole.WriteDecimal(slot.RegisterNumber);
+                        JitTrace.Write(" REG=");
+                        JitTrace.WriteDecimal(slot.RegisterNumber);
                     }
                     else
                     {
-                        DebugConsole.Write(" STK base=");
-                        DebugConsole.WriteDecimal((uint)slot.StackBase);
-                        DebugConsole.Write(" off=");
+                        JitTrace.Write(" STK base=");
+                        JitTrace.WriteDecimal((uint)slot.StackBase);
+                        JitTrace.Write(" off=");
                         // Print signed offset
                         if (slot.StackOffset < 0)
                         {
-                            DebugConsole.Write("-");
-                            DebugConsole.WriteDecimal((uint)(-slot.StackOffset));
+                            JitTrace.Write("-");
+                            JitTrace.WriteDecimal((uint)(-slot.StackOffset));
                         }
                         else
                         {
-                            DebugConsole.WriteDecimal((uint)slot.StackOffset);
+                            JitTrace.WriteDecimal((uint)slot.StackOffset);
                         }
                     }
-                    DebugConsole.Write(" addr=0x");
-                    DebugConsole.WriteHex((ulong)slotAddress);
-                    DebugConsole.Write(" val=0x");
-                    DebugConsole.WriteHex((ulong)objRef);
-                    DebugConsole.WriteLine();
+                    JitTrace.Write(" addr=0x");
+                    JitTrace.WriteHex((ulong)slotAddress);
+                    JitTrace.Write(" val=0x");
+                    JitTrace.WriteHex((ulong)objRef);
+                    JitTrace.WriteLine();
                 }
             }
         }

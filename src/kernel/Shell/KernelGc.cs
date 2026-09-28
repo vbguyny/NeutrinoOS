@@ -6,6 +6,7 @@
 // managed System.GC.Collect() path (korlib) is used by the collection
 // itself so the shell and JIT-compiled code share one GC.
 
+using ProtonOS.Runtime;
 using System;
 using ProtonOS.Memory;
 using ProtonOS.Arch;
@@ -37,29 +38,29 @@ public static class KernelGc
 
         ProtonOS.Memory.GC.GetStats(out ulong collections, out ulong lastMarked, out ulong lastRoots);
 
-        Console.WriteLine("[gc] NeutrinoOS garbage collection (mark phase) complete");
-        Console.Write("[gc] heap before: ");
-        Console.Write(FormatKb(socBefore + lohBefore));
-        Console.Write(" (");
-        Console.Write((long)(objectsBefore + lohObjectsBefore));
-        Console.Write(" objects)   after: ");
-        Console.Write(FormatKb(socAfter + lohAfter));
-        Console.Write(" (");
-        Console.Write((long)(objectsAfter + lohObjectsAfter));
-        Console.WriteLine(" objects)");
-        Console.Write("[gc] marked ");
-        Console.Write(marked >= 0 ? (long)marked : 0L);
-        Console.Write(" objects from ");
-        Console.Write((long)lastRoots);
-        Console.Write(" roots        duration: ");
-        Console.Write((long)elapsedMs);
-        Console.WriteLine(" ms");
-        Console.Write("[gc] collections: ");
-        Console.Write((long)collections);
-        Console.Write("   free (SOH): ");
-        Console.WriteLine(FormatKb(freeAfter));
-        Console.WriteLine("[gc] note: sweep/compaction run as allocation-driven kernel steps;");
-        Console.WriteLine("[gc]       manual collection is mark-only in Phase 5 (PHASE5-REPORT.md).");
+        JitTrace.WriteLine("[gc] NeutrinoOS garbage collection (mark phase) complete");
+        JitTrace.Write("[gc] heap before: ");
+        JitTrace.Write(FormatKb(socBefore + lohBefore));
+        JitTrace.Write(" (");
+        JitTrace.Write((long)(objectsBefore + lohObjectsBefore));
+        JitTrace.Write(" objects)   after: ");
+        JitTrace.Write(FormatKb(socAfter + lohAfter));
+        JitTrace.Write(" (");
+        JitTrace.Write((long)(objectsAfter + lohObjectsAfter));
+        JitTrace.WriteLine(" objects)");
+        JitTrace.Write("[gc] marked ");
+        JitTrace.Write(marked >= 0 ? (long)marked : 0L);
+        JitTrace.Write(" objects from ");
+        JitTrace.Write((long)lastRoots);
+        JitTrace.Write(" roots        duration: ");
+        JitTrace.Write((long)elapsedMs);
+        JitTrace.WriteLine(" ms");
+        JitTrace.Write("[gc] collections: ");
+        JitTrace.Write((long)collections);
+        JitTrace.Write("   free (SOH): ");
+        JitTrace.WriteLine(FormatKb(freeAfter));
+        JitTrace.WriteLine("[gc] note: sweep/compaction run as allocation-driven kernel steps;");
+        JitTrace.WriteLine("[gc]       manual collection is mark-only in Phase 5 (PHASE5-REPORT.md).");
     }
 
     /// <summary>Formats a byte count as "N.N KB".</summary>

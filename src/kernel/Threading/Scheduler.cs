@@ -3,6 +3,7 @@
 // Designed for future Win32 PAL compatibility (CreateThread, WaitForSingleObject, etc.)
 // Uses heap allocation for thread structures - no artificial thread limits.
 
+using ProtonOS.Runtime;
 using System.Runtime.InteropServices;
 using ProtonOS.Platform;
 using ProtonOS.Memory;
@@ -77,7 +78,7 @@ public static unsafe class Scheduler
         if (_initialized)
             return;
 
-        DebugConsole.WriteLine("[Sched] Initializing scheduler...");
+        JitTrace.WriteLine("[Sched] Initializing scheduler...");
 
         _bspCurrentThread = null;
         _bspReadyQueueHead = null;
@@ -119,7 +120,7 @@ public static unsafe class Scheduler
         _threadCount = 1;
 
         _initialized = true;
-        DebugConsole.WriteLine(string.Format("[Sched] Initialized, boot thread ID: 0x{0}",
+        JitTrace.WriteLine(string.Format("[Sched] Initialized, boot thread ID: 0x{0}",
             bootThread->Id.ToString("X4", null)));
     }
 
@@ -147,7 +148,7 @@ public static unsafe class Scheduler
             perCpu->ReadyQueueCount = count;
 
             _smpEnabled = true;
-            DebugConsole.WriteLine("[Sched] SMP mode enabled (per-CPU queues active)");
+            JitTrace.WriteLine("[Sched] SMP mode enabled (per-CPU queues active)");
         }
     }
 
@@ -208,7 +209,7 @@ public static unsafe class Scheduler
     public static void EnableScheduling()
     {
         _schedulingEnabled = true;
-        DebugConsole.WriteLine("[Sched] Preemptive scheduling enabled");
+        JitTrace.WriteLine("[Sched] Preemptive scheduling enabled");
     }
 
     /// <summary>
@@ -324,7 +325,7 @@ public static unsafe class Scheduler
 
         _globalLock.Release();
 
-        DebugConsole.WriteLine(string.Format("[Sched] Created thread 0x{0} stack 0x{1}",
+        JitTrace.WriteLine(string.Format("[Sched] Created thread 0x{0} stack 0x{1}",
             threadId.ToString("X4", null), stackBase.ToString("X", null)));
 
         return thread;

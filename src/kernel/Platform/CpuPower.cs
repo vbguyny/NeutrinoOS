@@ -25,6 +25,7 @@
 // Output lines are stable ("[cpupower] ...") so acceptance scripts can
 // assert on them.
 
+using ProtonOS.Runtime;
 using System;
 using ProtonOS.Arch;
 
@@ -113,20 +114,20 @@ public static unsafe class CpuPower
         if (!_firmwareProbed)
             ProbeFirmware();
 
-        DebugConsole.Write("[cpupower] CPU: monitor=");
-        DebugConsole.Write(_hasMonitor ? "1" : "0");
-        DebugConsole.Write(" mwait=");
-        DebugConsole.Write(_hasMwait ? "1" : "0");
-        DebugConsole.Write(" idle=");
-        DebugConsole.WriteLine(MwaitCapable && _cstFromFirmware ? "MWAIT C1" : "HLT (C1)");
+        JitTrace.Write("[cpupower] CPU: monitor=");
+        JitTrace.Write(_hasMonitor ? "1" : "0");
+        JitTrace.Write(" mwait=");
+        JitTrace.Write(_hasMwait ? "1" : "0");
+        JitTrace.Write(" idle=");
+        JitTrace.WriteLine(MwaitCapable && _cstFromFirmware ? "MWAIT C1" : "HLT (C1)");
 
         // ---- C-states --------------------------------------------------
         Aml.Pkg cst;
         if (_cstFromFirmware && Aml.OpenNamedPackage((byte)'_', (byte)'C', (byte)'S', (byte)'T', out cst))
         {
-            DebugConsole.Write("[cpupower] C-states: ");
-            DebugConsole.WriteDecimal(_cstCount);
-            DebugConsole.WriteLine(" entries (_CST)");
+            JitTrace.Write("[cpupower] C-states: ");
+            JitTrace.WriteDecimal(_cstCount);
+            JitTrace.WriteLine(" entries (_CST)");
             int shown = 0;
             for (int i = 0; i < _cstCount && shown < 8; i++)
             {
@@ -140,28 +141,28 @@ public static unsafe class CpuPower
                     latency = 0;
                 if (!Aml.PkgInt(in sub, 2, out power))
                     power = 0;
-                DebugConsole.Write("[cpupower]   C type=");
-                DebugConsole.WriteDecimal((int)type);
-                DebugConsole.Write(" latency=");
-                DebugConsole.WriteDecimal((int)latency);
-                DebugConsole.Write(" power=");
-                DebugConsole.WriteDecimal((int)power);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[cpupower]   C type=");
+                JitTrace.WriteDecimal((int)type);
+                JitTrace.Write(" latency=");
+                JitTrace.WriteDecimal((int)latency);
+                JitTrace.Write(" power=");
+                JitTrace.WriteDecimal((int)power);
+                JitTrace.WriteLine();
                 shown++;
             }
         }
         else
         {
-            DebugConsole.WriteLine("[cpupower] C-states: none exposed by firmware (_CST absent); C1 = HLT");
+            JitTrace.WriteLine("[cpupower] C-states: none exposed by firmware (_CST absent); C1 = HLT");
         }
 
         // ---- P-states --------------------------------------------------
         Aml.Pkg pss;
         if (_pssFromFirmware && Aml.OpenNamedPackage((byte)'_', (byte)'P', (byte)'S', (byte)'S', out pss))
         {
-            DebugConsole.Write("[cpupower] P-states: ");
-            DebugConsole.WriteDecimal(_pssCount);
-            DebugConsole.WriteLine(" entries (_PSS)");
+            JitTrace.Write("[cpupower] P-states: ");
+            JitTrace.WriteDecimal(_pssCount);
+            JitTrace.WriteLine(" entries (_PSS)");
             int shown = 0;
             for (int i = 0; i < _pssCount && shown < 8; i++)
             {
@@ -173,18 +174,18 @@ public static unsafe class CpuPower
                     continue;
                 if (!Aml.PkgInt(in sub, 1, out power))
                     power = 0;
-                DebugConsole.Write("[cpupower]   P freq=");
-                DebugConsole.WriteDecimal((int)freq);
-                DebugConsole.Write(" MHz power=");
-                DebugConsole.WriteDecimal((int)power);
-                DebugConsole.Write(" mW");
-                DebugConsole.WriteLine();
+                JitTrace.Write("[cpupower]   P freq=");
+                JitTrace.WriteDecimal((int)freq);
+                JitTrace.Write(" MHz power=");
+                JitTrace.WriteDecimal((int)power);
+                JitTrace.Write(" mW");
+                JitTrace.WriteLine();
                 shown++;
             }
         }
         else
         {
-            DebugConsole.WriteLine("[cpupower] P-states: none exposed by firmware (_PSS absent)");
+            JitTrace.WriteLine("[cpupower] P-states: none exposed by firmware (_PSS absent)");
         }
     }
 

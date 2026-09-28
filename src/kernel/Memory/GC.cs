@@ -77,7 +77,7 @@ public static unsafe class GC
 
         _initialized = true;
 
-        DebugConsole.WriteLine(string.Format("[GC] Initialized, mark stack at 0x{0} (capacity={1})",
+        JitTrace.WriteLine(string.Format("[GC] Initialized, mark stack at 0x{0} (capacity={1})",
             ((ulong)_markStack).ToString("X", null), MarkStackCapacity));
 
         return true;
@@ -105,7 +105,7 @@ public static unsafe class GC
         _gcInProgress = true;
         _collectionsPerformed++;
 
-        DebugConsole.WriteLine(string.Format("[GC] Starting collection #{0}{1}...",
+        JitTrace.WriteLine(string.Format("[GC] Starting collection #{0}{1}...",
             _collectionsPerformed, forceCompact ? " (compacting)" : ""));
 
         // Phase 1: Stop the world
@@ -126,7 +126,7 @@ public static unsafe class GC
         // Process the mark stack (transitive closure)
         ProcessMarkStack();
 
-        DebugConsole.WriteLine(string.Format("[GC] Mark phase complete: {0} roots, {1} objects marked",
+        JitTrace.WriteLine(string.Format("[GC] Mark phase complete: {0} roots, {1} objects marked",
             _rootsFound, _objectsMarked));
 
         // Phase 4a: Sweep LOH (LOH is never compacted)
@@ -138,7 +138,7 @@ public static unsafe class GC
         {
             // Compaction mode - use GCCompact
             GCCompact.Compact();
-            DebugConsole.WriteLine("[GC] SOH compacted");
+            JitTrace.WriteLine("[GC] SOH compacted");
         }
         else
         {
@@ -179,7 +179,7 @@ public static unsafe class GC
 
         if (fragmentationPercent > 25)
         {
-            DebugConsole.WriteLine(string.Format("[GC] High fragmentation: {0}% - will compact", fragmentationPercent));
+            JitTrace.WriteLine(string.Format("[GC] High fragmentation: {0}% - will compact", fragmentationPercent));
             return true;
         }
 
@@ -194,7 +194,7 @@ public static unsafe class GC
         if (!Scheduler.IsInitialized)
             return;
 
-        DebugConsole.WriteLine("[GC] Stopping the world...");
+        JitTrace.WriteLine("[GC] Stopping the world...");
 
         // Disable scheduling to prevent new context switches
         Scheduler.DisableScheduling();
@@ -229,7 +229,7 @@ public static unsafe class GC
         if (!Scheduler.IsInitialized)
             return;
 
-        DebugConsole.WriteLine("[GC] Resuming the world...");
+        JitTrace.WriteLine("[GC] Resuming the world...");
 
         ref var schedLock = ref Scheduler.SchedulerLock;
         schedLock.Acquire();
@@ -290,11 +290,11 @@ public static unsafe class GC
 
             if (_traceGC)
             {
-                DebugConsole.Write("[GC] Walk region ");
-                DebugConsole.WriteHex((ulong)current);
-                DebugConsole.Write(" to ");
-                DebugConsole.WriteHex((ulong)regionEnd);
-                DebugConsole.WriteLine();
+                JitTrace.Write("[GC] Walk region ");
+                JitTrace.WriteHex((ulong)current);
+                JitTrace.Write(" to ");
+                JitTrace.WriteHex((ulong)regionEnd);
+                JitTrace.WriteLine();
             }
 
             // Walk blocks in this region using block size header
@@ -309,9 +309,9 @@ public static unsafe class GC
                 {
                     if (_traceGC)
                     {
-                        DebugConsole.Write("[GC]   Block at ");
-                        DebugConsole.WriteHex((ulong)current);
-                        DebugConsole.WriteLine(" has size=0, stopping");
+                        JitTrace.Write("[GC]   Block at ");
+                        JitTrace.WriteHex((ulong)current);
+                        JitTrace.WriteLine(" has size=0, stopping");
                     }
                     break; // End of allocated blocks
                 }
@@ -320,12 +320,12 @@ public static unsafe class GC
 
                 if (_traceGC)
                 {
-                    DebugConsole.Write("[GC]   Block ");
-                    DebugConsole.WriteHex((ulong)current);
-                    DebugConsole.Write(" size=");
-                    DebugConsole.WriteDecimal(blockSize);
-                    DebugConsole.Write(isFree ? " FREE" : " LIVE");
-                    DebugConsole.WriteLine();
+                    JitTrace.Write("[GC]   Block ");
+                    JitTrace.WriteHex((ulong)current);
+                    JitTrace.Write(" size=");
+                    JitTrace.WriteDecimal(blockSize);
+                    JitTrace.Write(isFree ? " FREE" : " LIVE");
+                    JitTrace.WriteLine();
                 }
 
                 // Check if this is a free block (skip it, don't clear marks)
@@ -348,13 +348,13 @@ public static unsafe class GC
             region = *(byte**)region;
         }
 
-        DebugConsole.Write("[GC] Cleared marks on ");
-        DebugConsole.WriteDecimal((uint)objectCount);
-        DebugConsole.Write(" objects (");
-        DebugConsole.WriteDecimal((uint)freeCount);
-        DebugConsole.Write(" free) in ");
-        DebugConsole.WriteDecimal((uint)regionCount);
-        DebugConsole.WriteLine(" SOH region(s)");
+        JitTrace.Write("[GC] Cleared marks on ");
+        JitTrace.WriteDecimal((uint)objectCount);
+        JitTrace.Write(" objects (");
+        JitTrace.WriteDecimal((uint)freeCount);
+        JitTrace.Write(" free) in ");
+        JitTrace.WriteDecimal((uint)regionCount);
+        JitTrace.WriteLine(" SOH region(s)");
     }
 
     /// <summary>
@@ -402,9 +402,9 @@ public static unsafe class GC
 
         if (objectCount > 0)
         {
-            DebugConsole.Write("[GC] Cleared marks on ");
-            DebugConsole.WriteDecimal((uint)objectCount);
-            DebugConsole.WriteLine(" LOH objects");
+            JitTrace.Write("[GC] Cleared marks on ");
+            JitTrace.WriteDecimal((uint)objectCount);
+            JitTrace.WriteLine(" LOH objects");
         }
     }
 
@@ -472,11 +472,11 @@ public static unsafe class GC
 
         if (freedCount > 0 || freedBytes > 0)
         {
-            DebugConsole.Write("[GC] LOH sweep: freed ");
-            DebugConsole.WriteDecimal((uint)freedCount);
-            DebugConsole.Write(" objects (");
-            DebugConsole.WriteDecimal((uint)(freedBytes / 1024));
-            DebugConsole.WriteLine(" KB)");
+            JitTrace.Write("[GC] LOH sweep: freed ");
+            JitTrace.WriteDecimal((uint)freedCount);
+            JitTrace.Write(" objects (");
+            JitTrace.WriteDecimal((uint)(freedBytes / 1024));
+            JitTrace.WriteLine(" KB)");
         }
 
         return freedCount;
@@ -552,11 +552,11 @@ public static unsafe class GC
             region = *(byte**)region;
         }
 
-        DebugConsole.Write("[GC] SOH sweep: freed ");
-        DebugConsole.WriteDecimal((uint)freedCount);
-        DebugConsole.Write(" objects (");
-        DebugConsole.WriteDecimal((uint)(freedBytes / 1024));
-        DebugConsole.WriteLine(" KB)");
+        JitTrace.Write("[GC] SOH sweep: freed ");
+        JitTrace.WriteDecimal((uint)freedCount);
+        JitTrace.Write(" objects (");
+        JitTrace.WriteDecimal((uint)(freedBytes / 1024));
+        JitTrace.WriteLine(" KB)");
 
         return freedCount;
     }
@@ -692,17 +692,17 @@ public static unsafe class GC
         ExceptionContext context = default;
         capture_context(&context);
 
-        DebugConsole.Write("[GC] Walking stack from RIP=0x");
-        DebugConsole.WriteHex(context.Rip);
-        DebugConsole.Write(" RSP=0x");
-        DebugConsole.WriteHex(context.Rsp);
-        DebugConsole.WriteLine();
+        JitTrace.Write("[GC] Walking stack from RIP=0x");
+        JitTrace.WriteHex(context.Rip);
+        JitTrace.Write(" RSP=0x");
+        JitTrace.WriteHex(context.Rsp);
+        JitTrace.WriteLine();
 
         int count = StackRoots.EnumerateStackRoots(&context, &StackRootCallback, null);
 
-        DebugConsole.Write("[GC] Current thread: ");
-        DebugConsole.WriteDecimal((uint)count);
-        DebugConsole.WriteLine(" stack roots");
+        JitTrace.Write("[GC] Current thread: ");
+        JitTrace.WriteDecimal((uint)count);
+        JitTrace.WriteLine(" stack roots");
     }
 
     /// <summary>
@@ -736,11 +736,11 @@ public static unsafe class GC
 
         int count = StackRoots.EnumerateStackRoots(&context, &StackRootCallback, null);
 
-        DebugConsole.Write("[GC] Thread ");
-        DebugConsole.WriteDecimal(thread->Id);
-        DebugConsole.Write(": ");
-        DebugConsole.WriteDecimal((uint)count);
-        DebugConsole.WriteLine(" stack roots");
+        JitTrace.Write("[GC] Thread ");
+        JitTrace.WriteDecimal(thread->Id);
+        JitTrace.Write(": ");
+        JitTrace.WriteDecimal((uint)count);
+        JitTrace.WriteLine(" stack roots");
     }
 
     /// <summary>
@@ -820,7 +820,7 @@ public static unsafe class GC
         _gcInProgress = true;
         _collectionsPerformed++;
         ulong pauseStartTicks = ProtonOS.Arch.HPET.IsInitialized ? ProtonOS.Arch.HPET.ReadCounter() : 0;
-        DebugConsole.WriteLine("[GC] Starting mark-only collection...");
+        JitTrace.WriteLine("[GC] Starting mark-only collection...");
 
         StopTheWorld();
         ClearAllMarks();
@@ -837,11 +837,11 @@ public static unsafe class GC
         int marked = (int)_objectsMarked;
         if (_markOverflow)
         {
-            DebugConsole.WriteLine("[GC] Mark limit reached - mark phase aborted (heap unchanged)");
+            JitTrace.WriteLine("[GC] Mark limit reached - mark phase aborted (heap unchanged)");
         }
         else
         {
-            DebugConsole.WriteLine("[GC] Mark phase complete (sweep deferred: diagnostic mode)");
+            JitTrace.WriteLine("[GC] Mark phase complete (sweep deferred: diagnostic mode)");
         }
 
         ResumeTheWorld();
