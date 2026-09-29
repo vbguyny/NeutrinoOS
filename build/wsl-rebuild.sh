@@ -15,6 +15,12 @@ if [ "${1:-}" = "--trace" ]; then
 fi
 
 SRC=/mnt/d/Projects/Code/NeutrinoOS
+
+# Stamp this build in the SOURCE repo before syncing: .buildnum increments
+# and src/kernel/Generated/NeutrinoVersion.cs is regenerated there, then the
+# rsync below carries the generated file into the WSL build tree.
+bash "$SRC/version-bump.sh"
+
 cd /root/neutrino
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete --exclude 'obj' --exclude 'bin' "$SRC/src/" /root/neutrino/src/
@@ -24,6 +30,9 @@ else
   cp -a "$SRC/tests/." /root/neutrino/tests/
 fi
 cp -f "$SRC/Makefile" /root/neutrino/Makefile
+# Keep the WSL copy's build entry points current (a future ./build.sh in
+# /root/neutrino must bump the same counter sequence).
+cp -f "$SRC/build.sh" "$SRC/version-bump.sh" "$SRC/.buildnum" /root/neutrino/ 2>/dev/null || true
 echo "Synced from $SRC"
 
 rm -rf src/korlib/obj src/korlib/bin

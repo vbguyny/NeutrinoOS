@@ -4,7 +4,8 @@
 //   -a   print the full version string
 //
 // The version string comes from the kernel (Kernel_GetNeutrinoVersion):
-// "NeutrinoOS 0.5 phase5 x86_64".
+// "NeutrinoOS <major>.<minor>.<build> x86_64" (the build number is stamped
+// by version-bump.sh on every build).
 
 using System;
 using NeutrinoOS.Utils;

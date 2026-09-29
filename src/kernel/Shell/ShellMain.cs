@@ -40,7 +40,10 @@ public static unsafe class ShellMain
     {
         ShellInit.Initialize();
 
-        Console.WriteLine("[SHELL] NeutrinoOS console ready.");
+        // Version = major.minor.build; the build number is stamped by
+        // version-bump.sh on every build (see src/kernel/Generated).
+        Console.WriteLine("[SHELL] NeutrinoOS console ready (v"
+            + NeutrinoVersion.ShortVersion + ").");
 
         // Boot completed: wipe the boot log from the live console (serial
         // terminals receive ESC[2J ESC[H, the VGA text console is cleared)
@@ -49,6 +52,7 @@ public static unsafe class ShellMain
         for (int i = 0; i < BannerRows.Length; i++)
             Console.WriteLine(BannerRows[i]);
         Console.WriteLine();
+        Console.WriteLine(ProtonOS.Exports.DDK.SystemInfoExports.VersionBanner);
 
         Console.WriteLine("Type 'help' for available commands.");
 

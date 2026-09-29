@@ -27,6 +27,10 @@ TESTDATA_DIR="$SCRIPT_DIR/testdata"
 # Clean build directory
 "$SCRIPT_DIR/clean.sh"
 
+# Stamp this build: increments the build number (.buildnum) and regenerates
+# src/kernel/Generated/NeutrinoVersion.cs -> version 0.1.x.
+bash "$SCRIPT_DIR/version-bump.sh"
+
 # Build
 make image
 

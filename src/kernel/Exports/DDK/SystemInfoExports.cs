@@ -84,9 +84,11 @@ public static unsafe class SystemInfoExports
     }
 
     /// <summary>
-    /// NeutrinoOS release version (Phase 7 semantic version).
+    /// NeutrinoOS release version ("major.minor.build", e.g. "0.1.7").
+    /// The build number is stamped by version-bump.sh on every build - see
+    /// src/kernel/Generated/NeutrinoVersion.cs.
     /// </summary>
-    public const string ReleaseVersion = "1.0.0";
+    public const string ReleaseVersion = NeutrinoVersion.ShortVersion;
 
     /// <summary>
     /// The full version string ("NeutrinoOS &lt;version&gt; &lt;arch&gt;").
@@ -94,15 +96,15 @@ public static unsafe class SystemInfoExports
     /// field initializers in the kernel assembly.
     /// </summary>
 #if ARCH_ARM64
-    public const string VersionString = "NeutrinoOS 1.0.0 aarch64";
+    public const string VersionString = "NeutrinoOS " + NeutrinoVersion.ShortVersion + " aarch64";
 
     /// <summary>Human banner line (kept in sync with VersionString).</summary>
-    public const string VersionBanner = "NeutrinoOS v1.0.0 (AArch64 UEFI)";
+    public const string VersionBanner = "NeutrinoOS v" + NeutrinoVersion.ShortVersion + " (AArch64 UEFI)";
 #else
-    public const string VersionString = "NeutrinoOS 1.0.0 x86_64";
+    public const string VersionString = "NeutrinoOS " + NeutrinoVersion.ShortVersion + " x86_64";
 
     /// <summary>Human banner line (kept in sync with VersionString).</summary>
-    public const string VersionBanner = "NeutrinoOS v1.0.0 (x86-64 UEFI)";
+    public const string VersionBanner = "NeutrinoOS v" + NeutrinoVersion.ShortVersion + " (x86-64 UEFI)";
 #endif
 
     /// <summary>

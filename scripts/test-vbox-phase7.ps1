@@ -106,7 +106,7 @@ while ((Get-Date) -lt $deadline) {
 $bootSecs = ((Get-Date) - $start).TotalSeconds
 Log ("--- boot finished: prompt={0} after {1:N0}s ({2:N0} chars) ---" -f $prompt, $bootSecs, $text.Length)
 
-Assert "banner NeutrinoOS v1.0.0" ($text -match "NeutrinoOS v1\.0\.0 \(x86-64 UEFI\)")
+Assert "banner NeutrinoOS v0.1.x" ($text -match "NeutrinoOS v0\.1\.\d+ \(x86-64 UEFI\)")
 Assert "release image skips boot tests" ($text -match "Boot tests skipped")
 Assert "security self-test 4 pass" ($text -match "\[SEC\] result: 4 pass, 0 fail")
 Assert "ring-3 cannot read kernel identity" ($text -match "user cannot read kernel identity memory")
