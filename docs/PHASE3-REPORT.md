@@ -28,7 +28,7 @@ Status: **complete** (all acceptance criteria verified; see
 | `src/kernel/Runtime/MethodTable.cs` | **Fix**: interface-dispatch resolver path made print-free (see Blockers) |
 | `src/kernel/x64/native.asm` | **Fix**: `RhpInitialDynamicInterfaceDispatch` x64 stack alignment (40-byte frame) |
 | `Makefile` | `vga_test`/`keyboard_test` build targets + image entries; `run-qemu-vga` target |
-| `docs/PHASE3-DESIGN.md`, `docs/PHASE3-ACCEPTANCE.md`, `PHASE3-REPORT.md` | New documentation |
+| `docs/PHASE3-DESIGN.md`, `docs/PHASE3-ACCEPTANCE.md`, `docs/PHASE3-REPORT.md` | New documentation |
 
 ## Acceptance results
 

@@ -89,7 +89,7 @@ if ($result -eq "SHELL") {
 if ($result -eq "HALTED") { Write-Host "[FAIL] system halted" }
 if ($result -eq "FIRMWARE-CRASH") {
     Write-Host "[FAIL] VirtualBox EFI firmware exception after ExitBootServices"
-    Write-Host "       (known finding - see PHASE1-REPORT.md section 5; bootloader"
+    Write-Host "       (known finding - see docs/PHASE1-REPORT.md section 5; bootloader"
     Write-Host "        output is visible, crash dump comes from VBox CpuDxe)"
 }
 if ($text -match "\[SHELL\] NeutrinoOS console ready") {

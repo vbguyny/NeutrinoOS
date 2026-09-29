@@ -19,7 +19,7 @@ Like a neutrino, the system is meant to be elusive and unobtrusive: it exists to
   - Build targets: `make kernel`, `make bootloader`, `make image` (produces `build/x64/neutrinoos.img`), `make run-qemu`, `make run-vbox`.
 - Console-only is a hard constraint: GUI APIs (`System.Windows.Forms`, WPF, Avalonia) are excluded from the project's scope.
 
-See `specs/` for the design documents, `docs/BUILD-WINDOWS.md` to build from Windows 11 + WSL2, and [PHASE1-REPORT.md](PHASE1-REPORT.md) for exactly what changed in the fork.
+See `specs/` for the design documents, `docs/BUILD-WINDOWS.md` to build from Windows 11 + WSL2, and [PHASE1-REPORT.md](docs/PHASE1-REPORT.md) for exactly what changed in the fork.
 
 ## Features
 
@@ -199,7 +199,7 @@ ANSI colors via `System.Console` in `korlib`. Boot markers on the image
 root: `skip-boot-tests` (fast console cycles) and `run-console-test`
 (run `console_io_test.dll` — the JIT-app console test, 46/46 passing via
 the JIT→System.Console AOT bridge; see
-[PHASE2-REPORT.md](PHASE2-REPORT.md) §5).
+[PHASE2-REPORT.md](docs/PHASE2-REPORT.md) §5).
 
 ### VGA console (Phase 3)
 
@@ -334,12 +334,12 @@ Everything else is C#.
 - [Phase 1 Acceptance](docs/PHASE1-ACCEPTANCE.md) - Console-only acceptance criteria and how to verify them
 - [Phase 3 Design](docs/PHASE3-DESIGN.md) - VGA text console + PS/2 keyboard design
 - [Phase 3 Acceptance](docs/PHASE3-ACCEPTANCE.md) - Step-by-step Phase 3 verification
-- [Phase 3 Report](PHASE3-REPORT.md) - Changes, blockers and deviations
+- [Phase 3 Report](docs/PHASE3-REPORT.md) - Changes, blockers and deviations
 - [Architecture Reference](docs/ARCHITECTURE.md) - System design and memory layout
 - [Boot Protocol](docs/BOOT_PROTOCOL.md) - UEFI bootloader and kernel handoff
 - [korlib Plan](docs/KORLIB_PLAN.md) - Runtime library roadmap
 - [DDK Plan](docs/DDK_PLAN.md) - Driver development kit design
-- [Phase 1 Report](PHASE1-REPORT.md) - What was removed, added, and deferred in the fork
+- [Phase 1 Report](docs/PHASE1-REPORT.md) - What was removed, added, and deferred in the fork
 
 ## Contributing
 

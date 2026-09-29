@@ -5,7 +5,7 @@ verify each one. All commands are run inside WSL2 Ubuntu 24.04 (see
 [BUILD-WINDOWS.md](BUILD-WINDOWS.md) for setup), from the repository root.
 
 > **Verification status (recorded in this fork):** items 1, 2, 4, 5, 7 and 8 are
-> verified - see [PHASE1-REPORT.md](../PHASE1-REPORT.md) section 4. The banner half
+> verified - see [PHASE1-REPORT.md](PHASE1-REPORT.md) section 4. The banner half
 > of item 3 passes, but the system currently halts during driver JIT with a
 > **pre-existing upstream General Protection Fault** that reproduces identically on
 > unmodified ProtonOS with both the cached and the project's custom ILCompiler, so

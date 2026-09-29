@@ -298,7 +298,7 @@ framebuffer, no crash).
   vectors never EOI'd) were fixed behind it. The full boot now reaches
   `neutrinoos>` with working echo. A copy-paste-ready upstream bug report
   (all four defects, repro, fixes) is prepared in
-  [`docs/UPSTREAM-REPORT-DRAFT.md`](docs/UPSTREAM-REPORT-DRAFT.md) - file it
+  [`docs/UPSTREAM-REPORT-DRAFT.md`](UPSTREAM-REPORT-DRAFT.md) - file it
   via the GitHub UI ("New issue", paste). There is no `gh` CLI or token on
   this machine, so it cannot be filed automatically.
 - ~~Publishing the fork~~ **DONE**: `main` is pushed to
