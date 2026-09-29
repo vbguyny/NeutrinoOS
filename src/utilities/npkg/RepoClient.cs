@@ -208,8 +208,11 @@ public static unsafe class RepoClient
         int port;
         string path;
         string urlError;
-        if (!Http.ParseUrl(url, out host, out port, out path, out urlError))
+        bool https;
+        if (!Http.ParseUrl(url, out host, out port, out path, out https, out urlError))
             throw new Exception(urlError);
+        if (https)
+            throw new Exception("https:// repositories are not supported yet (wget/curl support https)");
 
         NetworkInterface eth = NetworkManager.GetInterface("eth0");
         if (eth == null || eth.Stack == null)

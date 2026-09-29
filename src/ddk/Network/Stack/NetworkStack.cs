@@ -714,6 +714,69 @@ public unsafe partial class NetworkStack
     }
 
     /// <summary>
+    /// Scans the UDP queue for the first datagram matching source IP,
+    /// source port and destination port, copies its payload into
+    /// <paramref name="buffer"/> and consumes it (non-matching datagrams
+    /// are consumed too). Returns the payload length, or 0 when no
+    /// matching datagram was queued.
+    ///
+    /// Like <see cref="ReceiveUdpMatching"/>, every comparison happens on
+    /// plain field reads inside this method: comparing ReceiveUdp's
+    /// out-parameters across the call boundary mis-compiles under the
+    /// Tier-0 JIT (matching values, branch not taken). The DHCP client
+    /// hit this first; the DNS resolver hit it second - replies were
+    /// delivered, consumed and discarded until timeout, so hostname
+    /// resolution failed in some utility processes (wget/curl) while
+    /// working in others (dns).
+    /// </summary>
+    public int ReceiveUdpFrom(uint wantSrcIP, ushort wantSrcPort, ushort wantDestPort,
+                              byte* buffer, int bufferLen)
+    {
+        uint wantIP = wantSrcIP;
+        int wantSrc = wantSrcPort;
+        int wantDest = wantDestPort;
+
+        for (int guard = 0; guard < MaxUdpQueueSize; guard++)
+        {
+            int count = _udpQueueCount;
+            if (count == 0)
+                return 0;
+
+            int idx = _udpQueueHead;
+            if (!_udpQueue[idx].Valid)
+                return 0;
+
+            uint srcIP = _udpQueue[idx].SourceIP;
+            int src = _udpQueue[idx].SourcePort;
+            int dest = _udpQueue[idx].DestPort;
+            int len = _udpQueue[idx].Length;
+
+            bool match = srcIP == wantIP;
+            if (match)
+                match = src == wantSrc;
+            if (match)
+                match = dest == wantDest;
+
+            // Consume the entry.
+            _udpQueue[idx].Valid = false;
+            _udpQueueHead = (_udpQueueHead + 1) % MaxUdpQueueSize;
+            _udpQueueCount--;
+
+            if (match && len > 0)
+            {
+                int copyLen = len < bufferLen ? len : bufferLen;
+                fixed (byte* srcP = _udpQueue[idx].Data)
+                {
+                    for (int i = 0; i < copyLen; i++)
+                        buffer[i] = srcP[i];
+                }
+                return copyLen;
+            }
+        }
+        return 0;
+    }
+
+    /// <summary>
     /// Receive a UDP datagram addressed to a destination port, regardless
     /// of the source port (IPv4). Unlike the queue-consuming v6 helper,
     /// scanning STOPS at the first non-matching entry so datagrams that

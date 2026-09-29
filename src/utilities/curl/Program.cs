@@ -2,8 +2,9 @@
 //
 // usage: curl [-o file] [-d data] url
 //   Minimal HTTP/1.1 client on the DDK TcpSocket: GET by default, POST
-//   with -d (application/x-www-form-urlencoded). Only http:// URLs are
-//   supported (no TLS in Phase 5 - documented limitation).
+//   with -d (application/x-www-form-urlencoded). http:// and https://
+//   URLs are supported; HTTPS uses the DDK TLS 1.3 client (the
+//   certificate chain is not verified in this phase).
 
 using System;
 using System.IO;
@@ -12,6 +13,7 @@ using ProtonOS.DDK.Kernel;
 using ProtonOS.DDK.Network;
 using ProtonOS.DDK.Network.Sockets;
 using ProtonOS.DDK.Network.Stack;
+using ProtonOS.DDK.Tls;
 
 namespace NeutrinoOS.Utility.Curl;
 
@@ -34,7 +36,7 @@ public static unsafe class Program
             {
                 return Util.Help(
                     "usage: curl [-o file] [-d data] url",
-                    "  Fetch an http:// URL (GET, or POST with -d data).",
+                    "  Fetch an http:// or https:// URL (GET, or POST with -d data).",
                     "  -o file   save the response body to file (default: stdout)",
                     "  -d data   POST data (application/x-www-form-urlencoded)");
             }
@@ -66,7 +68,8 @@ public static unsafe class Program
         string host;
         int port;
         string path;
-        if (!Http.ParseUrl(url, out host, out port, out path, out string schemeError))
+        bool https;
+        if (!Http.ParseUrl(url, out host, out port, out path, out https, out string schemeError))
             return Util.Fail("curl", schemeError);
 
         uint ip = Http.ParseIP(host);
@@ -77,10 +80,7 @@ public static unsafe class Program
         var stack = eth.Stack;
         if (ip == 0)
         {
-            var resolver = new DnsResolver(stack);
-            ip = resolver.Resolve(host, 5000,
-                new DnsResolver.TransmitFrameDelegate(NetworkPump.TransmitAdapter),
-                new DnsResolver.ReceiveFrameDelegate(NetworkPump.ReceiveAdapter));
+            ip = ResolveHost(host, stack);
             if (ip == 0)
                 return Util.Fail("curl", host + ": unknown host");
         }
@@ -88,6 +88,35 @@ public static unsafe class Program
         TcpSocket sock = Http.Connect(ip, port, stack, 5000);
         if (sock == null)
             return Util.Fail("curl", "connection to " + host + ":" + port.ToString() + " failed");
+
+        // HTTPS: try TLS 1.3 first, then fall back to TLS 1.2 on a
+        // fresh connection (several servers reset 1.3-only
+        // ClientHellos but serve 1.2 fine). The certificate chain is
+        // not verified in this phase.
+        Https tls = null;
+        if (https)
+        {
+            tls = new Https();
+            tls.Tls13 = new Tls13Client(sock, stack, host);
+            if (!tls.Tls13.Handshake(8000))
+            {
+                string reason13 = tls.Tls13.LastError;
+                tls.Tls13 = null;
+                sock.Close();
+                sock = Http.Connect(ip, port, stack, 5000);
+                if (sock == null)
+                    return Util.Fail("curl", "reconnect for TLS 1.2 failed");
+                tls.Tls12 = new Tls12Client(sock, stack, host);
+                if (!tls.Tls12.Handshake(12000))
+                {
+                    string reason12 = tls.Tls12.LastError;
+                    return Util.Fail("curl", "TLS handshake failed (1.3: "
+                        + (reason13 == null ? "unknown" : reason13) + "; 1.2: "
+                        + (reason12 == null ? "unknown" : reason12) + ")");
+                }
+            }
+            Console.Error.WriteLine("curl: note: TLS ok (certificate not verified)");
+        }
 
         // Build the request.
         var requestBuilder = new System.Text.StringBuilder();
@@ -115,17 +144,33 @@ public static unsafe class Program
             requestBuilder.Append(postData);
 
         byte[] requestBytes = Http.AsciiBytes(requestBuilder.ToString());
-        fixed (byte* p = requestBytes)
+        if (tls != null)
         {
-            int sent = sock.Send(p, requestBytes.Length);
-            if (sent != requestBytes.Length)
-                return Util.Fail("curl", "failed to send request");
+            tls.WriteApp(requestBytes, 0, requestBytes.Length);
         }
-        // The stack queues segments; the caller transmits them.
-        NetworkPump.FlushTx(stack);
+        else
+        {
+            fixed (byte* p = requestBytes)
+            {
+                int sent = sock.Send(p, requestBytes.Length);
+                if (sent != requestBytes.Length)
+                    return Util.Fail("curl", "failed to send request");
+            }
+            // The stack queues segments; the caller transmits them.
+            NetworkPump.FlushTx(stack);
+        }
 
-        string all = Http.ReadResponse(sock, stack, 15000);
-        sock.Close();
+        string all;
+        if (tls != null)
+        {
+            all = Http.ReadResponseTls(tls, 15000);
+            tls.CloseGraceful();
+        }
+        else
+        {
+            all = Http.ReadResponse(sock, stack, 15000);
+            sock.Close();
+        }
 
         if (all.Length == 0)
             return Util.Fail("curl", "no response received");
@@ -157,4 +202,18 @@ public static unsafe class Program
         }
         return 0;
     }
-}
+    /// <summary>
+    /// Hostname resolution in its own small method: the Tier-0 JIT has a
+    /// history of miscompiling call sequences built inline in very large
+    /// frames (see wget's identical helper).
+    /// </summary>
+    private static uint ResolveHost(string host, NetworkStack stack)
+    {
+        uint ip = Http.ParseIP(host);
+        if (ip != 0)
+            return ip;
+        var resolver = new DnsResolver(stack);
+        return resolver.Resolve(host, 8000,
+            new DnsResolver.TransmitFrameDelegate(NetworkPump.TransmitAdapter),
+            new DnsResolver.ReceiveFrameDelegate(NetworkPump.ReceiveAdapter));
+    }}

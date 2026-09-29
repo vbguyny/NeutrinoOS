@@ -17,27 +17,33 @@ namespace NeutrinoOS.Utils;
 /// <summary>Shared HTTP/URL/TCP helpers for the Phase 5 utilities.</summary>
 public static unsafe class Http
 {
-    /// <summary>Parses an http:// URL into host, port and path.</summary>
+    /// <summary>Parses an http:// or https:// URL into host, port and path.</summary>
     public static bool ParseUrl(string url, out string host, out int port,
-        out string path, out string error)
+        out string path, out bool https, out string error)
     {
         host = "";
         port = 80;
         path = "/";
+        https = false;
         error = null;
 
+        int start;
         if (StartsWith(url, "https://"))
         {
-            error = "https:// is not supported in Phase 5 (no TLS)";
-            return false;
+            https = true;
+            port = 443;
+            start = 8;
         }
-        if (!StartsWith(url, "http://"))
+        else if (StartsWith(url, "http://"))
         {
-            error = "only http:// URLs are supported";
+            start = 7;
+        }
+        else
+        {
+            error = "only http:// and https:// URLs are supported";
             return false;
         }
 
-        int start = 7;
         int i = start;
         int colon = -1;
         while (i < url.Length && url[i] != '/')
@@ -246,6 +252,32 @@ public static unsafe class Http
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Reads an HTTP response body over a TLS 1.3 session (ASCII), the
+    /// https counterpart of <see cref="ReadResponse"/>. Returns when the
+    /// peer closes the session or the timeout expires.
+    /// </summary>
+    public static string ReadResponseTls(Https tls, int timeoutMs)
+    {
+        var sb = new System.Text.StringBuilder();
+        byte[] buf = new byte[1460];
+        ulong start = Timer.GetUptimeMilliseconds();
+        while (Timer.GetUptimeMilliseconds() - start < (ulong)timeoutMs)
+        {
+            int n = tls.ReadApp(buf, 0, 1460);
+            if (n > 0)
+            {
+                for (int i = 0; i < n; i++)
+                    sb.Append(buf[i] < 128 ? (char)buf[i] : '?');
+            }
+            else if (n < 0)
+            {
+                break;
+            }
+        }
+        return sb.ToString();
+    }
+
     private static bool StartsWith(string text, string prefix)
     {
         if (prefix.Length > text.Length)
@@ -256,5 +288,53 @@ public static unsafe class Http
                 return false;
         }
         return true;
+    }
+}
+
+/// <summary>
+/// HTTPS session wrapper: tries TLS 1.3 first and falls back to TLS 1.2
+/// on a fresh TCP connection. Several servers (battaglia.ddns.net among
+/// them) reset TLS 1.3-only ClientHellos but serve TLS 1.2 happily -
+/// curl survives those via the same fallback. The certificate chain is
+/// not verified in this phase (see Tls13Client/Tls12Client headers).
+/// </summary>
+public sealed class Https
+{
+    /// <summary>TLS 1.3 session (null once fallen back).</summary>
+    public ProtonOS.DDK.Tls.Tls13Client Tls13;
+
+    /// <summary>TLS 1.2 session (set when the 1.3 attempt failed).</summary>
+    public ProtonOS.DDK.Tls.Tls12Client Tls12;
+
+    /// <summary>True when one of the sessions completed its handshake.</summary>
+    public bool Established =>
+        (Tls13 != null && Tls13.Connected) || (Tls12 != null && Tls12.Connected);
+
+    /// <summary>Sends application data over the live session.</summary>
+    public void WriteApp(byte[] data, int offset, int length)
+    {
+        if (Tls13 != null && Tls13.Connected)
+            Tls13.WriteApp(data, offset, length);
+        else if (Tls12 != null)
+            Tls12.WriteApp(data, offset, length);
+    }
+
+    /// <summary>Reads application data from the live session.</summary>
+    public int ReadApp(byte[] destination, int offset, int maxLength)
+    {
+        if (Tls13 != null && Tls13.Connected)
+            return Tls13.ReadApp(destination, offset, maxLength);
+        if (Tls12 != null)
+            return Tls12.ReadApp(destination, offset, maxLength);
+        return -1;
+    }
+
+    /// <summary>Sends close_notify on the live session and closes it.</summary>
+    public void CloseGraceful()
+    {
+        if (Tls13 != null)
+            Tls13.CloseGraceful();
+        if (Tls12 != null)
+            Tls12.CloseGraceful();
     }
 }

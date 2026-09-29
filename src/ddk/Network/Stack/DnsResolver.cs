@@ -86,6 +86,7 @@ public unsafe class DnsResolver
         ushort localPort = 53000;  // Use a high port for our queries
         ulong startTime = Timer.GetUptimeMilliseconds();
         ulong lastSend = 0;
+        bool sentOnce = false;
         byte* rxBuffer = stackalloc byte[1514];
         byte* responseBuffer = stackalloc byte[DNS.MaxMessageSize];
 
@@ -98,7 +99,12 @@ public unsafe class DnsResolver
                 return 0;
             }
 
-            if (lastSend == 0 || elapsed - lastSend >= 500)
+            // Resend on a 500 ms cadence until the query is out, then
+            // slow to 2 s: a healthy lookup should not leave a pile of
+            // duplicate replies in the kernel UDP queue (they used to
+            // poison later lookups - see the drain loop below).
+            ulong interval = sentOnce ? 2000UL : 500UL;
+            if (lastSend == 0 || elapsed - lastSend >= interval)
             {
                 lastSend = elapsed;
                 int sent = _stack.SendUdp(dnsServer, localPort, DNS.Port, queryBuffer, queryLen);
@@ -107,50 +113,44 @@ public unsafe class DnsResolver
                 {
                     transmit(_stack.GetTxBuffer(), pendingLen);
                     if (sent > 0)
-                    {
-                        Debug.Write("[DNS] Query sent: ");
-                        Debug.WriteDecimal((uint)pendingLen);
-                        Debug.WriteLine(" bytes");
-                    }
+                        sentOnce = true;
                 }
             }
 
             // Receive and process frames
             int rxLen = receive(rxBuffer, 1514);
             if (rxLen > 0)
-            {
                 _stack.ProcessFrame(rxBuffer, rxLen);
 
-                // Check for UDP response
-                if (_stack.UdpAvailable() > 0)
+            // Drain every queued reply for our flow. A previous lookup
+            // that resent (slow reply) can leave duplicate replies with
+            // an OLD transaction id at the queue head. The old code
+            // consumed ONE entry, failed the id check and returned
+            // failure outright - and once the 16-slot queue filled with
+            // duplicates, fresh replies were dropped at enqueue,
+            // wedging resolution until a DHCP cycle flushed the queue
+            // (observed live: one resolve poisoned every later lookup).
+            // Consume and discard stale duplicates and keep waiting for
+            // the current transaction. The match (source IP + ports)
+            // happens INSIDE ReceiveUdpFrom - comparing out-parameters
+            // across that call boundary is the Tier-0 JIT hazard
+            // documented on that method.
+            while (_stack.UdpAvailable() > 0)
+            {
+                int recvLen = _stack.ReceiveUdpFrom(dnsServer, DNS.Port, localPort,
+                                                    responseBuffer, DNS.MaxMessageSize);
+                if (recvLen <= 0)
+                    break;  // nothing matching left in the queue
+
+                uint resolvedIP;
+                if (DNS.ParseResponse(responseBuffer, recvLen, transactionId, out resolvedIP))
                 {
-                    uint srcIP;
-                    ushort srcPort, destPort;
-                    int recvLen = _stack.ReceiveUdp(out srcIP, out srcPort, out destPort,
-                                                     responseBuffer, DNS.MaxMessageSize);
-
-                    if (recvLen > 0 && srcIP == dnsServer && srcPort == DNS.Port)
-                    {
-                        Debug.Write("[DNS] Received response: ");
-                        Debug.WriteDecimal((uint)recvLen);
-                        Debug.WriteLine(" bytes");
-
-                        // Parse response
-                        uint resolvedIP;
-                        if (DNS.ParseResponse(responseBuffer, recvLen, transactionId, out resolvedIP))
-                        {
-                            Debug.Write("[DNS] Resolved to ");
-                            PrintIP(resolvedIP);
-                            Debug.WriteLine();
-                            return resolvedIP;
-                        }
-                        else
-                        {
-                            Debug.WriteLine("[DNS] Failed to parse response");
-                            return 0;
-                        }
-                    }
+                    Debug.Write("[DNS] Resolved to ");
+                    PrintIP(resolvedIP);
+                    Debug.WriteLine();
+                    return resolvedIP;
                 }
+                // Stale duplicate from an earlier attempt - drop it.
             }
         }
     }
@@ -283,35 +283,40 @@ public unsafe class DnsResolver
 
                 if (useV6)
                 {
-                    if (_stack.Udp6Available() > 0)
+                    while (_stack.Udp6Available() > 0)
                     {
                         Ipv6Address srcAddr;
                         ushort replyPort;
                         int recvLen = _stack.ReceiveUdp6To(localPort,
                             out srcAddr, out replyPort, responseBuffer, DNS.MaxMessageSize);
-                        if (recvLen > 0)
-                        {
-                            Ipv6Address resolved;
-                            if (DNS.ParseResponseAAAA(responseBuffer, recvLen, transactionId,
-                                out resolved))
-                                return resolved;
-                            return none;
-                        }
-                    }
-                }
-                else if (_stack.UdpAvailable() > 0)
-                {
-                    uint srcIP;
-                    ushort srcPort, destPort;
-                    int recvLen = _stack.ReceiveUdp(out srcIP, out srcPort, out destPort,
-                        responseBuffer, DNS.MaxMessageSize);
-                    if (recvLen > 0 && srcIP == _stack.Config.DnsServer && srcPort == DNS.Port)
-                    {
+                        if (recvLen <= 0)
+                            break;
+
                         Ipv6Address resolved;
                         if (DNS.ParseResponseAAAA(responseBuffer, recvLen, transactionId,
                             out resolved))
                             return resolved;
-                        return none;
+                        // Stale duplicate from an earlier attempt - drop it.
+                    }
+                }
+                else
+                {
+                    // Drain every queued reply for our flow: stale
+                    // duplicates must not fail the lookup (see the
+                    // same loop in Resolve() for the full story).
+                    while (_stack.UdpAvailable() > 0)
+                    {
+                        // Match inside the stack method (see ReceiveUdpFrom).
+                        int recvLen = _stack.ReceiveUdpFrom(_stack.Config.DnsServer, DNS.Port, localPort,
+                            responseBuffer, DNS.MaxMessageSize);
+                        if (recvLen <= 0)
+                            break;
+
+                        Ipv6Address resolved;
+                        if (DNS.ParseResponseAAAA(responseBuffer, recvLen, transactionId,
+                            out resolved))
+                            return resolved;
+                        // Stale duplicate from an earlier attempt - drop it.
                     }
                 }
             }

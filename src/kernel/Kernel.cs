@@ -192,6 +192,15 @@ public static unsafe class Kernel
             JitDiag.VerboseJit = true;
             DebugConsole.WriteLine("[Kernel] Verbose JIT tracing enabled (verbose-jit marker)");
         }
+        // Trace builds default VerboseJit on; the quiet-jit marker turns
+        // it back off so --trace diagnostics (DDK Debug, [DNS], [NetStack]
+        // ...) can be read without the megabyte-scale per-instruction JIT
+        // flood (which is also extremely slow on VirtualBox).
+        if (BootInfoAccess.FindFile("quiet-jit", out ulong _quietJitSize) != null)
+        {
+            JitDiag.VerboseJit = false;
+            DebugConsole.WriteLine("[Kernel] Verbose JIT tracing disabled (quiet-jit marker)");
+        }
 
         // Dump memory map to analyze fragmentation
         DumpMemoryMap(bootInfo);
