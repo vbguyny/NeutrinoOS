@@ -91,9 +91,16 @@ public sealed class Md5
         while (_bufferLen < BlockSize - 8)
             _buffer[_bufferLen++] = 0;
 
-        // 64-bit little-endian bit length.
-        for (int i = 0; i < 8; i++)
-            _buffer[BlockSize - 8 + i] = (byte)(bitLen >> (i * 8));
+        // 64-bit little-endian bit length (unrolled constants - see
+        // X25519.Store64 for why variable shifts are avoided here).
+        _buffer[BlockSize - 8] = (byte)bitLen;
+        _buffer[BlockSize - 7] = (byte)(bitLen >> 8);
+        _buffer[BlockSize - 6] = (byte)(bitLen >> 16);
+        _buffer[BlockSize - 5] = (byte)(bitLen >> 24);
+        _buffer[BlockSize - 4] = (byte)(bitLen >> 32);
+        _buffer[BlockSize - 3] = (byte)(bitLen >> 40);
+        _buffer[BlockSize - 2] = (byte)(bitLen >> 48);
+        _buffer[BlockSize - 1] = (byte)(bitLen >> 56);
         ProcessBlock(_buffer, 0);
         _bufferLen = 0;
 

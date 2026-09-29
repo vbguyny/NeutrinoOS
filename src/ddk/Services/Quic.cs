@@ -284,8 +284,17 @@ public sealed class QuicConnection
         var nonce = new byte[12];
         for (int i = 0; i < 12; i++)
             nonce[i] = iv[i];
-        for (int i = 0; i < 8; i++)
-            nonce[11 - i] ^= (byte)(pn >> (8 * i));
+        // XOR the packet number into the low 8 bytes (unrolled constant
+        // shifts - see X25519.Store64 for the Tier-0 JIT variable-shift
+        // hazard these writes used to have).
+        nonce[11] ^= (byte)pn;
+        nonce[10] ^= (byte)(pn >> 8);
+        nonce[9] ^= (byte)(pn >> 16);
+        nonce[8] ^= (byte)(pn >> 24);
+        nonce[7] ^= (byte)(pn >> 32);
+        nonce[6] ^= (byte)(pn >> 40);
+        nonce[5] ^= (byte)(pn >> 48);
+        nonce[4] ^= (byte)(pn >> 56);
 
         int ctStart = pnOffset + pnLen;
         int ctLen = end - ctStart - 16;
@@ -883,8 +892,17 @@ public sealed class QuicConnection
         var nonce = new byte[12];
         for (int i = 0; i < 12; i++)
             nonce[i] = iv[i];
-        for (int i = 0; i < 8; i++)
-            nonce[11 - i] ^= (byte)(pn >> (8 * i));
+        // XOR the packet number into the low 8 bytes (unrolled constant
+        // shifts - see X25519.Store64 for the Tier-0 JIT variable-shift
+        // hazard these writes used to have).
+        nonce[11] ^= (byte)pn;
+        nonce[10] ^= (byte)(pn >> 8);
+        nonce[9] ^= (byte)(pn >> 16);
+        nonce[8] ^= (byte)(pn >> 24);
+        nonce[7] ^= (byte)(pn >> 32);
+        nonce[6] ^= (byte)(pn >> 40);
+        nonce[5] ^= (byte)(pn >> 48);
+        nonce[4] ^= (byte)(pn >> 56);
         var plain = new byte[payloadLen];
         for (int i = 0; i < payloadLen; i++)
             plain[i] = payload[i];
@@ -931,8 +949,17 @@ public sealed class QuicConnection
         var nonce = new byte[12];
         for (int i = 0; i < 12; i++)
             nonce[i] = Tls.ServerAppIv[i];
-        for (int i = 0; i < 8; i++)
-            nonce[11 - i] ^= (byte)(pn >> (8 * i));
+        // XOR the packet number into the low 8 bytes (unrolled constant
+        // shifts - see X25519.Store64 for the Tier-0 JIT variable-shift
+        // hazard these writes used to have).
+        nonce[11] ^= (byte)pn;
+        nonce[10] ^= (byte)(pn >> 8);
+        nonce[9] ^= (byte)(pn >> 16);
+        nonce[8] ^= (byte)(pn >> 24);
+        nonce[7] ^= (byte)(pn >> 32);
+        nonce[6] ^= (byte)(pn >> 40);
+        nonce[5] ^= (byte)(pn >> 48);
+        nonce[4] ^= (byte)(pn >> 56);
         var plain = new byte[payloadLen];
         for (int i = 0; i < payloadLen; i++)
             plain[i] = payload[i];

@@ -97,11 +97,24 @@ public sealed class ChaCha20Poly1305
         // BYTES (little-endian 64-bit each). (GCM uses bits; Poly1305 does not.)
         ulong aadLen64 = (ulong)aadLen;
         ulong ctLen64 = (ulong)ctLen;
-        for (int i = 0; i < 8; i++)
-        {
-            mac[pos + i] = (byte)(aadLen64 >> (i * 8));
-            mac[pos + 8 + i] = (byte)(ctLen64 >> (i * 8));
-        }
+        // Unrolled constants - see X25519.Store64 for the variable-shift
+        // hazard this avoids under the Tier-0 JIT.
+        mac[pos + 0] = (byte)aadLen64;
+        mac[pos + 1] = (byte)(aadLen64 >> 8);
+        mac[pos + 2] = (byte)(aadLen64 >> 16);
+        mac[pos + 3] = (byte)(aadLen64 >> 24);
+        mac[pos + 4] = (byte)(aadLen64 >> 32);
+        mac[pos + 5] = (byte)(aadLen64 >> 40);
+        mac[pos + 6] = (byte)(aadLen64 >> 48);
+        mac[pos + 7] = (byte)(aadLen64 >> 56);
+        mac[pos + 8] = (byte)ctLen64;
+        mac[pos + 9] = (byte)(ctLen64 >> 8);
+        mac[pos + 10] = (byte)(ctLen64 >> 16);
+        mac[pos + 11] = (byte)(ctLen64 >> 24);
+        mac[pos + 12] = (byte)(ctLen64 >> 32);
+        mac[pos + 13] = (byte)(ctLen64 >> 40);
+        mac[pos + 14] = (byte)(ctLen64 >> 48);
+        mac[pos + 15] = (byte)(ctLen64 >> 56);
         return mac;
     }
 

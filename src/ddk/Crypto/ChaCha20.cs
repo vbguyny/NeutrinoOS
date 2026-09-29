@@ -128,10 +128,14 @@ public sealed class ChaCha20
 
     private static void Qr(uint[] s, int a, int b, int c, int d)
     {
-        s[a] += s[b]; s[d] ^= s[a]; s[d] = Rotl(s[d], 16);
-        s[c] += s[d]; s[b] ^= s[c]; s[b] = Rotl(s[b], 12);
-        s[a] += s[b]; s[d] ^= s[a]; s[d] = Rotl(s[d], 8);
-        s[c] += s[d]; s[b] ^= s[c]; s[b] = Rotl(s[b], 7);
+        // Rotations are inlined with constant shift amounts on purpose:
+        // Rotl(x, n) takes a runtime shift count and variable 64-bit/32-bit
+        // shift codegen has misbehaved under the Tier-0 JIT (see
+        // X25519.Store64 for the byte-write variant of the same hazard).
+        s[a] += s[b]; uint t = s[d] ^ s[a]; s[d] = (t << 16) | (t >> 16);
+        s[c] += s[d]; t = s[b] ^ s[c]; s[b] = (t << 12) | (t >> 20);
+        s[a] += s[b]; t = s[d] ^ s[a]; s[d] = (t << 8) | (t >> 24);
+        s[c] += s[d]; t = s[b] ^ s[c]; s[b] = (t << 7) | (t >> 25);
     }
 
     private static uint Rotl(uint x, int n) => (x << n) | (x >> (32 - n));

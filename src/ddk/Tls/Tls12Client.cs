@@ -470,8 +470,17 @@ public sealed unsafe class Tls12Client
             var nonce = new byte[12];
             for (int i = 0; i < 4; i++)
                 nonce[i] = _clientIv[i];
-            for (int i = 0; i < 8; i++)
-                nonce[4 + i] = (byte)(_txSeq >> (8 * (7 - i)));
+            // Explicit nonce = record sequence number, big-endian (unrolled
+            // constant shifts - see X25519.Store64 for the Tier-0 JIT
+            // variable-shift hazard these writes used to have).
+            nonce[4] = (byte)(_txSeq >> 56);
+            nonce[5] = (byte)(_txSeq >> 48);
+            nonce[6] = (byte)(_txSeq >> 40);
+            nonce[7] = (byte)(_txSeq >> 32);
+            nonce[8] = (byte)(_txSeq >> 24);
+            nonce[9] = (byte)(_txSeq >> 16);
+            nonce[10] = (byte)(_txSeq >> 8);
+            nonce[11] = (byte)_txSeq;
             var aead = new AesGcm(_clientKey);
             byte[] sealed_ = aead.Seal(nonce, aad, plain);
             int recLen = 8 + sealed_.Length;
@@ -481,8 +490,14 @@ public sealed unsafe class Tls12Client
             wire[2] = 0x03;
             wire[3] = (byte)(recLen >> 8);
             wire[4] = (byte)recLen;
-            for (int i = 0; i < 8; i++)
-                wire[5 + i] = (byte)(_txSeq >> (8 * (7 - i)));
+            wire[5] = (byte)(_txSeq >> 56);
+            wire[6] = (byte)(_txSeq >> 48);
+            wire[7] = (byte)(_txSeq >> 40);
+            wire[8] = (byte)(_txSeq >> 32);
+            wire[9] = (byte)(_txSeq >> 24);
+            wire[10] = (byte)(_txSeq >> 16);
+            wire[11] = (byte)(_txSeq >> 8);
+            wire[12] = (byte)_txSeq;
             for (int i = 0; i < sealed_.Length; i++)
                 wire[13 + i] = sealed_[i];
             _txSeq++;

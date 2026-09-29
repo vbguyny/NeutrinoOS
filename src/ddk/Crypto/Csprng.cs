@@ -151,10 +151,16 @@ public static class Csprng
     private static void BlockAt(ulong index, byte[] block)
     {
         var nonce = new byte[12];
-        // Nonce = high bytes of the block index (counter lives in the
-        // ChaCha20 block counter word).
-        for (int i = 0; i < 8; i++)
-            nonce[i] = (byte)(index >> (i * 8));
+        // Nonce = low bytes of the block index (unrolled: variable 64-bit
+        // shifts are avoided on purpose - see X25519.Store64).
+        nonce[0] = (byte)index;
+        nonce[1] = (byte)(index >> 8);
+        nonce[2] = (byte)(index >> 16);
+        nonce[3] = (byte)(index >> 24);
+        nonce[4] = (byte)(index >> 32);
+        nonce[5] = (byte)(index >> 40);
+        nonce[6] = (byte)(index >> 48);
+        nonce[7] = (byte)(index >> 56);
         uint counter = (uint)(index >> 32);
 
         var c = new ChaCha20(Key, nonce, counter);

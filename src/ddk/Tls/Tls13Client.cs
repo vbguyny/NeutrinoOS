@@ -519,8 +519,17 @@ public sealed unsafe class Tls13Client
         var nonce = new byte[12];
         for (int i = 0; i < 12; i++)
             nonce[i] = iv[i];
-        for (int i = 0; i < 8; i++)
-            nonce[11 - i] ^= (byte)(seq >> (8 * i));
+        // XOR the record sequence into the low 8 bytes of the IV (unrolled
+        // constant shifts - see X25519.Store64 for the Tier-0 JIT
+        // variable-shift hazard these writes used to have).
+        nonce[11] ^= (byte)seq;
+        nonce[10] ^= (byte)(seq >> 8);
+        nonce[9] ^= (byte)(seq >> 16);
+        nonce[8] ^= (byte)(seq >> 24);
+        nonce[7] ^= (byte)(seq >> 32);
+        nonce[6] ^= (byte)(seq >> 40);
+        nonce[5] ^= (byte)(seq >> 48);
+        nonce[4] ^= (byte)(seq >> 56);
         return nonce;
     }
 

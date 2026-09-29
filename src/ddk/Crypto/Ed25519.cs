@@ -201,8 +201,16 @@ public static class Ed25519
 
     private static void Store64(byte[] s, int i, ulong v)
     {
-        for (int b = 0; b < 8; b++)
-            s[i + b] = (byte)(v >> (b * 8));
+        // Unrolled with constant shifts on purpose - see X25519.Store64
+        // for the Tier-0 JIT variable-shift hazard this avoids.
+        s[i + 0] = (byte)v;
+        s[i + 1] = (byte)(v >> 8);
+        s[i + 2] = (byte)(v >> 16);
+        s[i + 3] = (byte)(v >> 24);
+        s[i + 4] = (byte)(v >> 32);
+        s[i + 5] = (byte)(v >> 40);
+        s[i + 6] = (byte)(v >> 48);
+        s[i + 7] = (byte)(v >> 56);
     }
 
     private static void FeFromBytes(ulong[] h, byte[] s)
