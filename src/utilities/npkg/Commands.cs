@@ -158,7 +158,7 @@ public static class Commands
         if (Str.Starts(url, "https://"))
         {
             Console.Error.WriteLine("neutrinoos: npkg: https:// repositories are not supported yet:");
-            Console.Error.WriteLine("  the device has no TLS client in Phase 8 (see docs/PHASE8-ECOSYSTEM.md).");
+            Console.Error.WriteLine("  the device has no TLS client.");
             Console.Error.WriteLine("  Package integrity is still protected by Ed25519 signatures over http://.");
             return 1;
         }

@@ -35,8 +35,7 @@ public static class Program
                 return Util.Help(
                     "usage: ssh [-p port] [user@]host",
                     "  Opens a TCP connection to the SSH port and reports",
-                    "  reachability. The SSH handshake is not implemented",
-                    "  in Phase 5 (see docs/PHASE5-UTILITIES.md).");
+                    "  reachability. The SSH handshake is not implemented.");
             }
             if (a == "-p")
             {
@@ -109,8 +108,8 @@ public static class Program
         Console.Write(':');
         Console.Write(port);
         Console.WriteLine(" established - server is reachable");
-        Console.WriteLine("ssh: the SSH protocol handshake is not implemented in Phase 5");
-        Console.WriteLine("     (SSH client is documented as a limitation, see docs/PHASE5-UTILITIES.md)");
+        Console.WriteLine("ssh: the SSH protocol handshake is not implemented");
+        Console.WriteLine("     (ssh performs a TCP reachability check only)");
         return 0;
     }
 }

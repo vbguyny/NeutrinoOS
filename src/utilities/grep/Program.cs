@@ -35,7 +35,7 @@ public static class Program
                     "usage: grep [-i] [-v] pattern [file...]",
                     "  -i   case-insensitive",
                     "  -v   print non-matching lines",
-                    "  Pattern is a literal substring (no regex in Phase 5).",
+                    "  Pattern is a literal substring (no regex support).",
                     "  Exit: 0 matched, 1 no match, 2 error.");
             }
             if (a == "-i")
@@ -69,7 +69,7 @@ public static class Program
                     "usage: grep [-i] [-v] pattern [file...]",
                     "  -i   case-insensitive",
                     "  -v   print non-matching lines",
-                    "  Pattern is a literal substring (no regex in Phase 5).",
+                    "  Pattern is a literal substring (no regex support).",
                     "  With no file (or '-'), reads standard input.",
                     "  Exit: 0 matched, 1 no match, 2 error.");
             }

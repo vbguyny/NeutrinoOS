@@ -180,7 +180,7 @@ public static unsafe class Http
         if (eth != null && eth.Stack != null)
             return true;
         Console.Error.WriteLine("neutrinoos: " + program + ": network device not available");
-        Console.Error.WriteLine("  (start QEMU with -device virtio-net-pci; see docs/PHASE5-UTILITIES.md)");
+        Console.Error.WriteLine("  (start QEMU with -device virtio-net-pci)");
         return false;
     }
 

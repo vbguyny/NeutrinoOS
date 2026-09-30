@@ -60,7 +60,7 @@ public static class KernelGc
         JitTrace.Write("   free (SOH): ");
         JitTrace.WriteLine(FormatKb(freeAfter));
         JitTrace.WriteLine("[gc] note: sweep/compaction run as allocation-driven kernel steps;");
-        JitTrace.WriteLine("[gc]       manual collection is mark-only in Phase 5 (PHASE5-REPORT.md).");
+        JitTrace.WriteLine("[gc]       manual collection is mark-only.");
     }
 
     /// <summary>Formats a byte count as "N.N KB".</summary>

@@ -38,7 +38,7 @@ public static unsafe class Program
                     "usage: wget [-O file] url",
                     "  Download an http:// or https:// URL via HTTP/1.1 (GET).",
                     "  -O file   save the response body to file (default: stdout)",
-                    "  HTTPS uses TLS 1.3 (certificate not verified in this phase).");
+                    "  HTTPS uses TLS 1.3 (certificate not verified).");
             }
             if (a == "-O")
             {

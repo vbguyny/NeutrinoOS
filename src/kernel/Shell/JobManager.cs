@@ -157,7 +157,7 @@ public static class JobManager
     {
         if (pipeline.CommandCount != 1 || pipeline.Commands[0].RedirCount != 0)
         {
-            Console.Error.WriteLine("neutrinoos: background pipelines with pipes or redirections are not supported (Phase 5 limitation)");
+            Console.Error.WriteLine("neutrinoos: background pipelines with pipes or redirections are not supported yet");
             return 1;
         }
 
@@ -336,7 +336,7 @@ public static class JobManager
                 if (_jobs[i].State == ShellJobState.Running)
                 {
                     _jobs[i].KillRequested = true;
-                    Console.WriteLine("neutrinoos: kill: running jobs complete cooperatively (Phase 5 limitation)");
+                    Console.WriteLine("neutrinoos: kill: running jobs complete cooperatively");
                     return 0;
                 }
                 Console.WriteLine("neutrinoos: kill: job already finished");

@@ -34,7 +34,7 @@ public static class Program
         if (eth == null || eth.Stack == null)
         {
             Console.WriteLine("dhcp: no ethernet device (eth0) present");
-            Console.WriteLine("  (start QEMU with -device virtio-net-pci; see docs/PHASE5-UTILITIES.md)");
+            Console.WriteLine("  (start QEMU with -device virtio-net-pci)");
             return 0;
         }
 

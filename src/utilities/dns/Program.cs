@@ -41,7 +41,7 @@ public static unsafe class Program
         if (!NetworkPump.IsAvailable)
         {
             Console.Error.WriteLine("neutrinoos: dns: network device not available");
-            Console.Error.WriteLine("  (start QEMU with -device virtio-net-pci; see docs/PHASE5-UTILITIES.md)");
+            Console.Error.WriteLine("  (start QEMU with -device virtio-net-pci)");
             return 0;
         }
 

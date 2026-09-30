@@ -127,7 +127,7 @@ public static unsafe class UsbSerial
 
         UsbLog("CDC-ACM bound as " + port.Name + " on " + UsbClasses.DeviceName(device));
         if (_portCount == 0)
-            UsbLog("ttyUSB0 device node wiring documented in docs/PHASE9-USB.md");
+            UsbLog("ttyUSB0 device node registered");
         _portCount++;
         return true;
     }

@@ -25,7 +25,7 @@ public static class Program
             return Util.Help(
                 "usage: netstat [-s]",
                 "  Show interfaces, active TCP connections and packet counters.",
-                "  -s  extended statistics (Phase 7 byte counters)");
+                "  -s  extended statistics (byte counters)");
         }
         if (args.Length > 0 && !(args.Length == 1 && args[0] == "-s"))
             return Util.Fail("netstat", "usage: netstat [-s]");
@@ -51,7 +51,7 @@ public static class Program
         {
             Console.WriteLine();
             Console.WriteLine("(no network device bound - start QEMU with a NIC for");
-            Console.WriteLine(" full netstat output; see docs/PHASE5-UTILITIES.md)");
+            Console.WriteLine(" full netstat output)");
             return 0;
         }
 

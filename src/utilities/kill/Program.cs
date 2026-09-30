@@ -32,7 +32,7 @@ public static class Program
                 return Util.Help(
                     "usage: kill [-9] pid",
                     "  Signal a shell background job (job id or PID from jobs/ps).",
-                    "  Cancellation is cooperative in Phase 5; -9 is accepted.");
+                    "  Cancellation is cooperative; -9 is accepted.");
             }
             if (a == "-9")
                 force = true;

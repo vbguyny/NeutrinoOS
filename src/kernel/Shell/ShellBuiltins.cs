@@ -417,7 +417,7 @@ public static class ShellBuiltins
         if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
         {
             Console.WriteLine("usage: jobs");
-            Console.WriteLine("  List background jobs (started with &; see docs/PHASE5-SHELL.md).");
+            Console.WriteLine("  List background jobs (started with &).");
             return true;
         }
         JobManager.PrintJobs();
@@ -427,8 +427,8 @@ public static class ShellBuiltins
     private static bool RunFgBg(string[] args, string which, out int exitCode)
     {
         exitCode = 0;
-        Console.Error.WriteLine("neutrinoos: " + which + ": job control into the foreground is not supported in Phase 5");
-        Console.Error.WriteLine("  (background jobs run cooperatively while the shell waits for input; see docs/PHASE5-SHELL.md)");
+        Console.Error.WriteLine("neutrinoos: " + which + ": job control into the foreground is not supported");
+        Console.Error.WriteLine("  (background jobs run cooperatively while the shell waits for input)");
         exitCode = 1;
         return true;
     }
@@ -452,7 +452,7 @@ public static class ShellBuiltins
             return true;
         }
 
-        Console.WriteLine("NeutrinoOS shell (Phase 5) - built-in commands:");
+        Console.WriteLine("NeutrinoOS shell - built-in commands:");
         Console.WriteLine("  cd pwd exit logout export unset history alias unalias source");
         Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot sleep cpupower usb");
         Console.WriteLine();
@@ -488,10 +488,10 @@ public static class ShellBuiltins
             case "unalias": return "usage: unalias name - remove an alias";
             case "source": return "usage: source file - execute commands from a file";
             case "jobs": return "usage: jobs - list background jobs";
-            case "fg": return "fg - not supported in Phase 5 (see docs/PHASE5-SHELL.md)";
-            case "bg": return "bg - not supported in Phase 5 (see docs/PHASE5-SHELL.md)";
+            case "fg": return "fg - not supported (background jobs run cooperatively)";
+            case "bg": return "bg - not supported (background jobs run cooperatively)";
             case "help": return "usage: help [command] - show help";
-            case "run": return "usage: run <path.dll> [args...] - run a .NET assembly (Phase 4 compatible)";
+            case "run": return "usage: run <path.dll> [args...] - run a .NET assembly";
             case "true": return "usage: true - exit with status 0";
             case "false": return "usage: false - exit with status 1";
             case "gc": return "usage: gc - trigger a garbage collection and print statistics";
@@ -500,12 +500,12 @@ public static class ShellBuiltins
             case "gcstats": return "usage: gcstats - heap and pause statistics for the garbage collector";
             case "perf": return "usage: perf start|stop|reset|dump - kernel sampling profiler (see /dev/profiler)";
             case "version": return "usage: version - print the NeutrinoOS version string";
-            case "poweroff": return "usage: poweroff - shut down the system via ACPI S5 (Phase 9)";
-            case "reboot": return "usage: reboot - reset the system via ACPI/PCI reset (Phase 9)";
-            case "sleep": return "usage: sleep - suspend to RAM via ACPI S3 (Phase 9); alias: suspend";
-            case "suspend": return "usage: suspend - suspend to RAM via ACPI S3 (Phase 9); alias: sleep";
-            case "cpupower": return "usage: cpupower - report ACPI C-states/P-states and idle policy (Phase 9)";
-            case "usb": return "usage: usb - list USB controllers, devices, disks and serial ports (Phase 9)";
+            case "poweroff": return "usage: poweroff - shut down the system via ACPI S5";
+            case "reboot": return "usage: reboot - reset the system via ACPI/PCI reset";
+            case "sleep": return "usage: sleep - suspend to RAM via ACPI S3; alias: suspend";
+            case "suspend": return "usage: suspend - suspend to RAM via ACPI S3; alias: sleep";
+            case "cpupower": return "usage: cpupower - report ACPI C-states/P-states and idle policy";
+            case "usb": return "usage: usb - list USB controllers, devices, disks and serial ports";
             default: return null;
         }
     }

@@ -3,7 +3,7 @@
   "name": "neutrinoos.utils.exfat",
   "version": "1.0.0",
   "architecture": "any",
-  "description": "exFAT userspace tooling: mkexfat, fsck.exfat, exfatlabel, exfatattrib (Phase 10)",
+  "description": "exFAT userspace tooling: mkexfat, fsck.exfat, exfatlabel, exfatattrib",
   "license": "MIT",
   "installPath": "/bin",
   "provides": ["utility"],
