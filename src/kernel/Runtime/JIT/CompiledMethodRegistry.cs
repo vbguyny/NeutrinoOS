@@ -596,11 +596,6 @@ public static unsafe class CompiledMethodRegistry
                     if (codeBuffer != null)
                     {
                         existing->NativeCode = codeBuffer;
-                        DebugConsole.Write("[CMR] Recursive call 0x");
-                        DebugConsole.WriteHex(token);
-                        DebugConsole.Write(" pre-allocated buffer at 0x");
-                        DebugConsole.WriteHex((ulong)codeBuffer);
-                        DebugConsole.WriteLine();
                     }
                 }
                 // Return null to signal this is a recursive call - caller should use
@@ -654,15 +649,6 @@ public static unsafe class CompiledMethodRegistry
         entry->IsCompiled = false;
         entry->IsBeingCompiled = true;  // Mark as being compiled
 
-        // Debug: log new entry creation
-        if (token == 0x0600008B && assemblyId == 5)
-        {
-            DebugConsole.Write("[CMR] NEW entry for 0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" asm ");
-            DebugConsole.WriteDecimal(assemblyId);
-            DebugConsole.WriteLine(" IsBeingCompiled=true");
-        }
         entry->IsVirtual = false;
         entry->VtableSlot = -1;
         entry->MethodTable = null;
@@ -700,11 +686,6 @@ public static unsafe class CompiledMethodRegistry
             byte* dst = (byte*)entry->NativeCode;
             for (uint i = 0; i < codeSize; i++)
                 dst[i] = src[i];
-            DebugConsole.Write("[CMR] Recursive method 0x");
-            DebugConsole.WriteHex(token);
-            DebugConsole.Write(" copied ");
-            DebugConsole.WriteDecimal(codeSize);
-            DebugConsole.WriteLine(" bytes to pre-allocated buffer");
             // Note: entry->NativeCode already points to the pre-allocated buffer
         }
         else

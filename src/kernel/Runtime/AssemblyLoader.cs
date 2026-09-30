@@ -3443,17 +3443,20 @@ public static unsafe class AssemblyLoader
     private static uint FindTypeDefByName(LoadedAssembly* asm, byte* typeName, byte* typeNs)
     {
         uint count = asm->Tables.RowCounts[(int)MetadataTableId.TypeDef];
-        DebugConsole.Write("[FindType] Searching asm=");
-        DebugConsole.WriteDecimal(asm->AssemblyId);
-        DebugConsole.Write(" types=");
-        DebugConsole.WriteDecimal(count);
-        DebugConsole.Write(" for '");
-        for (int i = 0; typeNs != null && typeNs[i] != 0 && i < 20; i++)
-            DebugConsole.WriteChar((char)typeNs[i]);
-        DebugConsole.Write(".");
-        for (int i = 0; typeName != null && typeName[i] != 0 && i < 20; i++)
-            DebugConsole.WriteChar((char)typeName[i]);
-        DebugConsole.WriteLine("'");
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[FindType] Searching asm=");
+            DebugConsole.WriteDecimal(asm->AssemblyId);
+            DebugConsole.Write(" types=");
+            DebugConsole.WriteDecimal(count);
+            DebugConsole.Write(" for '");
+            for (int i = 0; typeNs != null && typeNs[i] != 0 && i < 20; i++)
+                DebugConsole.WriteChar((char)typeNs[i]);
+            DebugConsole.Write(".");
+            for (int i = 0; typeName != null && typeName[i] != 0 && i < 20; i++)
+                DebugConsole.WriteChar((char)typeName[i]);
+            DebugConsole.WriteLine("'");
+        }
         for (uint row = 1; row <= count; row++)
         {
             uint nameIdx = MetadataReader.GetTypeDefName(ref asm->Tables, ref asm->Sizes, row);
@@ -3461,9 +3464,8 @@ public static unsafe class AssemblyLoader
             byte* name = MetadataReader.GetString(ref asm->Metadata, nameIdx);
             byte* ns = MetadataReader.GetString(ref asm->Metadata, nsIdx);
 
-            // Debug for types matching the search type name
             bool nameMatch = NameEquals(name, typeName);
-            if (nameMatch)
+            if (nameMatch && JitDiag.VerboseJit)
             {
                 DebugConsole.Write("[FindType] Name MATCH row ");
                 DebugConsole.WriteDecimal(row);
@@ -7205,12 +7207,15 @@ public static unsafe class AssemblyLoader
         // Well-known types don't have a target assembly, so handle them before the null check
         if ((typeDefToken & 0xFF000000) == 0xF0000000)
         {
-            DebugConsole.Write("[AsmLoader] WellKnown type 0x");
-            DebugConsole.WriteHex(typeDefToken);
-            DebugConsole.Write(" method ");
-            for (int i = 0; memberName != null && memberName[i] != 0 && i < 32; i++)
-                DebugConsole.WriteChar((char)memberName[i]);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] WellKnown type 0x");
+                DebugConsole.WriteHex(typeDefToken);
+                DebugConsole.Write(" method ");
+                for (int i = 0; memberName != null && memberName[i] != 0 && i < 32; i++)
+                    DebugConsole.WriteChar((char)memberName[i]);
+                DebugConsole.WriteLine();
+            }
 
             // Well-known types don't have metadata, use AOT method registry
             // Get the original type name - need to handle both TypeRef and TypeSpec
@@ -7283,22 +7288,28 @@ public static unsafe class AssemblyLoader
                         // Return a synthetic AOT method token
                         // We'll use 0xFA (AOT marker) + unique identifier based on native code address
                         methodToken = 0xFA000000 | (uint)(entry.NativeCode & 0x00FFFFFF);
-                        DebugConsole.Write("[AsmLoader] AOT found: code=0x");
-                        DebugConsole.WriteHex((ulong)entry.NativeCode);
-                        DebugConsole.WriteLine();
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[AsmLoader] AOT found: code=0x");
+                            DebugConsole.WriteHex((ulong)entry.NativeCode);
+                            DebugConsole.WriteLine();
+                        }
                         return true;
                     }
                     else
                     {
-                        DebugConsole.Write("[AsmLoader] AOT lookup FAILED for ");
-                        for (int i = 0; fullTypeName[i] != 0 && i < 64; i++)
-                            DebugConsole.WriteChar((char)fullTypeName[i]);
-                        DebugConsole.Write(".");
-                        for (int i = 0; memberName[i] != 0 && i < 32; i++)
-                            DebugConsole.WriteChar((char)memberName[i]);
-                        DebugConsole.Write(" args=");
-                        DebugConsole.WriteDecimal(argCount);
-                        DebugConsole.WriteLine();
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[AsmLoader] AOT lookup FAILED for ");
+                            for (int i = 0; fullTypeName[i] != 0 && i < 64; i++)
+                                DebugConsole.WriteChar((char)fullTypeName[i]);
+                            DebugConsole.Write(".");
+                            for (int i = 0; memberName[i] != 0 && i < 32; i++)
+                                DebugConsole.WriteChar((char)memberName[i]);
+                            DebugConsole.Write(" args=");
+                            DebugConsole.WriteDecimal(argCount);
+                            DebugConsole.WriteLine();
+                        }
 
                         // Special case: ReadOnlySpan<T>.ctor(void*, int) and Span<T>.ctor(void*, int)
                         // Redirect to SpanHelpers.InitSpanFromPointer which has the same semantics
@@ -7308,7 +7319,10 @@ public static unsafe class AssemblyLoader
                             memberName[3] == 'o' && memberName[4] == 'r' && memberName[5] == 0 &&
                             argCount == 2)
                         {
-                            DebugConsole.WriteLine("[AsmLoader] Redirecting Span ctor to SpanHelpers.InitSpanFromPointer");
+                            if (JitDiag.VerboseJit)
+                            {
+                                DebugConsole.WriteLine("[AsmLoader] Redirecting Span ctor to SpanHelpers.InitSpanFromPointer");
+                            }
                             // Look up SpanHelpers.InitSpanFromPointer
                             byte* helperType = stackalloc byte[32];
                             byte* helperMethod = stackalloc byte[24];
@@ -7335,9 +7349,12 @@ public static unsafe class AssemblyLoader
                             if (AotMethodRegistry.TryLookup(helperType, helperMethod, 3, out AotMethodEntry helperEntry))
                             {
                                 methodToken = 0xFA000000 | (uint)(helperEntry.NativeCode & 0x00FFFFFF);
-                                DebugConsole.Write("[AsmLoader] Span ctor redirected to 0x");
-                                DebugConsole.WriteHex((ulong)helperEntry.NativeCode);
-                                DebugConsole.WriteLine();
+                                if (JitDiag.VerboseJit)
+                                {
+                                    DebugConsole.Write("[AsmLoader] Span ctor redirected to 0x");
+                                    DebugConsole.WriteHex((ulong)helperEntry.NativeCode);
+                                    DebugConsole.WriteLine();
+                                }
                                 return true;
                             }
                         }
@@ -7352,7 +7369,10 @@ public static unsafe class AssemblyLoader
                             memberName[9] == 'h' && memberName[10] == 0 &&
                             argCount == 1)
                         {
-                            DebugConsole.WriteLine("[AsmLoader] Redirecting Span.get_Length to SpanHelpers.GetLength");
+                            if (JitDiag.VerboseJit)
+                            {
+                                DebugConsole.WriteLine("[AsmLoader] Redirecting Span.get_Length to SpanHelpers.GetLength");
+                            }
                             byte* helperType = stackalloc byte[32];
                             byte* helperMethod = stackalloc byte[16];
                             // "NeutrinoOS.Runtime.SpanHelpers"
@@ -7375,9 +7395,12 @@ public static unsafe class AssemblyLoader
                             if (AotMethodRegistry.TryLookup(helperType, helperMethod, 1, out AotMethodEntry lengthEntry))
                             {
                                 methodToken = 0xFA000000 | (uint)(lengthEntry.NativeCode & 0x00FFFFFF);
-                                DebugConsole.Write("[AsmLoader] Span.get_Length redirected to 0x");
-                                DebugConsole.WriteHex((ulong)lengthEntry.NativeCode);
-                                DebugConsole.WriteLine();
+                                if (JitDiag.VerboseJit)
+                                {
+                                    DebugConsole.Write("[AsmLoader] Span.get_Length redirected to 0x");
+                                    DebugConsole.WriteHex((ulong)lengthEntry.NativeCode);
+                                    DebugConsole.WriteLine();
+                                }
                                 return true;
                             }
                         }
@@ -7386,31 +7409,46 @@ public static unsafe class AssemblyLoader
                         // when AOT lookup fails. This handles methods on primitive types like
                         // Single.IsNaN, Double.IsInfinity, etc. that are implemented in IL, not native code.
                         {
-                            DebugConsole.WriteLine("[AsmLoader] Falling back to korlib metadata for well-known type method");
+                            if (JitDiag.VerboseJit)
+                            {
+                                DebugConsole.WriteLine("[AsmLoader] Falling back to korlib metadata for well-known type method");
+                            }
                             // Get korlib.dll - it's the CoreLib assembly
                             targetAsm = GetCoreLib();
-                            DebugConsole.Write("[AsmLoader] GetCoreLib() returned: ");
-                            DebugConsole.WriteHex((ulong)targetAsm);
-                            DebugConsole.WriteLine();
+                            if (JitDiag.VerboseJit)
+                            {
+                                DebugConsole.Write("[AsmLoader] GetCoreLib() returned: ");
+                                DebugConsole.WriteHex((ulong)targetAsm);
+                                DebugConsole.WriteLine();
+                            }
                             if (targetAsm != null)
                             {
                                 // Find the actual TypeDef in korlib.dll
-                                DebugConsole.Write("[AsmLoader] Looking for type: ");
-                                for (int dbgi = 0; typeName != null && typeName[dbgi] != 0 && dbgi < 32; dbgi++)
-                                    DebugConsole.WriteChar((char)typeName[dbgi]);
-                                DebugConsole.Write(" in ns: ");
-                                for (int dbgi = 0; typeNs != null && typeNs[dbgi] != 0 && dbgi < 32; dbgi++)
-                                    DebugConsole.WriteChar((char)typeNs[dbgi]);
-                                DebugConsole.WriteLine();
-                                typeDefToken = FindTypeDefByName(targetAsm, typeName, typeNs);
-                                DebugConsole.Write("[AsmLoader] FindTypeDefByName returned 0x");
-                                DebugConsole.WriteHex(typeDefToken);
-                                DebugConsole.WriteLine();
-                                if (typeDefToken != 0)
+                                if (JitDiag.VerboseJit)
                                 {
-                                    DebugConsole.Write("[AsmLoader] Found korlib TypeDef 0x");
+                                    DebugConsole.Write("[AsmLoader] Looking for type: ");
+                                    for (int dbgi = 0; typeName != null && typeName[dbgi] != 0 && dbgi < 32; dbgi++)
+                                        DebugConsole.WriteChar((char)typeName[dbgi]);
+                                    DebugConsole.Write(" in ns: ");
+                                    for (int dbgi = 0; typeNs != null && typeNs[dbgi] != 0 && dbgi < 32; dbgi++)
+                                        DebugConsole.WriteChar((char)typeNs[dbgi]);
+                                    DebugConsole.WriteLine();
+                                }
+                                typeDefToken = FindTypeDefByName(targetAsm, typeName, typeNs);
+                                if (JitDiag.VerboseJit)
+                                {
+                                    DebugConsole.Write("[AsmLoader] FindTypeDefByName returned 0x");
                                     DebugConsole.WriteHex(typeDefToken);
                                     DebugConsole.WriteLine();
+                                }
+                                if (typeDefToken != 0)
+                                {
+                                    if (JitDiag.VerboseJit)
+                                    {
+                                        DebugConsole.Write("[AsmLoader] Found korlib TypeDef 0x");
+                                        DebugConsole.WriteHex(typeDefToken);
+                                        DebugConsole.WriteLine();
+                                    }
 
                                     // Inherited-method walk: a MemberRef may name a method the
                                     // declaring type does not itself define (e.g. the app's
@@ -8798,24 +8836,30 @@ public static unsafe class AssemblyLoader
                 walkFull[wPos++] = wNm[i];
             walkFull[wPos] = 0;
 
-            DebugConsole.Write("[AsmLoader] base-chain walk: ");
-            for (int i = 0; walkFull[i] != 0 && i < 64; i++)
-                DebugConsole.WriteChar((char)walkFull[i]);
-            DebugConsole.Write(" row=0x");
-            DebugConsole.WriteHex(walkRow);
-            DebugConsole.WriteLine();
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] base-chain walk: ");
+                for (int i = 0; walkFull[i] != 0 && i < 64; i++)
+                    DebugConsole.WriteChar((char)walkFull[i]);
+                DebugConsole.Write(" row=0x");
+                DebugConsole.WriteHex(walkRow);
+                DebugConsole.WriteLine();
+            }
 
             if (AotMethodRegistry.TryLookup(walkFull, memberName, argCount, out entry))
             {
-                DebugConsole.Write("[AsmLoader] AOT base-chain resolved: ");
-                for (int i = 0; walkFull[i] != 0 && i < 64; i++)
-                    DebugConsole.WriteChar((char)walkFull[i]);
-                DebugConsole.Write(".");
-                for (int i = 0; memberName[i] != 0 && i < 32; i++)
-                    DebugConsole.WriteChar((char)memberName[i]);
-                DebugConsole.Write(" -> 0x");
-                DebugConsole.WriteHex((ulong)entry.NativeCode);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[AsmLoader] AOT base-chain resolved: ");
+                    for (int i = 0; walkFull[i] != 0 && i < 64; i++)
+                        DebugConsole.WriteChar((char)walkFull[i]);
+                    DebugConsole.Write(".");
+                    for (int i = 0; memberName[i] != 0 && i < 32; i++)
+                        DebugConsole.WriteChar((char)memberName[i]);
+                    DebugConsole.Write(" -> 0x");
+                    DebugConsole.WriteHex((ulong)entry.NativeCode);
+                    DebugConsole.WriteLine();
+                }
                 return true;
             }
 
@@ -8826,9 +8870,12 @@ public static unsafe class AssemblyLoader
             {
                 // Declared in IL at this level - compile that body.
                 declaringToken = 0x02000000 | walkRow;
-                DebugConsole.Write("[AsmLoader] base-chain IL-declared at 0x");
-                DebugConsole.WriteHex(declaringToken);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[AsmLoader] base-chain IL-declared at 0x");
+                    DebugConsole.WriteHex(declaringToken);
+                    DebugConsole.WriteLine();
+                }
                 return false;
             }
 

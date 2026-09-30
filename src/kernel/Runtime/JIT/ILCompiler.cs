@@ -1577,15 +1577,6 @@ public unsafe struct ILCompiler
     /// </summary>
     private bool CompileOpcode(byte opcode)
     {
-        // Debug: trace which opcodes reach the switch for method 0x52
-        if (_debugMethodToken == 0x06000052 && _debugAssemblyId >= 13)
-        {
-            DebugConsole.Write("[OP] 0x");
-            DebugConsole.WriteHex(opcode);
-            DebugConsole.Write(" @");
-            DebugConsole.WriteDecimal((uint)(_ilOffset - 1));
-            DebugConsole.WriteLine();
-        }
         switch (opcode)
         {
             case ILOpcode.Nop:
@@ -2050,10 +2041,6 @@ public unsafe struct ILCompiler
             // === Method calls ===
             case ILOpcode.Call:
                 {
-                    if (_debugMethodToken == 0x06000052 && _debugAssemblyId >= 13)
-                    {
-                        DebugConsole.WriteLine("[OP] Call case hit");
-                    }
                     uint token = *(uint*)(_il + _ilOffset);
                     _ilOffset += 4;
                     return CompileCall(token);
@@ -4423,55 +4410,8 @@ public unsafe struct ILCompiler
         // Load address of local variable
         int offset = GetLocalOffset(index);
 
-        // Debug: trace ldloca in TestDictForeach (token 0x060002E7)
-        bool isDebugMethod = _debugAssemblyId == 6 && _debugMethodToken == 0x060002E7;
-        if (isDebugMethod)
-        {
-            DebugConsole.Write("[DF-ldloca] idx=");
-            DebugConsole.WriteDecimal((uint)index);
-            DebugConsole.Write(" off=");
-            DebugConsole.WriteDecimal((uint)(offset < 0 ? -offset : offset));
-            DebugConsole.Write(offset < 0 ? "(-)" : "(+)");
-            DebugConsole.Write(" codePos=");
-            DebugConsole.WriteHex((ulong)_code.Position);
-            DebugConsole.WriteLine();
-        }
-
-        // Capture position before LEA
-        int leaStart = _code.Position;
         X64Emitter.Lea(ref _code, VReg.R0, VReg.FP, offset);
-        int leaEnd = _code.Position;
-
-        // Debug: dump LEA bytes for TestDictForeach
-        if (isDebugMethod)
-        {
-            DebugConsole.Write("[DF-LEA] bytes: ");
-            byte* codePtr = _code.Code;
-            for (int i = leaStart; i < leaEnd; i++)
-            {
-                DebugConsole.WriteHex((ulong)codePtr[i]);
-                DebugConsole.Write(" ");
-            }
-            DebugConsole.WriteLine();
-        }
-
-        // Capture position before PUSH
-        int pushStart = _code.Position;
         X64Emitter.Push(ref _code, VReg.R0);
-        int pushEnd = _code.Position;
-
-        // Debug: dump PUSH bytes for TestDictForeach
-        if (isDebugMethod)
-        {
-            DebugConsole.Write("[DF-PUSH] bytes: ");
-            byte* codePtr = _code.Code;
-            for (int i = pushStart; i < pushEnd; i++)
-            {
-                DebugConsole.WriteHex((ulong)codePtr[i]);
-                DebugConsole.Write(" ");
-            }
-            DebugConsole.WriteLine();
-        }
 
         PushEntry(EvalStackEntry.NativeInt);  // Address is treated as integer
         return true;

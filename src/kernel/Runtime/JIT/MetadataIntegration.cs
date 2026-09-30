@@ -2365,11 +2365,14 @@ public static unsafe class MetadataIntegration
                 SetTypeTypeArgs(typeArgs, 1);
                 hasGenericContext = true;
 
-                DebugConsole.Write("[FieldTypeArgs] Set legacy MT=0x");
-                DebugConsole.WriteHex((ulong)genericInstMT->_relatedType);
-                DebugConsole.Write(" for field MemberRef 0x");
-                DebugConsole.WriteHex(token);
-                DebugConsole.WriteLine();
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[FieldTypeArgs] Set legacy MT=0x");
+                    DebugConsole.WriteHex((ulong)genericInstMT->_relatedType);
+                    DebugConsole.Write(" for field MemberRef 0x");
+                    DebugConsole.WriteHex(token);
+                    DebugConsole.WriteLine();
+                }
             }
         }
 
@@ -5620,7 +5623,7 @@ public static unsafe class MetadataIntegration
         CodedIndex extendsIdx = MetadataReader.GetTypeDefExtends(ref *_tablesHeader, ref *_tableSizes, typeDefRow);
 
         // Debug: trace IsTypeDefValueType for rows around Queue (250-260 in korlib)
-        if (_currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
+        if (JitDiag.VerboseJit && _currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
         {
             DebugConsole.Write("[IsTypeDefVT] row=");
             DebugConsole.WriteDecimal(typeDefRow);
@@ -5634,7 +5637,7 @@ public static unsafe class MetadataIntegration
         if (extendsIdx.Table != MetadataTableId.TypeRef)
         {
             // Debug: show when returning false for non-TypeRef
-            if (_currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
+            if (JitDiag.VerboseJit && _currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
             {
                 DebugConsole.Write(" -> notTypeRef, ret FALSE\n");
             }
@@ -5661,7 +5664,7 @@ public static unsafe class MetadataIntegration
             name[4] == 'e' && name[5] == 'T' && name[6] == 'y' && name[7] == 'p' &&
             name[8] == 'e' && name[9] == 0)
         {
-            if (_currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
+            if (JitDiag.VerboseJit && _currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
             {
                 DebugConsole.Write(" -> ValueType, ret TRUE\n");
             }
@@ -5670,7 +5673,7 @@ public static unsafe class MetadataIntegration
 
         if (name[0] == 'E' && name[1] == 'n' && name[2] == 'u' && name[3] == 'm' && name[4] == 0)
         {
-            if (_currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
+            if (JitDiag.VerboseJit && _currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
             {
                 DebugConsole.Write(" -> Enum, ret TRUE\n");
             }
@@ -5678,7 +5681,7 @@ public static unsafe class MetadataIntegration
         }
 
         // Debug: show when returning false (not ValueType or Enum)
-        if (_currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
+        if (JitDiag.VerboseJit && _currentAssemblyId == 1 && typeDefRow >= 250 && typeDefRow <= 260)
         {
             DebugConsole.Write(" -> ext=System.");
             // Print first few chars of name
