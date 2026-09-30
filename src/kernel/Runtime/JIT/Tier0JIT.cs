@@ -244,9 +244,8 @@ public static unsafe class Tier0JIT
             return JitResult.Fail();
         }
 
-        // Debug: trace JITTest methods (assembly 13 only - a >= test
-        // used to match shell utilities that happen to share tokens).
-        if (assemblyId == 13 && (methodToken == 0x06000052 || methodToken == 0x0600001B || methodToken == 0x06000054))
+        // Debug: trace JITTest methods (assembly 13 only, verbose-jit only).
+        if (JitDiag.VerboseJit && assemblyId == 13 && (methodToken == 0x06000052 || methodToken == 0x0600001B || methodToken == 0x06000054))
         {
             DebugConsole.Write("[JIT-DBG] Method 0x");
             DebugConsole.WriteHex(methodToken);
@@ -326,8 +325,8 @@ public static unsafe class Tier0JIT
             //     DebugConsole.WriteLine();
             // }
 
-            // Debug: dump sig for InlineArrayAsSpan (0x060003AD)
-            if (methodToken == 0x060003AD && assemblyId == 9)
+            // Debug: dump sig for InlineArrayAsSpan (0x060003AD, verbose-jit only)
+            if (JitDiag.VerboseJit && methodToken == 0x060003AD && assemblyId == 9)
             {
                 DebugConsole.Write("[JIT] Sig tok=0x");
                 DebugConsole.WriteHex(methodToken);
@@ -346,8 +345,8 @@ public static unsafe class Tier0JIT
                 paramCount = (int)methodSig.ParamCount;
                 hasThis = methodSig.HasThis;
                 returnKind = GetReturnKind(ref methodSig.ReturnType);
-                // Debug: trace return type for InlineArrayAsSpan (tok 0x060003AD asm 9)
-                if (methodToken == 0x060003AD && assemblyId == 9)
+                // Debug: trace return type for InlineArrayAsSpan (tok 0x060003AD asm 9, verbose-jit only)
+                if (JitDiag.VerboseJit && methodToken == 0x060003AD && assemblyId == 9)
                 {
                     DebugConsole.Write("[JIT] InlineArrayAsSpan ret elemType=0x");
                     DebugConsole.WriteHex(methodSig.ReturnType.ElementType);

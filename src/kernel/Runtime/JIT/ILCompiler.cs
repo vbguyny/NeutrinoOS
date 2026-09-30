@@ -4679,8 +4679,8 @@ public unsafe struct ILCompiler
     {
         // Compare equal: pop two values, push 1 if equal, 0 otherwise
 
-        // Debug: Log ceq for the bool bug method - check IL offset
-        bool debugThis = IsDebugBoolBugMethod();
+        // Debug: log ceq for the bool bug method (verbose-jit only)
+        bool debugThis = JitDiag.VerboseJit && IsDebugBoolBugMethod();
         if (debugThis)
         {
             // DebugConsole.Write("[ceq-pre] IL=0x");
@@ -5479,8 +5479,8 @@ public unsafe struct ILCompiler
         if (method.HasThis)
             totalArgs++;  // Instance methods have implicit 'this' as first arg
 
-        // Debug: trace ALL calls from TestDictForeach method (token 0x060002E7)
-        if (_debugAssemblyId == 6 && _debugMethodToken == 0x060002E7)
+        // Debug: trace ALL calls from TestDictForeach method (token 0x060002E7, verbose-jit only)
+        if (JitDiag.VerboseJit && _debugAssemblyId == 6 && _debugMethodToken == 0x060002E7)
         {
             DebugConsole.Write("[DF-Call] il=0x");
             DebugConsole.WriteHex((ulong)(_ilOffset - 5));  // approx IL offset
@@ -5611,7 +5611,7 @@ public unsafe struct ILCompiler
             arg0IsFloat64 = argEntry.Kind == EvalStackKind.Float64;
 
             // Debug: trace single-arg call in TestDictForeach
-            bool isDebugDFMoveNext = _debugAssemblyId == 6 && _debugMethodToken == 0x060002E7 &&
+            bool isDebugDFMoveNext = JitDiag.VerboseJit && _debugAssemblyId == 6 && _debugMethodToken == 0x060002E7 &&
                                      method.HasThis && method.ArgCount == 0;
             if (isDebugDFMoveNext)
             {
