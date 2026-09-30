@@ -27,7 +27,7 @@ $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 $root = "d:\Projects\Code\NeutrinoOS"
 $base = Join-Path $root "build"
 $img = Join-Path $base "vbox-p7-serve.img"
-$cleanImg = Join-Path $base "neutrinoos-gui.img"
+$cleanImg = Join-Path $base "neutrinoos-cli.img"
 $vdi = Join-Path $base "vbox-p7-serve.vdi"
 $serial = Join-Path $base "vbox-p7-serial.log"
 $name = "NeutrinoOSCli"
@@ -172,7 +172,7 @@ Assert "HTTPS (TLS 1.3) /health -> 200 (OpenSSL client)" ("$https".Trim() -eq "2
 if (-not $SkipOva) {
     Log "--- OVA packaging (clean release image) ---"
     Stop-Vm
-    & (Join-Path $root "scripts\gui-vm.ps1") -NoStart | Out-Host
+    & (Join-Path $root "scripts\cli-vm.ps1") -NoStart | Out-Host
     & (Join-Path $root "scripts\build-ova.ps1") -VmName $name | Out-Host
     $ova = Join-Path $root "dist\neutrinoos-1.0.0.ova"
     $ovaOk = (Test-Path $ova) -and ((Get-Item $ova).Length -gt 1MB)

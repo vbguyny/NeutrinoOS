@@ -4,13 +4,13 @@ param(
     [switch]$KeepRunning
 )
 # Phase 6 VirtualBox acceptance test.
-# Boots the GUI image variant (built by build/p6-vbox-image.sh, which carries
+# Boots the CLI image variant (built by build/p6-vbox-image.sh, which carries
 # /etc/boot.params: dhcp + sshd + webhost autostart) in a NAT-enabled VM
-# (gui-vm.ps1 -Net): port forwards 2222->22, 8080->80, 8444->443.
+# (cli-vm.ps1 -Net): port forwards 2222->22, 8080->80, 8444->443.
 #
 # Checks:
 #   1. boot: shell prompt, DHCP via VBox NAT (10.0.2.15), sshd + webhost
-#      listening (serial transcript build\vbox-gui-serial.log)
+#      listening (serial transcript build\vbox-cli-serial.log)
 #   2. Windows OpenSSH client (ssh.exe -> 127.0.0.1:2222): uname / ls / gc
 #   3. Windows curl.exe HTTP: /health, /time, /var/www static, 404
 #   4. HTTPS: Microsoft Edge headless if present (BoringSSL); otherwise
@@ -23,8 +23,8 @@ param(
 $ErrorActionPreference = "Stop"
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 $base = "d:\Projects\Code\NeutrinoOS\build"
-$img = Join-Path $base "neutrinoos-gui.img"
-$serial = Join-Path $base "vbox-gui-serial.log"
+$img = Join-Path $base "neutrinoos-cli.img"
+$serial = Join-Path $base "vbox-cli-serial.log"
 $shot = Join-Path $base "vbox-phase6.png"
 $key = Join-Path $env:TEMP "neutrinoos-p6key"
 
@@ -59,7 +59,7 @@ function Record([string]$name, [bool]$ok, [string]$detail = "") {
 
 Write-Host "=== Phase 6 VirtualBox test ===" -ForegroundColor Cyan
 if (-not (Test-Path $img)) {
-    throw "GUI image missing: $img`nBuild it first:  wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/p6-vbox-image.sh"
+    throw "CLI image missing: $img`nBuild it first:  wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/p6-vbox-image.sh"
 }
 
 # --- ssh key (same key pair the QEMU suites use) ------------------------------
@@ -70,8 +70,8 @@ if (-not (Test-Path $key)) { throw "no ssh key at $key (run build/p6-ssh-test.sh
 icacls $key /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
 
 # --- 1. recreate + boot -------------------------------------------------------
-Write-Host "Recreating VM '$VmName' with NAT forwards (gui-vm.ps1 -Net -NoStart)..."
-& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "gui-vm.ps1") -Net -NoStart
+Write-Host "Recreating VM '$VmName' with NAT forwards (cli-vm.ps1 -Net -NoStart)..."
+& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "cli-vm.ps1") -Net -NoStart
 
 Write-Host "Starting headless..."
 & $vb startvm $VmName --type headless | Out-Null

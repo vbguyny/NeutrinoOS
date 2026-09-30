@@ -6,7 +6,7 @@ param(
     [string]$SerialPipe = ""
 )
 # Create (or recreate) a separate VirtualBox VM "NeutrinoOSCli" that boots the
-# GUI image variant produced by build/gui-image.sh:
+# CLI image variant produced by build/cli-image.sh:
 #   - VGA text console mirrored from early boot (boot log + shell visible in
 #     the VM window)
 #   - PS/2 keyboard active (console-active-vga): type directly in the window
@@ -19,7 +19,7 @@ param(
 # the "NeutrinoOSTest" VM on every run - the two do not interfere.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1
+#   powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1
 #       -> regenerate the image if missing, recreate the VM, start it (window)
 #   ... -Rebuild   -> first rebuild the kernel in WSL, then regenerate the image
 #   ... -NoStart   -> create the VM but do not start it
@@ -27,27 +27,27 @@ $ErrorActionPreference = "Stop"
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 $name = "NeutrinoOSCli"
 $base = "d:\Projects\Code\NeutrinoOS\build"
-$img = Join-Path $base "neutrinoos-gui.img"
-$vdi = Join-Path $base "neutrinoos-gui.vdi"
-$serial = Join-Path $base "vbox-gui-serial.log"
+$img = Join-Path $base "neutrinoos-cli.img"
+$vdi = Join-Path $base "neutrinoos-cli.vdi"
+$serial = Join-Path $base "vbox-cli-serial.log"
 # Stable VDI UUID: the media registry remembers media by file path; recreating
 # the file with a fresh random UUID breaks storageattach ("does not match the
 # value stored in the media registry"). A fixed UUID keeps it consistent.
 $vdiUuid = "5a2b8c41-2f7e-4d9a-b6c3-1d4e5f6a7b8c"
 
-# --- 1. Ensure the GUI image exists ------------------------------------------
+# --- 1. Ensure the CLI image exists ------------------------------------------
 if ($Rebuild -or -not (Test-Path $img)) {
     if ($Rebuild) {
         # Full chain: kernel -> utilities -> deploy image (/root/run.img, the
-        # source gui-image.sh prefers) -> GUI image. A kernel-only rebuild
+        # source cli-image.sh prefers) -> CLI image. A kernel-only rebuild
         # would produce an image without the /bin shell utilities.
         Write-Host "Rebuilding kernel + utilities + images in WSL (this takes a few minutes)..."
-        wsl.exe -d Ubuntu-24.04 -u root -- timeout 480 bash -c "cd /root/neutrino; bash /mnt/d/Projects/Code/NeutrinoOS/build/wsl-rebuild.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-apps-build.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-deploy.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh 2>&1 | tail -6"
+        wsl.exe -d Ubuntu-24.04 -u root -- timeout 480 bash -c "cd /root/neutrino; bash /mnt/d/Projects/Code/NeutrinoOS/build/wsl-rebuild.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-apps-build.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-deploy.sh 2>&1 | tail -2; bash /mnt/d/Projects/Code/NeutrinoOS/build/cli-image.sh 2>&1 | tail -6"
     } else {
-        Write-Host "GUI image missing - generating it with build/gui-image.sh..."
-        wsl.exe -d Ubuntu-24.04 -u root -- timeout 60 bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh
+        Write-Host "CLI image missing - generating it with build/cli-image.sh..."
+        wsl.exe -d Ubuntu-24.04 -u root -- timeout 60 bash /mnt/d/Projects/Code/NeutrinoOS/build/cli-image.sh
     }
-    if (-not (Test-Path $img)) { throw "GUI image was not produced: $img" }
+    if (-not (Test-Path $img)) { throw "CLI image was not produced: $img" }
 } else {
     Write-Host "Using existing $img (pass -Rebuild to refresh it)"
 }
@@ -64,7 +64,7 @@ $ErrorActionPreference = "Stop"
 Remove-Item -Force $serial -ErrorAction SilentlyContinue
 Remove-Item -Force $vdi -ErrorAction SilentlyContinue
 
-Write-Host "Converting GUI image to VDI..."
+Write-Host "Converting CLI image to VDI..."
 & $vb convertfromraw $img $vdi --format VDI | Out-Null
 & $vb internalcommands sethduuid $vdi $vdiUuid | Out-Null
 

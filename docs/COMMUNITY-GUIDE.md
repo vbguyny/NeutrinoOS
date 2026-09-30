@@ -11,7 +11,7 @@ Open a GitHub issue. Useful bug reports include:
 * what you ran (commands, image/version, x64 or ARM64, QEMU/VirtualBox),
 * what you expected, what happened,
 * logs: `qemu.log` (WSL), `dist\serial.log` (Windows QEMU),
-  `build\vbox-gui-serial.log` (VirtualBox), or acceptance script output,
+  `build\vbox-cli-serial.log` (VirtualBox), or acceptance script output,
 * for kernel faults: the `SYNC EXCEPTION` / `!!! RAWV` dump.
 
 Feature requests: describe the use case first; if it touches the kernel

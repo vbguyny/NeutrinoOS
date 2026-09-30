@@ -1,5 +1,5 @@
 # Phase 7: export the NeutrinoOSCli VirtualBox VM as a v1.0.0 OVA appliance.
-# Prerequisite: the VM exists (scripts\gui-vm.ps1) and boots the release image.
+# Prerequisite: the VM exists (scripts\cli-vm.ps1) and boots the release image.
 param(
     [string]$Version = "1.0.0",
     [string]$VmName  = "NeutrinoOSCli",
@@ -21,7 +21,7 @@ $vbox = $vboxPath
 
 & $vbox list vms | Out-Null
 if (-not (& $vbox list vms | Select-String -SimpleMatch "`"$VmName`"")) {
-    throw "VM '$VmName' not found. Create it first: powershell -File scripts\gui-vm.ps1"
+    throw "VM '$VmName' not found. Create it first: powershell -File scripts\cli-vm.ps1"
 }
 
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null

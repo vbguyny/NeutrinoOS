@@ -56,7 +56,7 @@ description ("`run-phase8-tests.ps1 -Only arm64` -> ALL-PASS", etc.).
 ## Reporting bugs / requesting features
 
 * Use GitHub issues; include: what you ran, what you expected, what
-  happened, and the relevant log (`qemu.log`, `build\vbox-gui-serial.log`,
+  happened, and the relevant log (`qemu.log`, `build\vbox-cli-serial.log`,
   or the acceptance script output).
 * Kernel crashes: attach the `SYNC EXCEPTION` / `!!! RAWV` dump if one
   was printed.

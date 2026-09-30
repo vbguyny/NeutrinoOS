@@ -2,11 +2,11 @@ param(
     [string]$VmName = "NeutrinoOSCli",
     [int]$ShellTimeoutSec = 150
 )
-# Phase 5 VirtualBox test: boots the "NeutrinoOSCli" VM (GUI image built by
+# Phase 5 VirtualBox test: boots the "NeutrinoOSCli" VM (CLI image built by
 # build/p5-vbox-image.sh, which carries the 32 Phase 5 utilities in /bin),
 # types a scripted shell session with VBoxManage keyboardputstring, then
 # asserts the results from the VGA-mirrored serial transcript
-# (build\vbox-gui-serial.log) and drops a screenshot. Every typed line is
+# (build\vbox-cli-serial.log) and drops a screenshot. Every typed line is
 # verified against its echo in the transcript and retyped on mismatch, so
 # a dropped keystroke cannot silently corrupt the session.
 #
@@ -16,12 +16,12 @@ param(
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts\vbox-phase5-test.ps1
-# The VM is always recreated fresh (gui-vm.ps1 -NoStart) so the boot, the
+# The VM is always recreated fresh (cli-vm.ps1 -NoStart) so the boot, the
 # image and the transcript are clean for every run.
 $ErrorActionPreference = "Stop"
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 $base = "d:\Projects\Code\NeutrinoOS\build"
-$serial = Join-Path $base "vbox-gui-serial.log"
+$serial = Join-Path $base "vbox-cli-serial.log"
 
 function Read-SerialLog([string]$path) {
     if (-not (Test-Path $path)) { return "" }
@@ -95,10 +95,10 @@ function Wait-ForMarker([string]$pattern, [int]$minCount, [int]$timeoutSec, [str
 }
 
 # --- recreate the VM fresh (clean boot, clean transcript) ---------------------
-# (gui-vm.ps1 powers off and deletes any previous instance itself)
-Write-Host "Creating VM '$VmName' (gui-vm.ps1 -NoStart)..."
-& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "gui-vm.ps1") -NoStart
-if ($LASTEXITCODE -ne 0) { throw "gui-vm.ps1 failed ($LASTEXITCODE)" }
+# (cli-vm.ps1 powers off and deletes any previous instance itself)
+Write-Host "Creating VM '$VmName' (cli-vm.ps1 -NoStart)..."
+& powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "cli-vm.ps1") -NoStart
+if ($LASTEXITCODE -ne 0) { throw "cli-vm.ps1 failed ($LASTEXITCODE)" }
 
 Remove-Item -Force $serial -ErrorAction SilentlyContinue
 

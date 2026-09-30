@@ -1,19 +1,19 @@
 #!/bin/bash
 # Phase 7: build the release image variant.
-#   - GUI variant of the kernel (VGA mirrored, skip-boot-tests marker)
+#   - CLI variant of the kernel (VGA mirrored, skip-boot-tests marker)
 #   - the 36-utility suite in ::/bin plus /etc/profile
 #   - /etc/neutrinoos-release version file
-# Result: /root/neutrino/build/x64/neutrinoos-gui.img (release candidate),
+# Result: /root/neutrino/build/x64/neutrinoos-cli.img (release candidate),
 # which build/p7-release.sh turns into the distribution artifacts.
 set -eu
 cd /root/neutrino
 
 VERSION="1.0.0"
 
-# GUI image + utilities + /etc/profile (Phase 5 chain).
+# CLI image + utilities + /etc/profile (Phase 5 chain).
 bash /mnt/d/Projects/Code/NeutrinoOS/build/p5-vbox-image.sh
 
-DST=build/x64/neutrinoos-gui.img
+DST=build/x64/neutrinoos-cli.img
 
 # --- /etc/neutrinoos-release --------------------------------------------------
 cat > /root/neutrinoos-release <<EOF
@@ -43,7 +43,7 @@ mk_dir /home
 
 # p5-vbox-image.sh synced the image to the Windows tree before the release
 # file was added above; refresh the synced copy so both are identical.
-cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img
+cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img
 
 # Belt and braces: never let mtools read from the terminal.
 exec < /dev/null

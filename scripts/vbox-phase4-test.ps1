@@ -4,16 +4,16 @@ param(
 )
 # Type a scripted Phase 4 session into the running "NeutrinoOSCli" VM via
 # VBoxManage keyboardputscancode (PS/2 keyboard -> VGA console is the active
-# input in the GUI image), then assert the results from the serial transcript
-# (build\vbox-gui-serial.log) and drop a few screenshots.
+# input in the CLI image), then assert the results from the serial transcript
+# (build\vbox-cli-serial.log) and drop a few screenshots.
 #
 # Usage:
-#   powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1      # create + start VM first
+#   powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1      # create + start VM first
 #   powershell -ExecutionPolicy Bypass -File scripts\vbox-phase4-test.ps1
 $ErrorActionPreference = "Stop"
 $vb = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
 $base = "d:\Projects\Code\NeutrinoOS\build"
-$serial = Join-Path $base "vbox-gui-serial.log"
+$serial = Join-Path $base "vbox-cli-serial.log"
 
 function Read-SerialLog([string]$path) {
     if (-not (Test-Path $path)) { return "" }
@@ -95,7 +95,7 @@ while ((Get-Date) -lt $deadline) {
     if ((Read-SerialLog $serial) -match "neutrinoos>") { $ready = $true; break }
     Start-Sleep -Milliseconds 500
 }
-if (-not $ready) { throw "shell prompt not seen within ${ShellTimeoutSec}s - is $VmName running (scripts\gui-vm.ps1)?" }
+if (-not $ready) { throw "shell prompt not seen within ${ShellTimeoutSec}s - is $VmName running (scripts\cli-vm.ps1)?" }
 Write-Host "[OK] shell ready - typing the Phase 4 session"
 Start-Sleep -Seconds 2
 

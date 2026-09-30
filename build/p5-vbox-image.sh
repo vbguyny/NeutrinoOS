@@ -1,7 +1,7 @@
 #!/bin/bash
-# Build the Phase 5 VirtualBox GUI image:
-#   - the GUI variant (VGA console mirrored, console-active-vga +
-#     skip-boot-tests markers) produced by build/gui-image.sh, plus
+# Build the Phase 5 VirtualBox CLI image:
+#   - the CLI variant (VGA console mirrored, console-active-vga +
+#     skip-boot-tests markers) produced by build/cli-image.sh, plus
 #   - the Phase 5 utility suite (32 x .NET 10) in ::/bin,
 #   - /etc/profile and the synced root NeutrinoOS.DDK.dll copy (the same
 #     instance the driver world and the utilities share).
@@ -11,9 +11,9 @@
 set -eu
 cd /root/neutrino
 
-bash /mnt/d/Projects/Code/NeutrinoOS/build/gui-image.sh
+bash /mnt/d/Projects/Code/NeutrinoOS/build/cli-image.sh
 
-DST=build/x64/neutrinoos-gui.img
+DST=build/x64/neutrinoos-cli.img
 
 # --- Phase 5 utilities --------------------------------------------------------
 mmd -i "$DST" ::/bin 2>/dev/null || true
@@ -42,10 +42,10 @@ export TERM=vt100
 EOF
 mcopy -o -i "$DST" /root/profile.sample ::/etc/profile
 
-# Re-copy to the Windows side: gui-image.sh copied before our additions.
-cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img
+# Re-copy to the Windows side: cli-image.sh copied before our additions.
+cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img
 
 echo "=== Phase 5 VBox image ready ==="
 mdir -i "$DST" ::/bin | tail -5
 mdir -i "$DST" :: | grep -iE 'skip|console|NEUTRINO' || true
-echo "=== copied to /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img"
+echo "=== copied to /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img"

@@ -335,7 +335,7 @@ public unsafe partial class NetworkStack
 
         // ARP gleaning: learn the sender's MAC from the inbound frame so
         // replies do not get dropped when the ARP cache has no entry yet
-        // (e.g. images without the boot-test warmup - the GUI VBox image).
+        // (e.g. images without the boot-test warmup - the CLI VBox image).
         if (ethSrc != null && srcIP != 0)
         {
             _arpCache.Update(srcIP, ethSrc);

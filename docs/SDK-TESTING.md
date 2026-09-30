@@ -57,15 +57,15 @@ powershell -ExecutionPolicy Bypass -File scripts\run-qemu.ps1 -Serial
 * guest → host: `10.0.2.2` (so `npkg repo add local http://10.0.2.2:8080`
   works with `scripts\start-repo-server.ps1` running on Windows)
 
-## 3. VirtualBox (GUI)
+## 3. VirtualBox (CLI VM, windowed)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1            # build VM + start window
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -Rebuild   # rebuild kernel in WSL first
+powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1            # build VM + start window
+powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1 -Rebuild   # rebuild kernel in WSL first
 ```
 
 * window shows the `[Boot]` timeline and the shell; type commands directly
-* serial transcript: `build\vbox-gui-serial.log`
+* serial transcript: `build\vbox-cli-serial.log`
 * VirtualBox NAT: the host is also `10.0.2.2` for guest → host traffic
 
 The functional acceptance VM (`scripts\test-vbox.ps1`, "NeutrinoOSTest")
@@ -87,6 +87,6 @@ useful as a post-install check.
 |---|---|
 | WSL QEMU serial | `/root/neutrino/qemu.log` |
 | Windows QEMU serial | `dist\serial.log` (or `-Serial` stdio) |
-| VirtualBox serial | `build\vbox-gui-serial.log` |
+| VirtualBox serial | `build\vbox-cli-serial.log` |
 | Guest kernel log | `cat /var/log/...`? — boot log is on the console; `dmesg`-style dump via `procinfo` |
 | Package journal (guest) | `/var/lib/npkg/journal.jsonl` |

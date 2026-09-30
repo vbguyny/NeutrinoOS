@@ -5,7 +5,7 @@
 # interactive console session needed).
 set -eu
 cd /root/neutrino
-SRC=build/x64/neutrinoos-gui.img
+SRC=build/x64/neutrinoos-cli.img
 DST=/mnt/d/Projects/Code/NeutrinoOS/build/vbox-p7-serve.img
 
 [ -f "$SRC" ] || { echo "missing $SRC"; exit 1; }

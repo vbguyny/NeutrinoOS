@@ -9,18 +9,18 @@
 ./kill.sh     # Kill any running QEMU instances
 ```
 
-## VirtualBox GUI VM (NeutrinoOSCli)
+## VirtualBox CLI VM (NeutrinoOSCli)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1            # create/recreate the VM from the GUI image + start it (window)
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -Rebuild   # rebuild kernel + utilities in WSL, then regenerate the image
-powershell -ExecutionPolicy Bypass -File scripts\gui-vm.ps1 -NoStart   # create the VM only
+powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1            # create/recreate the VM from the CLI image + start it (window)
+powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1 -Rebuild   # rebuild kernel + utilities in WSL, then regenerate the image
+powershell -ExecutionPolicy Bypass -File scripts\cli-vm.ps1 -NoStart   # create the VM only
 ```
 
-- Boots `build\neutrinoos-gui.img`, produced by `bash build/gui-image.sh` from the deploy image (`/root/run.img`: kernel + `/bin` utilities + `/etc`), with VGA console mirrored from early boot, PS/2 input active, boot tests skipped.
+- Boots `build\neutrinoos-cli.img`, produced by `bash build/cli-image.sh` from the deploy image (`/root/run.img`: kernel + `/bin` utilities + `/etc`), with VGA console mirrored from early boot, PS/2 input active, boot tests skipped.
 - virtio NIC + NAT is ON by default: `eth0` DHCP-leases `10.0.2.15`, and `dns google.com` / `ping www.google.com` work in the VM. Pass `-NoNet` for a NIC-less VM.
 - The VM window shows the `[Boot]` status timeline and the shell; type commands directly in the window.
-- Serial transcript: `build\vbox-gui-serial.log`.
+- Serial transcript: `build\vbox-cli-serial.log`.
 - Independent of `scripts/test-vbox.ps1` (which owns the "NeutrinoOSTest" VM); both can coexist.
 
 ## Bash Tool Timeouts

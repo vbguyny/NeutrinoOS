@@ -1,6 +1,6 @@
 #!/bin/bash
 # Phase 7: assemble the v1.0.0 release artifacts in /root/neutrino/dist.
-# Inputs:  build/x64/neutrinoos-gui.img  (run build/p7-release-image.sh first)
+# Inputs:  build/x64/neutrinoos-cli.img  (run build/p7-release-image.sh first)
 # Outputs: neutrinoos-1.0.0.img      raw VM image (20 GB boot-from-file install medium)
 #          neutrinoos-1.0.0.qcow2    KVM/QEMU image
 #          SHA256SUMS               checksums of all artifacts
@@ -10,7 +10,7 @@ set -eu
 cd /root/neutrino
 
 VERSION="1.0.0"
-SRC=build/x64/neutrinoos-gui.img
+SRC=build/x64/neutrinoos-cli.img
 DIST=dist
 
 [ -f "$SRC" ] || { echo "missing $SRC - run build/p7-release-image.sh first"; exit 1; }

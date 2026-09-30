@@ -11,7 +11,7 @@ reported but has no datapath yet.
 | Platform | Status | Notes |
 |----------|--------|-------|
 | x86_64 UEFI (QEMU q35, OVMF) | Verified | Primary development target |
-| x86_64 UEFI (VirtualBox 7) | Verified | `scripts/test-vbox.ps1`, `scripts/gui-vm.ps1` |
+| x86_64 UEFI (VirtualBox 7) | Verified | `scripts/test-vbox.ps1`, `scripts/cli-vm.ps1` |
 | x86_64 multi-socket NUMA (QEMU, SMP) | Verified | Phase 7 SMP fix |
 | ARM64 (QEMU virt) | Verified | Boot + console |
 | Real x86_64 motherboards | Procedure ready | See `docs/PHASE9-HARDWARE-TESTING.md`; flashing via `scripts/flash-usb.ps1` |

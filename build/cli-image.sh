@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a "GUI" image variant for manual QEMU/VirtualBox boots:
+# Build the interactive CLI image variant for manual QEMU/VirtualBox boots:
 #   - VGA text console enabled and mirrored from early boot (visible in
 #     the VM window), no console-vga-off marker
 #   - console-active-vga: the VGA console (PS/2 keyboard) is the initial
@@ -11,15 +11,15 @@
 # The plain build/x64/neutrinoos.img (used by the automated test scripts,
 # which add their own markers) is left untouched.
 #
-# Usage: bash build/gui-image.sh
+# Usage: bash build/cli-image.sh
 set -eu
 cd /root/neutrino
 
 SRC=build/x64/neutrinoos.img
-DST=build/x64/neutrinoos-gui.img
+DST=build/x64/neutrinoos-cli.img
 
 # Prefer the deploy image (kernel + /bin utilities + /etc, built by
-# p5-deploy.sh): the GUI VM is used interactively, so it needs the shell
+# p5-deploy.sh): the CLI VM is used interactively, so it needs the shell
 # utilities (ls, mount, mkexfat, ...) on its single disk.
 if [ -f /root/run.img ]; then SRC=/root/run.img; fi
 
@@ -50,13 +50,13 @@ if [ -d /root/phase4apps ]; then
     mcopy -o -i "$DST" /root/phase4apps/p4math.dll ::/lib/p4math.dll
   fi
 else
-  echo "WARN: /root/phase4apps not found - GUI image will not contain the p4 apps"
+  echo "WARN: /root/phase4apps not found - CLI image will not contain the p4 apps"
 fi
 
-cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img
+cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img
 
-echo "=== markers in GUI image:"
+echo "=== markers in CLI image:"
 mdir -i "$DST" :: | grep -i 'skip\|console' || true
-echo "=== apps in GUI image:"
+echo "=== apps in CLI image:"
 mdir -i "$DST" ::/apps | tail -14
-echo "=== copied to /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img"
+echo "=== copied to /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img"
