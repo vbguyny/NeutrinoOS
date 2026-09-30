@@ -1,10 +1,10 @@
-// ProtonOS - Test Driver
+// NeutrinoOS - Test Driver
 // A simple test driver to verify dynamic driver loading from /drivers.
 // This driver does nothing except log messages to verify the loading mechanism.
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.Drivers.Test;
+namespace NeutrinoOS.Drivers.Test;
 
 /// <summary>
 /// Test driver entry point.

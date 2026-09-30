@@ -1,4 +1,4 @@
-// ProtonOS korlib - SortedList<TKey, TValue>
+// NeutrinoOS korlib - SortedList<TKey, TValue>
 // Represents a collection of key/value pairs that are sorted by key.
 
 namespace System.Collections.Generic

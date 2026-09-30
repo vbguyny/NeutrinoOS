@@ -1,4 +1,4 @@
-// ProtonOS kernel - GCDesc Parser
+// NeutrinoOS kernel - GCDesc Parser
 // Enumerates object reference fields from MethodTable's GCDesc metadata.
 //
 // GCDesc is stored BEFORE the MethodTable in memory and describes which fields
@@ -6,10 +6,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// A series entry in GCDesc describing a contiguous run of reference fields.

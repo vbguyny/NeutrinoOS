@@ -1,4 +1,4 @@
-// ProtonOS kernel - Runtime helpers for JIT-compiled code
+// NeutrinoOS kernel - Runtime helpers for JIT-compiled code
 // These are fundamental runtime helpers called by JIT-generated code.
 //
 // Allocation helpers:
@@ -22,11 +22,11 @@
 // Header size formula: 16 + 8*N bytes (2D=32, 3D=40, 4D=48)
 
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Runtime helpers for JIT-compiled code.

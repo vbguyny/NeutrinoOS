@@ -1,8 +1,8 @@
-// ProtonOS DDK - Base Driver Interface
+// NeutrinoOS DDK - Base Driver Interface
 
 using System;
 
-namespace ProtonOS.DDK.Drivers;
+namespace NeutrinoOS.DDK.Drivers;
 
 /// <summary>
 /// Base interface for all drivers.

@@ -1,11 +1,11 @@
-// ProtonOS kernel - DDK Interrupt Exports
+// NeutrinoOS kernel - DDK Interrupt Exports
 // Exposes interrupt management operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
-using ProtonOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for interrupt management.
@@ -29,7 +29,7 @@ public static unsafe class InterruptExports
         if (handler == null)
             return false;
 
-        ProtonOS.Arch.Arch.RegisterInterruptHandler(vector, handler);
+        NeutrinoOS.Arch.Arch.RegisterInterruptHandler(vector, handler);
         return true;
     }
 
@@ -39,7 +39,7 @@ public static unsafe class InterruptExports
     [UnmanagedCallersOnly(EntryPoint = "Kernel_UnregisterInterruptHandler")]
     public static void UnregisterInterruptHandler(byte vector)
     {
-        ProtonOS.Arch.Arch.UnregisterInterruptHandler(vector);
+        NeutrinoOS.Arch.Arch.UnregisterInterruptHandler(vector);
     }
 
     /// <summary>

@@ -1,14 +1,14 @@
-// ProtonOS kernel - PAL Synchronization Primitives
+// NeutrinoOS kernel - PAL Synchronization Primitives
 // Win32-style synchronization objects for PAL compatibility.
 // Supports: Events (auto/manual reset), Mutexes, Semaphores
 // All objects support WaitForSingleObject/WaitForMultipleObjects patterns.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Type of waitable PAL object

@@ -1,4 +1,4 @@
-// ProtonOS DDK - NetworkStack IPv6 support (Phase 9 Task 2)
+// NeutrinoOS DDK - NetworkStack IPv6 support (Phase 9 Task 2)
 //
 // Dual-stack extension of the network stack: IPv6 receive dispatch
 // (ICMPv6, UDP, TCP), a neighbor-discovery cache, Router Advertisement
@@ -11,9 +11,9 @@
 // wild writes). Struct RETURNS are fine (hidden return buffer).
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 public unsafe partial class NetworkStack
 {

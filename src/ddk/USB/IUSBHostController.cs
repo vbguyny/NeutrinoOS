@@ -1,9 +1,9 @@
-// ProtonOS DDK - USB Host Controller Interface
+// NeutrinoOS DDK - USB Host Controller Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.USB;
+namespace NeutrinoOS.DDK.USB;
 
 /// <summary>
 /// USB port status.

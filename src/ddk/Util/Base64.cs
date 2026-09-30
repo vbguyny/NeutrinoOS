@@ -1,10 +1,10 @@
-// ProtonOS DDK - Base64 (Phase 6)
+// NeutrinoOS DDK - Base64 (Phase 6)
 // Standard RFC 4648 base64 with '=' padding. Used for authorized_keys
 // parsing and SSH public-key blobs.
 
 using System;
 
-namespace ProtonOS.DDK.Util;
+namespace NeutrinoOS.DDK.Util;
 
 /// <summary>Standard base64 encoding/decoding.</summary>
 public static class Base64

@@ -1,4 +1,4 @@
-// ProtonOS DDK - System information kernel wrappers (Phase 5)
+// NeutrinoOS DDK - System information kernel wrappers (Phase 5)
 //
 // DllImport wrappers for the NeutrinoOS system-information exports
 // (Kernel_* names registered by KernelExportInit). Used by the Phase 5
@@ -8,7 +8,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>DDK wrappers for the NeutrinoOS system-information exports.</summary>
 public static unsafe class SysInfo

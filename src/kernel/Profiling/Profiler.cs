@@ -12,9 +12,9 @@
 
 using System;
 using System.IO;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Profiling;
+namespace NeutrinoOS.Profiling;
 
 /// <summary>Kernel sampling profiler (see file header).</summary>
 public static class Profiler
@@ -208,7 +208,7 @@ public static class Profiler
     private static ulong UptimeMs()
     {
         // APIC tick count is 1 ms resolution; avoid HPET MMIO in Format loops.
-        return ProtonOS.Arch.APIC.TickCount;
+        return NeutrinoOS.Arch.APIC.TickCount;
     }
 
     private static string Hex(ulong value)

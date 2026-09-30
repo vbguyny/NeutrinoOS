@@ -7,12 +7,12 @@
 // connect/disconnect changes (called from ShellMain.IdlePump, the same
 // place the Phase 8 PCIe hot-plug scan runs).
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Usb.Xhci;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Usb.Xhci;
 
-namespace ProtonOS.Usb;
+namespace NeutrinoOS.Usb;
 
 /// <summary>Class-driver kinds bound to a device.</summary>
 public static class UsbDriverKind

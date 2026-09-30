@@ -17,7 +17,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>
 /// Scratch allocation backend. The kernel never sets one (the page

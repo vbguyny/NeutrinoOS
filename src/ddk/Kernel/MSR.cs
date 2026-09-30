@@ -1,10 +1,10 @@
-// ProtonOS DDK - MSR Kernel Wrappers
+// NeutrinoOS DDK - MSR Kernel Wrappers
 // DllImport wrappers for x86 Model Specific Register operations.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// DDK wrappers for x86 MSR (Model Specific Register) operations.

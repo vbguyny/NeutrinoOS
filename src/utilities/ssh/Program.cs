@@ -12,7 +12,7 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Network;
+using NeutrinoOS.DDK.Network;
 
 namespace NeutrinoOS.Utility.Ssh;
 
@@ -22,7 +22,7 @@ public static class Program
     /// <summary>Entry point; 0 when the server is reachable, 1 otherwise.</summary>
     public static unsafe int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         int port = 22;
         string target = null;
@@ -80,10 +80,10 @@ public static class Program
         uint ip = Http.ParseIP(host);
         if (ip == 0)
         {
-            var resolver = new ProtonOS.DDK.Network.Stack.DnsResolver(eth.Stack);
+            var resolver = new NeutrinoOS.DDK.Network.Stack.DnsResolver(eth.Stack);
             ip = resolver.Resolve(host, 5000,
-                new ProtonOS.DDK.Network.Stack.DnsResolver.TransmitFrameDelegate(NetworkPump.TransmitAdapter),
-                new ProtonOS.DDK.Network.Stack.DnsResolver.ReceiveFrameDelegate(NetworkPump.ReceiveAdapter));
+                new NeutrinoOS.DDK.Network.Stack.DnsResolver.TransmitFrameDelegate(NetworkPump.TransmitAdapter),
+                new NeutrinoOS.DDK.Network.Stack.DnsResolver.ReceiveFrameDelegate(NetworkPump.ReceiveAdapter));
             if (ip == 0)
                 return Util.Fail("ssh", host + ": unknown host");
         }

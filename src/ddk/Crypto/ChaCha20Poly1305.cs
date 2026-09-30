@@ -1,4 +1,4 @@
-// ProtonOS DDK - ChaCha20-Poly1305 AEAD (Phase 6)
+// NeutrinoOS DDK - ChaCha20-Poly1305 AEAD (Phase 6)
 //
 // Managed C# ChaCha20-Poly1305 (RFC 8439 section 2.8) built on the
 // Phase 6 ChaCha20 and Poly1305 primitives. Used by TLS 1.3
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed ChaCha20-Poly1305 authenticated encryption (RFC 8439).</summary>
 public sealed class ChaCha20Poly1305

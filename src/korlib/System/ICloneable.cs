@@ -1,4 +1,4 @@
-// ProtonOS korlib - ICloneable interface
+// NeutrinoOS korlib - ICloneable interface
 
 namespace System;
 

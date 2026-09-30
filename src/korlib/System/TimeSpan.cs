@@ -1,4 +1,4 @@
-// ProtonOS korlib - TimeSpan
+// NeutrinoOS korlib - TimeSpan
 // Represents a time interval.
 
 namespace System;

@@ -1,14 +1,14 @@
-// ProtonOS kernel - Process Table Management
+// NeutrinoOS kernel - Process Table Management
 // Global process table and process lifecycle management.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.IO;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.IO;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Process table management - global registry of all processes

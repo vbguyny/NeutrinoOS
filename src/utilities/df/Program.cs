@@ -10,8 +10,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Storage;
 
 namespace NeutrinoOS.Utility.Df;
 
@@ -21,7 +21,7 @@ public static class Program
     /// <summary>Entry point; returns 1 when no filesystem info is available.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         bool types = false;
         for (int i = 0; i < args.Length; i++)

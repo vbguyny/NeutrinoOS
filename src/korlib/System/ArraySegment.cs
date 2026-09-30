@@ -1,4 +1,4 @@
-// ProtonOS korlib - ArraySegment<T>
+// NeutrinoOS korlib - ArraySegment<T>
 // Delimits a section of a one-dimensional array.
 
 using System.Collections;

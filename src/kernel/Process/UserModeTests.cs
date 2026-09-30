@@ -1,11 +1,11 @@
-// ProtonOS kernel - User Mode Syscall Tests
+// NeutrinoOS kernel - User Mode Syscall Tests
 // Generates machine code that tests all implemented syscalls in Ring 3.
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Generates user-mode test programs that comprehensively test syscalls
@@ -1060,7 +1060,7 @@ public static unsafe class UserModeTests
 
         public void EmitUnameTest()
         {
-            // Test: uname(&buf) should return 0 and fill sysname with "ProtonOS"
+            // Test: uname(&buf) should return 0 and fill sysname with "NeutrinoOS"
             // SYS_UNAME = 63
             // struct utsname is 6 * 65 = 390 bytes, but we'll allocate 400 (16-byte aligned)
             fixed (byte* code = _code)

@@ -1,4 +1,4 @@
-// ProtonOS korlib - Guid
+// NeutrinoOS korlib - Guid
 // Represents a globally unique identifier (GUID).
 
 namespace System;

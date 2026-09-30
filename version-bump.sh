@@ -35,7 +35,7 @@ cat > "$GEN_FILE" <<EOF
 // Do not edit by hand: build.sh / build/wsl-rebuild.sh regenerate this file
 // and increment the build number (.buildnum at the repository root) on every
 // build. Committed so a fresh clone builds without running the bump.
-namespace ProtonOS;
+namespace NeutrinoOS;
 
 /// <summary>Build-stamped NeutrinoOS version ("major.minor.build").</summary>
 public static class NeutrinoVersion

@@ -13,9 +13,9 @@
 // mode behave identically on both consoles by construction.
 
 using System;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Console device backed by the VGA text framebuffer (registered as /dev/vga0).

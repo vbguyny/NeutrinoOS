@@ -1,12 +1,12 @@
-// ProtonOS kernel - DDK NUMA Exports
+// NeutrinoOS kernel - DDK NUMA Exports
 // Exposes NUMA topology and memory allocation APIs to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for NUMA topology and NUMA-aware memory allocation.

@@ -1,4 +1,4 @@
-// ProtonOS DDK - AES-GCM AEAD (Phase 6)
+// NeutrinoOS DDK - AES-GCM AEAD (Phase 6)
 //
 // Managed C# AES-GCM (NIST SP 800-38D) built on the AES core and a
 // bitwise GHASH over GF(2^128). Used by TLS 1.3 (AES-128/256-GCM) and
@@ -10,7 +10,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed AES-GCM authenticated encryption (see file header).</summary>
 public sealed class AesGcm

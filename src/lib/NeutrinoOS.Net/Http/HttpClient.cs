@@ -1,11 +1,11 @@
-// ProtonOS.Net - HTTP Client
+// NeutrinoOS.Net - HTTP Client
 // Simple HTTP/1.1 client using TCP
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.Net.Http;
+namespace NeutrinoOS.Net.Http;
 
 /// <summary>
 /// HTTP client result.

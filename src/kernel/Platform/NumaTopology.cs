@@ -1,9 +1,9 @@
-// ProtonOS kernel - NUMA Topology
+// NeutrinoOS kernel - NUMA Topology
 // Parses ACPI SRAT/SLIT tables to enumerate NUMA nodes and memory ranges.
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Information about a single NUMA node

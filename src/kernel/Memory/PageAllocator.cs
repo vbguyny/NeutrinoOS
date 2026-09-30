@@ -1,12 +1,12 @@
-// ProtonOS kernel - Physical page allocator
+// NeutrinoOS kernel - Physical page allocator
 // Bitmap-based allocator for 4KB pages using UEFI memory map.
 // The bitmap is placed in a reserved memory region sized based on actual physical memory.
 // Supports NUMA-aware allocation when NumaTopology is initialized.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Physical page allocator using a bitmap to track free/allocated 4KB pages.

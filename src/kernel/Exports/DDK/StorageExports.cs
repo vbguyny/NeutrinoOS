@@ -1,6 +1,6 @@
 // NeutrinoOS kernel - block device exports (Phase 10 Task 4).
 //
-// Kernel-side implementations of the ProtonOS.DDK storage bridge
+// Kernel-side implementations of the NeutrinoOS.DDK storage bridge
 // (src/ddk/Storage/KernelBlockDevice.cs): utilities and the exFAT driver
 // enumerate and open any attached disk (AHCI/NVMe/USB) through these,
 // resolved by [DllImport("*")] name at JIT time.
@@ -9,9 +9,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Storage;
+using NeutrinoOS.Storage;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>Unmanaged view of a registry entry (matches DDK RawDeviceInfo).</summary>
 [StructLayout(LayoutKind.Sequential)]

@@ -1,10 +1,10 @@
-// ProtonOS kernel - PAL String Conversion APIs
+// NeutrinoOS kernel - PAL String Conversion APIs
 // Win32-compatible string conversion functions for UTF-8/UTF-16 interop.
 // Required for CoreCLR/RyuJIT integration.
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Code page constants.

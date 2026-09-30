@@ -1,10 +1,10 @@
-// ProtonOS DDK - Timer Kernel Wrappers
+// NeutrinoOS DDK - Timer Kernel Wrappers
 // DllImport wrappers for timing and delay operations.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// DDK wrappers for kernel timer and delay APIs.

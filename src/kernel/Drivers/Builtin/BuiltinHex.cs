@@ -1,10 +1,10 @@
-// ProtonOS Kernel - shared hex formatting for built-in driver logging.
+// NeutrinoOS Kernel - shared hex formatting for built-in driver logging.
 //
 // Drivers log through IDriverServices.Log with pre-built strings; this is
 // the small shared helper they use for addresses and lengths (bflat-safe:
 // char arrays + the proven string(char[]) constructor).
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>Hex formatting helper for built-in driver log messages.</summary>
 internal static class BuiltinHex

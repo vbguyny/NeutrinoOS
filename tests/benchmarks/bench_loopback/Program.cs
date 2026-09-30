@@ -7,8 +7,8 @@
 // the stream; elapsed time comes from Stopwatch.
 using System;
 using System.Diagnostics;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
 
 namespace NeutrinoOS.Benchmarks.Loopback;
 

@@ -1,9 +1,9 @@
-// ProtonOS AHCI Driver - Constants and Definitions
+// NeutrinoOS AHCI Driver - Constants and Definitions
 // AHCI 1.3.1 Specification compliant
 
 using System;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// HBA Generic Host Control register offsets (from BAR5).

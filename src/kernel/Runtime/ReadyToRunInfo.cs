@@ -1,4 +1,4 @@
-// ProtonOS kernel - ReadyToRun Header Access
+// NeutrinoOS kernel - ReadyToRun Header Access
 // Provides access to NativeAOT runtime metadata including GC info, static roots, and type information.
 //
 // The ReadyToRun (RTR) header is the central registry for all NativeAOT runtime metadata.
@@ -6,9 +6,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// ReadyToRun section types used by NativeAOT.

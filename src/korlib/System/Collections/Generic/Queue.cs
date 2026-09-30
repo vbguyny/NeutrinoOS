@@ -1,4 +1,4 @@
-// ProtonOS korlib - Queue<T>
+// NeutrinoOS korlib - Queue<T>
 // Represents a first-in, first-out collection of objects.
 
 namespace System.Collections.Generic;

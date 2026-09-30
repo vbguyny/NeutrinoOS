@@ -1,17 +1,17 @@
-// ProtonOS kernel - .NET Executable Loader
+// NeutrinoOS kernel - .NET Executable Loader
 // Loads and executes .NET assemblies in user mode.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.IO;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.IO;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Loads and executes .NET assemblies as user-mode processes
@@ -529,9 +529,9 @@ public static unsafe class NetExecutable
         {
             return BootInfoAccess.FindFile("korlib.dll", out size);
         }
-        if (StringEquals(filename, filenameLen, "ProtonOS.DDK.dll"))
+        if (StringEquals(filename, filenameLen, "NeutrinoOS.DDK.dll"))
         {
-            return BootInfoAccess.FindFile("ProtonOS.DDK.dll", out size);
+            return BootInfoAccess.FindFile("NeutrinoOS.DDK.dll", out size);
         }
         if (StringEquals(filename, filenameLen, "HelloApp.dll"))
         {

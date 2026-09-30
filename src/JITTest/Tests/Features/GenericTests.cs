@@ -1,7 +1,7 @@
 // JITTest - Generic Tests
 // Tests generic methods, classes, interfaces, and constraints
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace JITTest;
 

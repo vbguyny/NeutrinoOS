@@ -1,4 +1,4 @@
-// ProtonOS korlib - Monitor
+// NeutrinoOS korlib - Monitor
 // Provides a mechanism that synchronizes access to objects.
 // Minimal implementation for bare-metal environment using spinlock.
 

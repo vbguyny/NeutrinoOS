@@ -29,7 +29,7 @@ echo "[$(date +%T)] installing benchmark apps into ::/bin..."
 for f in /root/phase7bin/*.dll; do
   [ -f "$f" ] || continue
   name=$(basename "$f")
-  case "$name" in ProtonOS.DDK.dll) continue;; esac
+  case "$name" in NeutrinoOS.DDK.dll) continue;; esac
   timeout -s KILL 20 mcopy -o -i /root/run.img "$f" "::/bin/$name" || echo "copy failed: $name"
 done
 

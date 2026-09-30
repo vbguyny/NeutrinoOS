@@ -1,13 +1,13 @@
-// ProtonOS kernel - Process Control Block
+// NeutrinoOS kernel - Process Control Block
 // Core process structure for user-space application support.
 // Implements Unix-style process model with UID/GID security.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.IO;
+using NeutrinoOS.Threading;
+using NeutrinoOS.IO;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Process states

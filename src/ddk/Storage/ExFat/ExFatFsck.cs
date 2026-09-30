@@ -11,7 +11,7 @@
 using System;
 using System.Text;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>Aggregated fsck verdict.</summary>
 public class ExFatFsckResult

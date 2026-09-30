@@ -15,7 +15,7 @@
 
 using System.Runtime.CompilerServices;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>Ring-3 pointer range validation for kernel syscall handlers.</summary>
 public static unsafe class UserAccess

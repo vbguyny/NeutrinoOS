@@ -1,12 +1,12 @@
-// ProtonOS EXT2 Filesystem Driver - File Handle
+// NeutrinoOS EXT2 Filesystem Driver - File Handle
 // Implements IFileHandle for EXT2 file operations
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.Drivers.Storage.Ext2;
+namespace NeutrinoOS.Drivers.Storage.Ext2;
 
 /// <summary>
 /// File handle for EXT2 filesystem.

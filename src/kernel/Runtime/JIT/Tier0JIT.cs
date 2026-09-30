@@ -1,11 +1,11 @@
-// ProtonOS JIT - Tier 0 JIT Entry Point
+// NeutrinoOS JIT - Tier 0 JIT Entry Point
 // High-level interface for JIT compiling methods from metadata tokens.
 
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Result of JIT compilation.
@@ -66,17 +66,17 @@ public static unsafe class Tier0JIT
     /// <returns>JIT compilation result.</returns>
     public static JitResult CompileMethod(uint assemblyId, uint methodToken)
     {
-        bool timed = _compileNestingLevel == 0 && ProtonOS.Arch.HPET.IsInitialized;
+        bool timed = _compileNestingLevel == 0 && NeutrinoOS.Arch.HPET.IsInitialized;
         ulong startNs = 0;
         if (timed)
-            startNs = ProtonOS.Arch.HPET.TicksToNanoseconds(ProtonOS.Arch.HPET.ReadCounter());
+            startNs = NeutrinoOS.Arch.HPET.TicksToNanoseconds(NeutrinoOS.Arch.HPET.ReadCounter());
 
         JitResult result = CompileMethodCore(assemblyId, methodToken);
 
         if (timed)
         {
-            ulong elapsed = ProtonOS.Arch.HPET.TicksToNanoseconds(ProtonOS.Arch.HPET.ReadCounter()) - startNs;
-            ProtonOS.Profiling.JitStats.Record(assemblyId, methodToken, elapsed, result.Success, result.CodeSize);
+            ulong elapsed = NeutrinoOS.Arch.HPET.TicksToNanoseconds(NeutrinoOS.Arch.HPET.ReadCounter()) - startNs;
+            NeutrinoOS.Profiling.JitStats.Record(assemblyId, methodToken, elapsed, result.Success, result.CodeSize);
         }
         return result;
     }

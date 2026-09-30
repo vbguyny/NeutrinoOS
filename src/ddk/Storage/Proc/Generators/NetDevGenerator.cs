@@ -1,9 +1,9 @@
-// ProtonOS DDK - /proc/net/dev Generator
+// NeutrinoOS DDK - /proc/net/dev Generator
 // Generates network interface statistics in Linux-compatible format.
 
-using ProtonOS.DDK.Network;
+using NeutrinoOS.DDK.Network;
 
-namespace ProtonOS.DDK.Storage.Proc.Generators;
+namespace NeutrinoOS.DDK.Storage.Proc.Generators;
 
 /// <summary>
 /// Generates content for /proc/net/dev.

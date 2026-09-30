@@ -9,8 +9,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utility.Dhcp6;
 
@@ -20,7 +20,7 @@ public static unsafe class Program
     /// <summary>Entry point; returns 1 when a lease could not be obtained.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
         {

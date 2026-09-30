@@ -1,4 +1,4 @@
-// ProtonOS DDK - SHA-256 (Phase 6)
+// NeutrinoOS DDK - SHA-256 (Phase 6)
 //
 // Managed C# SHA-256 (FIPS 180-4), no native dependencies. Used by
 // HMAC-SHA256, TLS 1.3, SSH (curve25519-sha256, hmac-sha2-256) and the
@@ -8,7 +8,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed SHA-256 hash (see file header).</summary>
 public sealed class Sha256

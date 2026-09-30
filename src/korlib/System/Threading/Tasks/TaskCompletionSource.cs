@@ -1,4 +1,4 @@
-// ProtonOS korlib - TaskCompletionSource
+// NeutrinoOS korlib - TaskCompletionSource
 // Represents the producer side of a Task unbound to a delegate.
 
 namespace System.Threading.Tasks

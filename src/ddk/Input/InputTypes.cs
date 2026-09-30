@@ -1,8 +1,8 @@
-// ProtonOS DDK - Input Type Definitions
+// NeutrinoOS DDK - Input Type Definitions
 
 using System;
 
-namespace ProtonOS.DDK.Input;
+namespace NeutrinoOS.DDK.Input;
 
 /// <summary>
 /// Input device type.

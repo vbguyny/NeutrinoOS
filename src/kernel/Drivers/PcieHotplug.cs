@@ -22,9 +22,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>PCIe hot-plug detection and driver load/unload handling.</summary>
 public static class PcieHotplug
@@ -188,7 +188,7 @@ public static class PcieHotplug
         if (!_initialized)
             return;
 
-        ulong now = ProtonOS.Arch.APIC.TickCount;
+        ulong now = NeutrinoOS.Arch.APIC.TickCount;
         if (now - _lastPollTick < PollIntervalTicks)
             return;
         _lastPollTick = now;

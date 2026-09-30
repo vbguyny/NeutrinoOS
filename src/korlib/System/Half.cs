@@ -1,4 +1,4 @@
-// ProtonOS korlib - Half
+// NeutrinoOS korlib - Half
 // Represents a half-precision floating-point number.
 
 namespace System;

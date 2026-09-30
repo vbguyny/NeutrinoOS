@@ -1,4 +1,4 @@
-// ProtonOS korlib - HashCode
+// NeutrinoOS korlib - HashCode
 // Combines the hash codes for multiple values into a single hash code.
 
 namespace System;

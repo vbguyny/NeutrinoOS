@@ -13,8 +13,8 @@
   <ItemGroup>
     <!-- Reference DDK for debug output and network stack -->
     <ProjectReference Include="../ddk/DDK.csproj" />
-    <!-- Reference ProtonOS.Net for HTTP testing -->
-    <ProjectReference Include="../lib/ProtonOS.Net/ProtonOS.Net.csproj" />
+    <!-- Reference NeutrinoOS.Net for HTTP testing -->
+    <ProjectReference Include="../lib/NeutrinoOS.Net/NeutrinoOS.Net.csproj" />
     <!-- Reference VirtioNet driver for real network testing -->
     <ProjectReference Include="../drivers/shared/virtio/Virtio.csproj" />
     <ProjectReference Include="../drivers/shared/network/virtio-net/VirtioNet.csproj" />

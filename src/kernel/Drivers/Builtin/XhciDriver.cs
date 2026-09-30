@@ -10,10 +10,10 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Usb;
-using ProtonOS.Usb.Xhci;
+using NeutrinoOS.Usb;
+using NeutrinoOS.Usb.Xhci;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>xHCI (USB 3.x) host controller driver.</summary>
 public sealed unsafe class XhciDriver : IDriver

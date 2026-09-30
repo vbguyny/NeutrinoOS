@@ -28,9 +28,9 @@
 // which case the whole class is a no-op on that machine.
 
 using System;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>ICH9 ACPI PCI hotplug guest driver (see file header).</summary>
 public static class AcpiPciHotplug
@@ -63,8 +63,8 @@ public static class AcpiPciHotplug
         _initialized = true;
 
 #if !ARCH_ARM64
-        ProtonOS.Arch.CPU.OutDword((ushort)(Base + RegSel), 0);
-        uint sel = ProtonOS.Arch.CPU.InDword((ushort)(Base + RegSel));
+        NeutrinoOS.Arch.CPU.OutDword((ushort)(Base + RegSel), 0);
+        uint sel = NeutrinoOS.Arch.CPU.InDword((ushort)(Base + RegSel));
         _available = sel == 0;
 
         DebugConsole.Write("[hotplug] acpi-pci-hotplug at 0x");
@@ -86,9 +86,9 @@ public static class AcpiPciHotplug
 
         for (byte bsel = 0; bsel < MaxBsels; bsel++)
         {
-            ProtonOS.Arch.CPU.OutDword((ushort)(Base + RegSel), bsel);
+            NeutrinoOS.Arch.CPU.OutDword((ushort)(Base + RegSel), bsel);
 
-            uint down = ProtonOS.Arch.CPU.InDword((ushort)(Base + RegDown));
+            uint down = NeutrinoOS.Arch.CPU.InDword((ushort)(Base + RegDown));
             if (down != 0 && down != NoDevice)
             {
                 // Acknowledge the eject request: QEMU unplugs the device
@@ -98,10 +98,10 @@ public static class AcpiPciHotplug
                 DebugConsole.Write(" slots=0x");
                 DebugConsole.Write(Hex4((ushort)down));
                 DebugConsole.WriteLine();
-                ProtonOS.Arch.CPU.OutDword((ushort)(Base + RegEj), down);
+                NeutrinoOS.Arch.CPU.OutDword((ushort)(Base + RegEj), down);
             }
 
-            uint up = ProtonOS.Arch.CPU.InDword((ushort)(Base + RegUp));
+            uint up = NeutrinoOS.Arch.CPU.InDword((ushort)(Base + RegUp));
             if (up != 0 && up != NoDevice)
             {
                 // Arrival latch; the device tree update happens in the
@@ -114,7 +114,7 @@ public static class AcpiPciHotplug
             }
         }
 
-        ProtonOS.Arch.CPU.OutDword((ushort)(Base + RegSel), 0);
+        NeutrinoOS.Arch.CPU.OutDword((ushort)(Base + RegSel), 0);
 #endif
     }
 

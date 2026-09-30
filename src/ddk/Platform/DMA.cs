@@ -1,10 +1,10 @@
-// ProtonOS DDK - DMA Buffer Management
+// NeutrinoOS DDK - DMA Buffer Management
 // Helpers for allocating and managing DMA-capable buffers.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Platform;
+namespace NeutrinoOS.DDK.Platform;
 
 /// <summary>
 /// DMA buffer for device I/O.

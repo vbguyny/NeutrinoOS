@@ -27,7 +27,7 @@ using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Builds an ARM64 BootInfo from the live UEFI boot services.</summary>
 public static unsafe class Arm64BootSetup

@@ -13,9 +13,9 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using ProtonOS.Shell;
+using NeutrinoOS.Shell;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>DDK shell bridge exports (see file header).</summary>
 public static unsafe class ShellExports

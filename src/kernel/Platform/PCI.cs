@@ -1,11 +1,11 @@
-// ProtonOS Kernel - PCI Configuration Access
+// NeutrinoOS Kernel - PCI Configuration Access
 // Native PCI enumeration and configuration space access
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Represents a detected PCI device.

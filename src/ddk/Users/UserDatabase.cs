@@ -1,4 +1,4 @@
-// ProtonOS DDK - User database (Phase 6)
+// NeutrinoOS DDK - User database (Phase 6)
 //
 // Minimal POSIX-style accounts backed by two files:
 //   /etc/passwd  - "name:x:uid:gid:gecos:home:shell"
@@ -12,10 +12,10 @@
 
 using System;
 using System.IO;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Util;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Util;
 
-namespace ProtonOS.DDK.Users;
+namespace NeutrinoOS.DDK.Users;
 
 /// <summary>One account record.</summary>
 public sealed class UserEntry

@@ -1,10 +1,10 @@
-// ProtonOS DDK - Proc Filesystem Initialization
+// NeutrinoOS DDK - Proc Filesystem Initialization
 // Registers all proc entries and mounts the filesystem.
 
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Storage.Proc.Generators;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Storage.Proc.Generators;
 
-namespace ProtonOS.DDK.Storage.Proc;
+namespace NeutrinoOS.DDK.Storage.Proc;
 
 /// <summary>
 /// Initializes and mounts the /proc filesystem.

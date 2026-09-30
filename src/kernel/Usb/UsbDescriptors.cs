@@ -6,7 +6,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Usb;
+namespace NeutrinoOS.Usb;
 
 /// <summary>USB standard descriptor types (bDescriptorType).</summary>
 public static class UsbDescType

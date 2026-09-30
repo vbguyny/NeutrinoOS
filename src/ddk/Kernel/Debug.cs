@@ -1,4 +1,4 @@
-// ProtonOS DDK - Debug Output
+// NeutrinoOS DDK - Debug Output
 // Provides debug logging for drivers.
 //
 // Trace output is compiled in only in trace builds (TRACE=1 / --trace):
@@ -10,7 +10,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// Debug output for drivers.

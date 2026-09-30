@@ -19,7 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using NeutrinoOS.Packaging;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
 namespace NeutrinoOS.Sdk.NpkgCli;
 

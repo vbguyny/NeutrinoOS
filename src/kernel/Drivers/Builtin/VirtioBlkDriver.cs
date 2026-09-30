@@ -1,4 +1,4 @@
-// ProtonOS Kernel - built-in VirtIO-BLK driver (framework port).
+// NeutrinoOS Kernel - built-in VirtIO-BLK driver (framework port).
 //
 // Binds the "virtio-blk" child node the VirtIO enumerator adds under its
 // PCI parent (vendor 0x1AF4, device type flattened into ClassCode: 2 =
@@ -9,7 +9,7 @@
 using System;
 using NeutrinoOS.Drivers;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>VirtIO block device driver (framework port).</summary>
 public sealed class VirtioBlkDriver : IDriver

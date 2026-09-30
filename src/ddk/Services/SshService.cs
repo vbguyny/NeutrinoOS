@@ -1,4 +1,4 @@
-// ProtonOS DDK - SSH server service (Phase 6)
+// NeutrinoOS DDK - SSH server service (Phase 6)
 //
 // Cooperative background service driven by the kernel: `sshd` (the
 // utility shim) asks the kernel's ServiceRegistry to start it, and the
@@ -12,14 +12,14 @@
 
 using System;
 using System.IO;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Services.Ssh;
-using ProtonOS.DDK.Util;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Services.Ssh;
+using NeutrinoOS.DDK.Util;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 /// <summary>The SSH server service (see file header).</summary>
 public static class SshService
@@ -223,7 +223,7 @@ public static class SshService
         {
             if (!File.Exists(ConfigPath))
                 return;
-            string[] lines = ProtonOS.DDK.Util.TextLines.Split(File.ReadAllText(ConfigPath));
+            string[] lines = NeutrinoOS.DDK.Util.TextLines.Split(File.ReadAllText(ConfigPath));
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];

@@ -1,4 +1,4 @@
-// ProtonOS korlib - KeyValuePair<TKey, TValue> struct
+// NeutrinoOS korlib - KeyValuePair<TKey, TValue> struct
 
 namespace System.Collections.Generic;
 

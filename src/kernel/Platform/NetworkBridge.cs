@@ -13,7 +13,7 @@
 
 using System;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Virtio-net frame pump bridge (see file header).</summary>
 public static unsafe class NetworkBridge

@@ -1,10 +1,10 @@
-// ProtonOS korlib - DDK Timer API
+// NeutrinoOS korlib - DDK Timer API
 // These stubs exist only for IL metadata - JIT code resolves to native exports via token registry.
 
 #if KORLIB_IL
 using System;
 
-namespace ProtonOS.Kernel;
+namespace NeutrinoOS.Kernel;
 
 /// <summary>
 /// DDK Timer and delay API.

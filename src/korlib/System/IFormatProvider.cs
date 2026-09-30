@@ -1,4 +1,4 @@
-// ProtonOS korlib - IFormatProvider interface
+// NeutrinoOS korlib - IFormatProvider interface
 
 namespace System;
 

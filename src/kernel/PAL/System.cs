@@ -1,11 +1,11 @@
-// ProtonOS kernel - PAL System APIs
+// NeutrinoOS kernel - PAL System APIs
 // Win32-compatible system information, timing, and debug APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
-using ProtonOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Processor architecture constants.
@@ -398,7 +398,7 @@ public static unsafe class ProcessApi
 
     /// <summary>
     /// Query information about a job object.
-    /// Not supported in ProtonOS - always returns failure.
+    /// Not supported in NeutrinoOS - always returns failure.
     /// </summary>
     public static bool QueryInformationJobObject(
         nuint hJob,
@@ -426,7 +426,7 @@ public static unsafe class VersionApi
 
     /// <summary>
     /// Determine if a process is running under WOW64 (32-bit on 64-bit).
-    /// In ProtonOS, we always run native 64-bit, so this returns false.
+    /// In NeutrinoOS, we always run native 64-bit, so this returns false.
     /// </summary>
     /// <param name="hProcess">Process handle (ignored)</param>
     /// <param name="pProcessMachine">Receives the process machine type</param>
@@ -451,7 +451,7 @@ public static unsafe class VersionApi
 
     /// <summary>
     /// Check if the Windows version is equal to or greater than the specified version.
-    /// In ProtonOS, we always return true for Windows 10+ version checks.
+    /// In NeutrinoOS, we always return true for Windows 10+ version checks.
     /// </summary>
     /// <param name="wMajorVersion">Major version to check</param>
     /// <param name="wMinorVersion">Minor version to check</param>

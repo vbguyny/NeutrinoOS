@@ -1,10 +1,10 @@
-// ProtonOS DDK - DHCP Client
+// NeutrinoOS DDK - DHCP Client
 // High-level DHCP client with state machine for automatic network configuration.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// DHCP client state.

@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK Timer Exports
+// NeutrinoOS kernel - DDK Timer Exports
 // Exposes timing and delay operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for timing and delay operations.

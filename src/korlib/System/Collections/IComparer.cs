@@ -1,4 +1,4 @@
-// ProtonOS korlib - IComparer interface (non-generic)
+// NeutrinoOS korlib - IComparer interface (non-generic)
 
 namespace System.Collections;
 

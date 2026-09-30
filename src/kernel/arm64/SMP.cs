@@ -1,13 +1,13 @@
-// ProtonOS kernel - SMP (Symmetric Multi-Processing) Support
+// NeutrinoOS kernel - SMP (Symmetric Multi-Processing) Support
 // Handles Application Processor startup and per-CPU state initialization.
 
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// AP startup data structure - must match native.asm ap_startup_data layout

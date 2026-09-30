@@ -8,7 +8,7 @@ for f in */Program.cs; do
   if grep -q 'VersionFlag.Handle' "$f"; then
     continue
   fi
-  perl -0pi -e 's/(public static int Main\(string\[\] args\)\r?\n(\s*)\{\r?\n)/$1$2    if (ProtonOS.DDK.Util.VersionFlag.Handle(args))\n$2        return 0;\n/' "$f"
+  perl -0pi -e 's/(public static int Main\(string\[\] args\)\r?\n(\s*)\{\r?\n)/$1$2    if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))\n$2        return 0;\n/' "$f"
   if grep -q 'VersionFlag.Handle' "$f"; then
     ADDED=$((ADDED+1))
   else
@@ -21,7 +21,7 @@ for f in */Program.cs; do
   if grep -q 'VersionFlag.Handle' "$f"; then
     continue
   fi
-  perl -0pi -e 's/(public static unsafe int Main\(string\[\] args\)\r?\n(\s*)\{\r?\n)/$1$2    if (ProtonOS.DDK.Util.VersionFlag.Handle(args))\n$2        return 0;\n/' "$f"
+  perl -0pi -e 's/(public static unsafe int Main\(string\[\] args\)\r?\n(\s*)\{\r?\n)/$1$2    if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))\n$2        return 0;\n/' "$f"
   if grep -q 'VersionFlag.Handle' "$f"; then
     ADDED=$((ADDED+1))
   else

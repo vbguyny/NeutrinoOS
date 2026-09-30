@@ -1,11 +1,11 @@
-// ProtonOS DDK - Kernel entropy source wrapper
+// NeutrinoOS DDK - Kernel entropy source wrapper
 // DllImport wrapper for the kernel entropy export (RTC / TSC / device
 // timing jitter, stirred by the kernel).
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>DDK wrapper for the kernel entropy API.</summary>
 public static class Entropy

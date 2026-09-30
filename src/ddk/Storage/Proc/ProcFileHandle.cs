@@ -1,9 +1,9 @@
-// ProtonOS DDK - Proc Filesystem File Handle
+// NeutrinoOS DDK - Proc Filesystem File Handle
 // Serves dynamically-generated content with Position support.
 
 using System;
 
-namespace ProtonOS.DDK.Storage.Proc;
+namespace NeutrinoOS.DDK.Storage.Proc;
 
 /// <summary>
 /// File handle for proc filesystem entries.

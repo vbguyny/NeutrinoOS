@@ -7,7 +7,7 @@
 // host sees the canonical case mapping, and the driver's decompressor
 // is verified against it.
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>The canonical exFAT up-case table, compressed (spec 7.2.2).</summary>
 public static class ExFatStdUpcase

@@ -1,4 +1,4 @@
-// ProtonOS kernel - DDK entropy export
+// NeutrinoOS kernel - DDK entropy export
 //
 // Raw entropy for the JIT-world CSPRNG (src/ddk/Crypto/Csprng, backing
 // /dev/random users). Sources: TSC samples, HPET counter, wall-clock
@@ -7,9 +7,9 @@
 // quality caveat is documented in docs/PHASE6-CRYPTO.md.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>DDK entropy exports (see file header).</summary>
 public static unsafe class EntropyExports

@@ -1,10 +1,10 @@
-// ProtonOS kernel - Interlocked Exports
+// NeutrinoOS kernel - Interlocked Exports
 // Exposes atomic operations for System.Threading.Interlocked in korlib.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// Kernel exports for atomic/interlocked operations.

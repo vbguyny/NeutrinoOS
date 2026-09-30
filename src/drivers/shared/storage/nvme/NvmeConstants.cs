@@ -1,6 +1,6 @@
-// ProtonOS NVMe constants: controller registers, command opcodes and
+// NeutrinoOS NVMe constants: controller registers, command opcodes and
 // queue entry layouts (NVMe Base Specification 1.4/2.0 subset).
-namespace ProtonOS.Drivers.Storage.Nvme;
+namespace NeutrinoOS.Drivers.Storage.Nvme;
 
 /// <summary>Controller register offsets (BAR0).</summary>
 public static class NvmeReg

@@ -1,4 +1,4 @@
-// ProtonOS korlib - Environment
+// NeutrinoOS korlib - Environment
 // Provides Environment.FailFast by importing from kernel PAL.
 
 using System.Runtime.InteropServices;

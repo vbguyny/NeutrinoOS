@@ -1,12 +1,12 @@
-// ProtonOS AHCI Driver - Port Implementation
+// NeutrinoOS AHCI Driver - Port Implementation
 // Handles individual SATA port operations
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// Port state.

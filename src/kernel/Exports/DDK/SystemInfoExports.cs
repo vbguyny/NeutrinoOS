@@ -3,17 +3,17 @@
 // Kernel-side implementations exposed to JIT-compiled utilities through
 // the named export registry (KernelExportInit): the Phase 5 utility
 // suite (env, date, uname, ps, kill, ...) reads kernel state through
-// these, via the ProtonOS.DDK wrappers (src/ddk/Kernel/SysInfo.cs).
+// these, via the NeutrinoOS.DDK wrappers (src/ddk/Kernel/SysInfo.cs).
 //
 // Call convention: raw pointers only (char* UTF-16, int*, uint*); no
 // managed references cross the boundary.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>System information exports (see file header).</summary>
 public static unsafe class SystemInfoExports
@@ -188,7 +188,7 @@ public static unsafe class SystemInfoExports
     /// <summary>
     /// Writes kernel thread info for thread <paramref name="index"/>
     /// (0-based, walking the all-threads list): thread id, state
-    /// (0..5 per ProtonOS.Threading.ThreadState) and its kernel stack
+    /// (0..5 per NeutrinoOS.Threading.ThreadState) and its kernel stack
     /// size. Returns 0 on success, -1 for a bad index.
     /// </summary>
     [UnmanagedCallersOnly]

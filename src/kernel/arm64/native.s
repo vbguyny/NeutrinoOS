@@ -752,24 +752,24 @@ call_finally_handler:
 // JIT registration hooks + shim address words (JIT compilation is x64-only;
 // the kernel never executes these on ARM64)
 // ---------------------------------------------------------------------------
-    .globl __proton_jit_register
-__proton_jit_register:
+    .globl __neutrino_jit_register
+__neutrino_jit_register:
     ret
 
-    .globl __proton_jit_set_action
-__proton_jit_set_action:
+    .globl __neutrino_jit_set_action
+__neutrino_jit_set_action:
     ret
 
-    .globl __proton_jit_set_relevant_entry
-__proton_jit_set_relevant_entry:
+    .globl __neutrino_jit_set_relevant_entry
+__neutrino_jit_set_relevant_entry:
     ret
 
-    .globl __proton_jit_set_first_entry
-__proton_jit_set_first_entry:
+    .globl __neutrino_jit_set_first_entry
+__neutrino_jit_set_first_entry:
     ret
 
-    .globl __proton_jit_get_first_entry
-__proton_jit_get_first_entry:
+    .globl __neutrino_jit_get_first_entry
+__neutrino_jit_get_first_entry:
     mov x0, #0
     ret
 

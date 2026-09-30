@@ -1,4 +1,4 @@
-// ProtonOS korlib - BitConverter
+// NeutrinoOS korlib - BitConverter
 // Converts base data types to and from arrays of bytes.
 
 namespace System;

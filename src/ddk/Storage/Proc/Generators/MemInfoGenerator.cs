@@ -1,9 +1,9 @@
-// ProtonOS DDK - /proc/meminfo Generator
+// NeutrinoOS DDK - /proc/meminfo Generator
 // Generates memory statistics in Linux-compatible format.
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Storage.Proc.Generators;
+namespace NeutrinoOS.DDK.Storage.Proc.Generators;
 
 /// <summary>
 /// Generates content for /proc/meminfo.

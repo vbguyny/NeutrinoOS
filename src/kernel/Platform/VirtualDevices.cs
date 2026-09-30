@@ -10,10 +10,10 @@
 // The files are read-only and have no durable state; writes are
 // rejected (FileBootWrite path is not intercepted).
 
-using ProtonOS.Exports.DDK;
-using ProtonOS.Profiling;
+using NeutrinoOS.Exports.DDK;
+using NeutrinoOS.Profiling;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Virtual /dev character files (see file header).</summary>
 public static unsafe class VirtualDevices
@@ -132,7 +132,7 @@ public static unsafe class VirtualDevices
         sw.Write("   bytes out: ");
         sw.WriteLine((long)bytesOut);
         sw.Write("[netstats] uptime ms: ");
-        sw.WriteLine((long)ProtonOS.Arch.APIC.TickCount);
+        sw.WriteLine((long)NeutrinoOS.Arch.APIC.TickCount);
         sw.WriteLine("[netstats] protocol counters (TCP/UDP/ICMP): run `netstat -s`");
         _netstatsText = sw.ToString();
     }

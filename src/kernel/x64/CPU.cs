@@ -1,12 +1,12 @@
-// ProtonOS kernel - x64 CPU intrinsics
+// NeutrinoOS kernel - x64 CPU intrinsics
 // Centralized wrappers around native assembly for CPU-specific instructions.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// CPU intrinsics for x64 - all native function imports in one place.
@@ -14,7 +14,7 @@ namespace ProtonOS.Arch;
 /// Note: This is a struct (not static class) to enable static abstract interface implementation,
 /// but all members remain static. Use CPU.Method() syntax as before.
 /// </summary>
-public unsafe struct CPU : ProtonOS.Arch.ICpu<CPU>
+public unsafe struct CPU : NeutrinoOS.Arch.ICpu<CPU>
 {
     // ==================== Native Imports ====================
 

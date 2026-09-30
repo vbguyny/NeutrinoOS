@@ -38,15 +38,15 @@ make image
 echo "Generating IL disassembly..."
 dotnet ildasm build/x64/JITTest.dll -o build/x64/JITTest.il 2>/dev/null || true
 dotnet ildasm build/x64/TestSupport.dll -o build/x64/TestSupport.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.DDK.dll -o build/x64/ProtonOS.DDK.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.Virtio.dll -o build/x64/ProtonOS.Drivers.Virtio.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.VirtioBlk.dll -o build/x64/ProtonOS.Drivers.VirtioBlk.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.Fat.dll -o build/x64/ProtonOS.Drivers.Fat.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.Ahci.dll -o build/x64/ProtonOS.Drivers.Ahci.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.Ext2.dll -o build/x64/ProtonOS.Drivers.Ext2.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.VirtioNet.dll -o build/x64/ProtonOS.Drivers.VirtioNet.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Drivers.Test.dll -o build/x64/ProtonOS.Drivers.Test.il 2>/dev/null || true
-dotnet ildasm build/x64/ProtonOS.Net.dll -o build/x64/ProtonOS.Net.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.DDK.dll -o build/x64/NeutrinoOS.DDK.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.Virtio.dll -o build/x64/NeutrinoOS.Drivers.Virtio.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.VirtioBlk.dll -o build/x64/NeutrinoOS.Drivers.VirtioBlk.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.Fat.dll -o build/x64/NeutrinoOS.Drivers.Fat.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.Ahci.dll -o build/x64/NeutrinoOS.Drivers.Ahci.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.Ext2.dll -o build/x64/NeutrinoOS.Drivers.Ext2.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.VirtioNet.dll -o build/x64/NeutrinoOS.Drivers.VirtioNet.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Drivers.Test.dll -o build/x64/NeutrinoOS.Drivers.Test.il 2>/dev/null || true
+dotnet ildasm build/x64/NeutrinoOS.Net.dll -o build/x64/NeutrinoOS.Net.il 2>/dev/null || true
 dotnet ildasm build/x64/AppTest.dll -o build/x64/AppTest.il 2>/dev/null || true
 dotnet ildasm build/x64/HelloApp.dll -o build/x64/HelloApp.il 2>/dev/null || true
 dotnet ildasm build/x64/ArgsApp.dll -o build/x64/ArgsApp.il 2>/dev/null || true
@@ -104,8 +104,8 @@ mkdir -p "$ROOTFS_STAGING/system"
 mkdir -p "$ROOTFS_STAGING/tmp"
 
 # Copy test driver to /drivers (dynamically loaded after root mount)
-if [ -f "${BUILD_DIR}/ProtonOS.Drivers.Test.dll" ]; then
-    cp "${BUILD_DIR}/ProtonOS.Drivers.Test.dll" "$ROOTFS_STAGING/drivers/"
+if [ -f "${BUILD_DIR}/NeutrinoOS.Drivers.Test.dll" ]; then
+    cp "${BUILD_DIR}/NeutrinoOS.Drivers.Test.dll" "$ROOTFS_STAGING/drivers/"
     echo "Copied test driver to rootfs/drivers/"
 fi
 

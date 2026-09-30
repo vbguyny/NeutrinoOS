@@ -1,4 +1,4 @@
-// ProtonOS korlib - IAsyncDisposable interface
+// NeutrinoOS korlib - IAsyncDisposable interface
 
 namespace System;
 

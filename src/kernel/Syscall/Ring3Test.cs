@@ -1,4 +1,4 @@
-// ProtonOS kernel - Ring 3 (User Mode) Test
+// NeutrinoOS kernel - Ring 3 (User Mode) Test
 // Tests the transition to user mode and syscall return path.
 //
 // USAGE:
@@ -28,12 +28,12 @@
 //   [Ring3Test] Test complete - halting CPU
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Syscall;
+namespace NeutrinoOS.Syscall;
 
 /// <summary>
 /// Tests Ring 3 execution and syscall handling.

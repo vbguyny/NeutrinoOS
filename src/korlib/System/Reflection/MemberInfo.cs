@@ -1,4 +1,4 @@
-// ProtonOS korlib - Reflection Base Types
+// NeutrinoOS korlib - Reflection Base Types
 // Minimal abstract base classes for reflection.
 // These allow korlib to define concrete RuntimeMethodInfo, etc.
 
@@ -212,7 +212,7 @@ namespace System.Reflection
         /// <summary>Returns an array of Type objects that represent the type arguments of a generic method.</summary>
         public virtual Type[] GetGenericArguments() => Array.Empty<Type>();
 
-        // Security properties (always return safe defaults for ProtonOS)
+        // Security properties (always return safe defaults for NeutrinoOS)
         public virtual bool IsSecurityCritical => true;
         public virtual bool IsSecuritySafeCritical => false;
         public virtual bool IsSecurityTransparent => false;

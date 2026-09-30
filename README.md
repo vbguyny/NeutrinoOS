@@ -290,7 +290,7 @@ src/
 │       ├── storage/     # AHCI/SATA driver
 │       └── filesystem/  # FAT32, EXT2 drivers
 ├── lib/                 # Application libraries
-│   └── ProtonOS.Net/    # HTTP client library
+│   └── NeutrinoOS.Net/  # HTTP client library
 ├── AppTest/             # Application-level tests (HTTP, etc.)
 ├── TestSupport/         # Cross-assembly test helpers
 └── JITTest/             # Comprehensive JIT test suite (2,983 tests)

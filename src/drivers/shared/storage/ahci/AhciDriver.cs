@@ -1,12 +1,12 @@
-// ProtonOS AHCI Driver - Block Device Implementation
+// NeutrinoOS AHCI Driver - Block Device Implementation
 // Implements IBlockDevice for AHCI/SATA devices
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// AHCI block device driver.

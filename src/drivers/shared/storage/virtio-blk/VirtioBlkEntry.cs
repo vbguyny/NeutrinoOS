@@ -1,16 +1,16 @@
-// ProtonOS VirtioBlk Entry Point
+// NeutrinoOS VirtioBlk Entry Point
 // Simple static entry point for JIT compilation
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
-using ProtonOS.Drivers.Virtio;
-using ProtonOS.Drivers.Storage.Fat;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.Drivers.Virtio;
+using NeutrinoOS.Drivers.Storage.Fat;
 
-namespace ProtonOS.Drivers.Storage.VirtioBlk;
+namespace NeutrinoOS.Drivers.Storage.VirtioBlk;
 
 /// <summary>
 /// Static entry point for VirtioBlk driver, designed for JIT compilation.

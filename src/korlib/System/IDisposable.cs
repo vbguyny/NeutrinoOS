@@ -1,4 +1,4 @@
-// ProtonOS korlib - IDisposable interface
+// NeutrinoOS korlib - IDisposable interface
 
 namespace System;
 

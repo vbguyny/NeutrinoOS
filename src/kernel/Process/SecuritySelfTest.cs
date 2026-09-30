@@ -16,11 +16,11 @@
 // Output lines are stable ("[SEC] PASS ...") so the Phase 7 acceptance
 // script can assert on them.
 
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>Boot-time security invariant checks (see file header).</summary>
 public static unsafe class SecuritySelfTest

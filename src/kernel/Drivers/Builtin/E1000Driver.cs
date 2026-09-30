@@ -1,4 +1,4 @@
-// ProtonOS Kernel - built-in E1000 driver (Intel 8254x family).
+// NeutrinoOS Kernel - built-in E1000 driver (Intel 8254x family).
 //
 // Binds the QEMU/VirtualBox e1000 PCI function in the device tree. Start
 // maps BAR0 through IDriverServices (proving the MMIO path for a PCI
@@ -9,7 +9,7 @@
 using System;
 using NeutrinoOS.Drivers;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>Intel 8254x (e1000) PCI network driver.</summary>
 public sealed class E1000Driver : IDriver

@@ -5,7 +5,7 @@
 // the first WriteHex call while string prints were fine.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.Utility.DbgTest;
 

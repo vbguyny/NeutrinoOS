@@ -1,11 +1,11 @@
-// ProtonOS Kernel - Growable Block Allocator
+// NeutrinoOS Kernel - Growable Block Allocator
 // Provides dynamically growing storage for kernel registries without hard limits.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Header for a block in the allocator chain.

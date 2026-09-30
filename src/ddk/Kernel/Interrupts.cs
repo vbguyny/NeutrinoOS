@@ -1,10 +1,10 @@
-// ProtonOS DDK - Interrupt Kernel Wrappers
+// NeutrinoOS DDK - Interrupt Kernel Wrappers
 // DllImport wrappers for interrupt management operations.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// Interrupt handler delegate type.

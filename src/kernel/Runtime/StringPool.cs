@@ -1,4 +1,4 @@
-// ProtonOS kernel - String Pool for interned strings
+// NeutrinoOS kernel - String Pool for interned strings
 // Provides efficient string interning and ldstr caching.
 // Strings in the pool live for the lifetime of the process.
 //
@@ -12,11 +12,11 @@
 //   1. The pool's internal data structures reference them
 //   2. GC.MarkRoots calls StringPool.EnumerateRoots to mark all interned strings
 
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// String pool for interned strings and ldstr caching.

@@ -1,4 +1,4 @@
-// ProtonOS korlib - RuntimeArgumentHandle for varargs support
+// NeutrinoOS korlib - RuntimeArgumentHandle for varargs support
 
 using System.Runtime.InteropServices;
 

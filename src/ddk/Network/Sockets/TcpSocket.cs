@@ -1,11 +1,11 @@
-// ProtonOS DDK - TCP Socket
+// NeutrinoOS DDK - TCP Socket
 // High-level wrapper for TCP connections
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Network.Sockets;
+namespace NeutrinoOS.DDK.Network.Sockets;
 
 /// <summary>
 /// TCP socket for connection-oriented communication.

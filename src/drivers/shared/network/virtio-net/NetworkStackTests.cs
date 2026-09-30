@@ -1,12 +1,12 @@
-// ProtonOS VirtioNet - Network Stack Unit Tests
+// NeutrinoOS VirtioNet - Network Stack Unit Tests
 // Tests for Ethernet, ARP, and NetworkStack without requiring hardware
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.Drivers.Network.VirtioNet;
+namespace NeutrinoOS.Drivers.Network.VirtioNet;
 
 /// <summary>
 /// Unit tests for the network stack.

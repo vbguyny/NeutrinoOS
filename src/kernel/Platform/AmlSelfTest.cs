@@ -17,9 +17,9 @@
 // Output lines are stable ("[AML] PASS ...") so acceptance scripts can
 // assert on them.
 
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Boot-time AML interpreter checks (see file header).</summary>
 public static unsafe class AmlSelfTest

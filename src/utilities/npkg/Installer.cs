@@ -30,7 +30,7 @@ using System.IO;
 using System.Text;
 using NeutrinoOS.Packaging;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.Utility.Npkg;
 

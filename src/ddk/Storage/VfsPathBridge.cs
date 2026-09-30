@@ -22,7 +22,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>VFS path bridge for the kernel System.IO exports (see file header).</summary>
 public static unsafe class VfsPathBridge

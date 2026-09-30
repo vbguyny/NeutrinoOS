@@ -1,12 +1,12 @@
-// ProtonOS kernel - Kernel Export Initialization
+// NeutrinoOS kernel - Kernel Export Initialization
 // Registers all kernel exports for PInvoke resolution.
 
 using System;
-using ProtonOS.Exports.DDK;
+using NeutrinoOS.Exports.DDK;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
-using InterlockedExports = ProtonOS.Exports.DDK.InterlockedExports;
+using InterlockedExports = NeutrinoOS.Exports.DDK.InterlockedExports;
 
 /// <summary>
 /// Initializes kernel exports at startup.
@@ -70,7 +70,7 @@ public static unsafe class KernelExportInit
 
     /// <summary>
     /// Phase 10: block device registry bridge consumed by the
-    /// ProtonOS.DDK storage tooling (mount, mkexfat, fsck.exfat, the
+    /// NeutrinoOS.DDK storage tooling (mount, mkexfat, fsck.exfat, the
     /// exFAT driver) and the DDK AutoMount service.
     /// </summary>
     private static void RegisterStorageExports()
@@ -149,7 +149,7 @@ public static unsafe class KernelExportInit
 
     /// <summary>
     /// Phase 5: registers the system-information exports consumed by the
-    /// ProtonOS.DDK SysInfo wrappers (env, date, uname, ps, kill).
+    /// NeutrinoOS.DDK SysInfo wrappers (env, date, uname, ps, kill).
     /// </summary>
     private static void RegisterSystemInfoExports()
     {
@@ -245,7 +245,7 @@ public static unsafe class KernelExportInit
         n[7]=0x47; n[8]=0x65; n[9]=0x74; // Get
         n[10]=0x43; n[11]=0x70; n[12]=0x75; // Cpu
         n[13]=0x49; n[14]=0x6E; n[15]=0x66; n[16]=0x6F; n[17]=0; // Info
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<int, ProtonOS.Platform.CpuInfo*, bool>)&CPUExports.GetCpuInfo);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<int, NeutrinoOS.Platform.CpuInfo*, bool>)&CPUExports.GetCpuInfo);
     }
 
     private static void RegisterMemoryExports()
@@ -543,7 +543,7 @@ public static unsafe class KernelExportInit
         n[0]=0x4B; n[1]=0x65; n[2]=0x72; n[3]=0x6E; n[4]=0x65; n[5]=0x6C; n[6]=0x5F; // Kernel_
         n[7]=0x43; n[8]=0x72; n[9]=0x65; n[10]=0x61; n[11]=0x74; n[12]=0x65; // Create
         n[13]=0x54; n[14]=0x68; n[15]=0x72; n[16]=0x65; n[17]=0x61; n[18]=0x64; n[19]=0; // Thread
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<delegate* unmanaged<void*, uint>, void*, nuint, uint, uint*, ProtonOS.Threading.Thread*>)&ThreadExports.CreateThread);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<delegate* unmanaged<void*, uint>, void*, nuint, uint, uint*, NeutrinoOS.Threading.Thread*>)&ThreadExports.CreateThread);
 
         // Kernel_ExitThread
         n[7]=0x45; n[8]=0x78; n[9]=0x69; n[10]=0x74; // Exit
@@ -561,7 +561,7 @@ public static unsafe class KernelExportInit
         n[7]=0x47; n[8]=0x65; n[9]=0x74; // Get
         n[10]=0x43; n[11]=0x75; n[12]=0x72; n[13]=0x72; n[14]=0x65; n[15]=0x6E; n[16]=0x74; // Current
         n[17]=0x54; n[18]=0x68; n[19]=0x72; n[20]=0x65; n[21]=0x61; n[22]=0x64; n[23]=0; // Thread
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<ProtonOS.Threading.Thread*>)&ThreadExports.GetCurrentThread);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<NeutrinoOS.Threading.Thread*>)&ThreadExports.GetCurrentThread);
 
         // Kernel_Sleep
         n[7]=0x53; n[8]=0x6C; n[9]=0x65; n[10]=0x65; n[11]=0x70; n[12]=0; // Sleep
@@ -576,23 +576,23 @@ public static unsafe class KernelExportInit
         n[10]=0x45; n[11]=0x78; n[12]=0x69; n[13]=0x74; // Exit
         n[14]=0x43; n[15]=0x6F; n[16]=0x64; n[17]=0x65; // Code
         n[18]=0x54; n[19]=0x68; n[20]=0x72; n[21]=0x65; n[22]=0x61; n[23]=0x64; n[24]=0; // Thread
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<ProtonOS.Threading.Thread*, uint*, bool>)&ThreadExports.GetExitCodeThread);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<NeutrinoOS.Threading.Thread*, uint*, bool>)&ThreadExports.GetExitCodeThread);
 
         // Kernel_GetThreadState
         n[7]=0x47; n[8]=0x65; n[9]=0x74; // Get
         n[10]=0x54; n[11]=0x68; n[12]=0x72; n[13]=0x65; n[14]=0x61; n[15]=0x64; // Thread
         n[16]=0x53; n[17]=0x74; n[18]=0x61; n[19]=0x74; n[20]=0x65; n[21]=0; // State
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<ProtonOS.Threading.Thread*, int>)&ThreadExports.GetThreadState);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<NeutrinoOS.Threading.Thread*, int>)&ThreadExports.GetThreadState);
 
         // Kernel_SuspendThread
         n[7]=0x53; n[8]=0x75; n[9]=0x73; n[10]=0x70; n[11]=0x65; n[12]=0x6E; n[13]=0x64; // Suspend
         n[14]=0x54; n[15]=0x68; n[16]=0x72; n[17]=0x65; n[18]=0x61; n[19]=0x64; n[20]=0; // Thread
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<ProtonOS.Threading.Thread*, int>)&ThreadExports.SuspendThread);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<NeutrinoOS.Threading.Thread*, int>)&ThreadExports.SuspendThread);
 
         // Kernel_ResumeThread
         n[7]=0x52; n[8]=0x65; n[9]=0x73; n[10]=0x75; n[11]=0x6D; n[12]=0x65; // Resume
         n[13]=0x54; n[14]=0x68; n[15]=0x72; n[16]=0x65; n[17]=0x61; n[18]=0x64; n[19]=0; // Thread
-        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<ProtonOS.Threading.Thread*, int>)&ThreadExports.ResumeThread);
+        KernelExportRegistry.Register(n, (void*)(delegate* unmanaged<NeutrinoOS.Threading.Thread*, int>)&ThreadExports.ResumeThread);
 
         // Kernel_GetThreadCount
         n[7]=0x47; n[8]=0x65; n[9]=0x74; // Get

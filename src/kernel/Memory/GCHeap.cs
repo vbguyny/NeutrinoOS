@@ -1,4 +1,4 @@
-// ProtonOS kernel - GC Heap Allocator
+// NeutrinoOS kernel - GC Heap Allocator
 // Manages the managed object heap with proper object headers for garbage collection.
 //
 // Block Layout (16 bytes header + object data):
@@ -22,10 +22,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Object header layout (16 bytes total, stored before the MethodTable pointer):

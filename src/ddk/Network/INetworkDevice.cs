@@ -1,9 +1,9 @@
-// ProtonOS DDK - Network Device Interface
+// NeutrinoOS DDK - Network Device Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>
 /// Network device capabilities.

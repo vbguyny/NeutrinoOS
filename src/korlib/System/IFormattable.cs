@@ -1,4 +1,4 @@
-// ProtonOS korlib - IFormattable interface
+// NeutrinoOS korlib - IFormattable interface
 
 namespace System;
 

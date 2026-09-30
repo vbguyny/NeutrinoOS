@@ -1,4 +1,4 @@
-// ProtonOS DDK - FAT long-filename entry creation (Phase 8 fix)
+// NeutrinoOS DDK - FAT long-filename entry creation (Phase 8 fix)
 //
 // The original single CreateLongNameEntry method (FatFileSystem.cs) was
 // miscompiled by the on-device Tier-0 JIT: the per-slot scan computed the
@@ -19,10 +19,10 @@
 // only and must not be called.
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Storage.Fat;
+namespace NeutrinoOS.Drivers.Storage.Fat;
 
 public unsafe partial class FatFileSystem
 {

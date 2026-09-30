@@ -1,9 +1,9 @@
-// ProtonOS kernel - CPU Feature Detection and Initialization
+// NeutrinoOS kernel - CPU Feature Detection and Initialization
 // Detects and enables CPU features required for JIT code execution.
 
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// CR0 register bit definitions

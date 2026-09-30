@@ -1,4 +1,4 @@
-// ProtonOS kernel - MethodTable structure
+// NeutrinoOS kernel - MethodTable structure
 // Mirrors the NativeAOT MethodTable layout for GC and runtime inspection.
 //
 // This is a kernel-side copy of the MethodTable struct. The layout must match
@@ -18,10 +18,10 @@
 
 using System.Runtime.InteropServices;
 
-using ProtonOS.Platform;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// MethodTable flags from NativeAOT runtime.

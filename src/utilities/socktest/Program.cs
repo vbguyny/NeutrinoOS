@@ -9,8 +9,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
 
 namespace NeutrinoOS.Utility.Socktest;
 
@@ -20,7 +20,7 @@ public static unsafe class Program
     /// <summary>Entry point; sends and receives server-side TCP data.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         int port = 7777;
         int timeoutSec = 20;

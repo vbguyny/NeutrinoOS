@@ -1,4 +1,4 @@
-// ProtonOS korlib - Activator
+// NeutrinoOS korlib - Activator
 // Contains methods to create types of objects locally.
 
 using System.Reflection;

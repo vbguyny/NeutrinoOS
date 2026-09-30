@@ -10,10 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ProtonOS.Net provides the HTTP client; VirtioNet provides the entry
+    <!-- NeutrinoOS.Net provides the HTTP client; VirtioNet provides the entry
          point that reports the bound network stack. Both are boot-loaded
          assemblies on the NeutrinoOS side (like AppTest). -->
-    <ProjectReference Include="../../../src/lib/ProtonOS.Net/ProtonOS.Net.csproj" />
+    <ProjectReference Include="../../../src/lib/NeutrinoOS.Net/NeutrinoOS.Net.csproj" />
     <ProjectReference Include="../../../src/drivers/shared/network/virtio-net/VirtioNet.csproj" />
   </ItemGroup>
 </Project>

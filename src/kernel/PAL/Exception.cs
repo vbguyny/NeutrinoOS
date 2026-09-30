@@ -1,12 +1,12 @@
-// ProtonOS kernel - PAL Exception APIs
+// NeutrinoOS kernel - PAL Exception APIs
 // Win32-compatible exception handling APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Exception APIs - Win32-compatible exception handling functions.

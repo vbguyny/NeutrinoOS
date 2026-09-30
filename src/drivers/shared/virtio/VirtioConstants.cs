@@ -1,9 +1,9 @@
-// ProtonOS Virtio Driver - Constants and Definitions
+// NeutrinoOS Virtio Driver - Constants and Definitions
 // Based on VirtIO 1.2 specification
 
 using System;
 
-namespace ProtonOS.Drivers.Virtio;
+namespace NeutrinoOS.Drivers.Virtio;
 
 /// <summary>
 /// Virtio device status flags.

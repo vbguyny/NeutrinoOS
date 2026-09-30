@@ -14,8 +14,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Storage.ExFat;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Storage.ExFat;
 
 namespace NeutrinoOS.Utility.ExFatAttrib;
 
@@ -25,7 +25,7 @@ public static class Program
     /// <summary>Entry point; returns 1 on failure.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         if (args.Length == 0 || args.Length > 3 || args[0] == "--help" || args[0] == "-h"
             || args.Length == 2)
@@ -47,7 +47,7 @@ public static class Program
         if (args.Length == 1)
             return List(dev, info.Name);
 
-        int rc = ProtonOS.DDK.Storage.ExFat.ExFatAttrib.Apply(dev, args[2], args[1]);
+        int rc = NeutrinoOS.DDK.Storage.ExFat.ExFatAttrib.Apply(dev, args[2], args[1]);
         if (rc == -2)
             return Util.Fail("exfatattrib", "bad attribute spec: " + args[1]);
         if (rc != 0)

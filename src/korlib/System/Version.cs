@@ -1,4 +1,4 @@
-// ProtonOS korlib - Version
+// NeutrinoOS korlib - Version
 // Represents the version number of an assembly, operating system, or the common language runtime.
 
 namespace System

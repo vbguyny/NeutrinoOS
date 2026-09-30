@@ -1,4 +1,4 @@
-// ProtonOS DDK - minimal packet filter (Phase 6)
+// NeutrinoOS DDK - minimal packet filter (Phase 6)
 //
 // A per-port / per-source allow-deny list for inbound TCP connections,
 // configured through /etc/firewall.conf. This is deliberately simple
@@ -17,9 +17,9 @@
 
 using System;
 using System.IO;
-using ProtonOS.DDK.Util;
+using NeutrinoOS.DDK.Util;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>Minimal inbound TCP filter (see file header).</summary>
 public static class Firewall

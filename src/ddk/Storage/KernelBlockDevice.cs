@@ -9,7 +9,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>Information about one kernel-registered block device.</summary>
 public class BlockDeviceInfo

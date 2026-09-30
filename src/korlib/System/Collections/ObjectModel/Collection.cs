@@ -1,4 +1,4 @@
-// ProtonOS korlib - Collection<T>
+// NeutrinoOS korlib - Collection<T>
 // Provides the base class for a generic collection.
 // Note: Uses List<T> directly instead of IList<T> to avoid JIT interface dispatch issues.
 

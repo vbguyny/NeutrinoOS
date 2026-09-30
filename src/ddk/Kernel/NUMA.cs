@@ -1,10 +1,10 @@
-// ProtonOS DDK - NUMA Kernel Wrappers
+// NeutrinoOS DDK - NUMA Kernel Wrappers
 // DllImport wrappers for kernel NUMA topology and allocation exports.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// NUMA node information structure matching kernel's NumaNodeInfo.

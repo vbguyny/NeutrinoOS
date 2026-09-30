@@ -1,4 +1,4 @@
-// ProtonOS Kernel - driver framework boot initialization.
+// NeutrinoOS Kernel - driver framework boot initialization.
 //
 // Called from Kernel.Main after the PCI bus has been scanned. Builds the
 // device tree (PCI + VirtIO + platform devices), initializes the driver
@@ -8,9 +8,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Boot-time driver framework setup.</summary>
 public static class DriverFramework

@@ -124,12 +124,12 @@ TESTSUPPORT_DLL := $(BUILD_DIR)/TestSupport.dll
 
 # DDK assembly (JIT library)
 DDK_DIR := src/ddk
-DDK_DLL := $(BUILD_DIR)/ProtonOS.DDK.dll
+DDK_DLL := $(BUILD_DIR)/NeutrinoOS.DDK.dll
 
 # Standard libraries
 LIB_DIR := src/lib
-PROTONOS_NET_DIR := $(LIB_DIR)/ProtonOS.Net
-PROTONOS_NET_DLL := $(BUILD_DIR)/ProtonOS.Net.dll
+NEUTRINOOS_NET_DIR := $(LIB_DIR)/NeutrinoOS.Net
+NEUTRINOOS_NET_DLL := $(BUILD_DIR)/NeutrinoOS.Net.dll
 
 # Application test assembly
 APPTEST_DIR := src/AppTest
@@ -172,17 +172,17 @@ EXT2_DIR := $(DRIVERS_DIR)/shared/storage/ext2
 TEST_DRIVER_DIR := $(DRIVERS_DIR)/shared/test
 
 # Driver DLLs
-VIRTIO_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Virtio.dll
-VIRTIO_BLK_DLL := $(BUILD_DIR)/ProtonOS.Drivers.VirtioBlk.dll
-VIRTIO_NET_DLL := $(BUILD_DIR)/ProtonOS.Drivers.VirtioNet.dll
-FAT_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Fat.dll
-AHCI_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ahci.dll
-NVME_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Nvme.dll
-EXT2_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ext2.dll
-TEST_DRIVER_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Test.dll
+VIRTIO_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Virtio.dll
+VIRTIO_BLK_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.VirtioBlk.dll
+VIRTIO_NET_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.VirtioNet.dll
+FAT_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Fat.dll
+AHCI_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Ahci.dll
+NVME_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Nvme.dll
+EXT2_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Ext2.dll
+TEST_DRIVER_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Test.dll
 
 # Targets
-.PHONY: all clean native kernel bootloader korlibdll testsupport ddk protonos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-usb run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
+.PHONY: all clean native kernel bootloader korlibdll testsupport ddk neutrinoos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-usb run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
 
 all: $(BUILD_DIR)/$(EFI_NAME)
 
@@ -251,22 +251,22 @@ testsupport: $(TESTSUPPORT_DLL)
 # Build DDK library (JIT-compiled at runtime)
 DDK_SRC := $(call rwildcard,$(DDK_DIR),*.cs)
 $(DDK_DLL): $(DDK_SRC) $(DDK_DIR)/DDK.csproj | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.DDK"
+	@echo "DOTNET build NeutrinoOS.DDK"
 	dotnet build $(DDK_DIR)/DDK.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 ddk: $(DDK_DLL)
 
-# Build ProtonOS.Net library (application-level networking)
-PROTONOS_NET_SRC := $(call rwildcard,$(PROTONOS_NET_DIR),*.cs)
-$(PROTONOS_NET_DLL): $(PROTONOS_NET_SRC) $(PROTONOS_NET_DIR)/ProtonOS.Net.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Net"
-	dotnet build $(PROTONOS_NET_DIR)/ProtonOS.Net.csproj -c Release -o $(BUILD_DIR) --nologo -v q
+# Build NeutrinoOS.Net library (application-level networking)
+NEUTRINOOS_NET_SRC := $(call rwildcard,$(NEUTRINOOS_NET_DIR),*.cs)
+$(NEUTRINOOS_NET_DLL): $(NEUTRINOOS_NET_SRC) $(NEUTRINOOS_NET_DIR)/NeutrinoOS.Net.csproj $(DDK_DLL) | $(BUILD_DIR)
+	@echo "DOTNET build NeutrinoOS.Net"
+	dotnet build $(NEUTRINOOS_NET_DIR)/NeutrinoOS.Net.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
-protonos-net: $(PROTONOS_NET_DLL)
+neutrinoos-net: $(NEUTRINOOS_NET_DLL)
 
 # Build AppTest assembly (application-level tests)
 APPTEST_SRC := $(call rwildcard,$(APPTEST_DIR),*.cs)
-$(APPTEST_DLL): $(APPTEST_SRC) $(APPTEST_DIR)/AppTest.csproj $(DDK_DLL) $(PROTONOS_NET_DLL) | $(BUILD_DIR)
+$(APPTEST_DLL): $(APPTEST_SRC) $(APPTEST_DIR)/AppTest.csproj $(DDK_DLL) $(NEUTRINOOS_NET_DLL) | $(BUILD_DIR)
 	@echo "DOTNET build AppTest"
 	dotnet build $(APPTEST_DIR)/AppTest.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
@@ -315,49 +315,49 @@ keyboardtest: $(KEYBOARDTEST_DLL)
 # Build Virtio common library
 VIRTIO_SRC := $(call rwildcard,$(VIRTIO_DIR),*.cs)
 $(VIRTIO_DLL): $(VIRTIO_SRC) $(VIRTIO_DIR)/Virtio.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Virtio"
+	@echo "DOTNET build NeutrinoOS.Drivers.Virtio"
 	dotnet build $(VIRTIO_DIR)/Virtio.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Build Virtio-blk driver
 VIRTIO_BLK_SRC := $(call rwildcard,$(VIRTIO_BLK_DIR),*.cs)
 $(VIRTIO_BLK_DLL): $(VIRTIO_BLK_SRC) $(VIRTIO_BLK_DIR)/VirtioBlk.csproj $(VIRTIO_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.VirtioBlk"
+	@echo "DOTNET build NeutrinoOS.Drivers.VirtioBlk"
 	dotnet build $(VIRTIO_BLK_DIR)/VirtioBlk.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Build Virtio-net driver
 VIRTIO_NET_SRC := $(call rwildcard,$(VIRTIO_NET_DIR),*.cs)
 $(VIRTIO_NET_DLL): $(VIRTIO_NET_SRC) $(VIRTIO_NET_DIR)/VirtioNet.csproj $(VIRTIO_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.VirtioNet"
+	@echo "DOTNET build NeutrinoOS.Drivers.VirtioNet"
 	dotnet build $(VIRTIO_NET_DIR)/VirtioNet.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Build FAT filesystem driver
 FAT_SRC := $(call rwildcard,$(FAT_DIR),*.cs)
 $(FAT_DLL): $(FAT_SRC) $(FAT_DIR)/Fat.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Fat"
+	@echo "DOTNET build NeutrinoOS.Drivers.Fat"
 	dotnet build $(FAT_DIR)/Fat.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Build AHCI driver
 AHCI_SRC := $(call rwildcard,$(AHCI_DIR),*.cs)
 $(AHCI_DLL): $(AHCI_SRC) $(AHCI_DIR)/Ahci.csproj $(DDK_DLL) $(FAT_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Ahci"
+	@echo "DOTNET build NeutrinoOS.Drivers.Ahci"
 	dotnet build $(AHCI_DIR)/Ahci.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Build NVMe driver (Phase 9)
 NVME_SRC := $(call rwildcard,$(NVME_DIR),*.cs)
 $(NVME_DLL): $(NVME_SRC) $(NVME_DIR)/Nvme.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Nvme"
+	@echo "DOTNET build NeutrinoOS.Drivers.Nvme"
 	dotnet build $(NVME_DIR)/Nvme.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # EXT2 filesystem driver
 EXT2_SRC := $(call rwildcard,$(EXT2_DIR),*.cs)
 $(EXT2_DLL): $(EXT2_SRC) $(EXT2_DIR)/Ext2.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Ext2"
+	@echo "DOTNET build NeutrinoOS.Drivers.Ext2"
 	dotnet build $(EXT2_DIR)/Ext2.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 # Test driver (loaded dynamically from /drivers on root filesystem)
 TEST_DRIVER_SRC := $(call rwildcard,$(TEST_DRIVER_DIR),*.cs)
 $(TEST_DRIVER_DLL): $(TEST_DRIVER_SRC) $(TEST_DRIVER_DIR)/TestDriver.csproj $(DDK_DLL) | $(BUILD_DIR)
-	@echo "DOTNET build ProtonOS.Drivers.Test"
+	@echo "DOTNET build NeutrinoOS.Drivers.Test"
 	dotnet build $(TEST_DRIVER_DIR)/TestDriver.csproj -c Release -o $(BUILD_DIR) --nologo -v q
 
 drivers: $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
@@ -389,7 +389,7 @@ image: $(BUILD_DIR)/$(EFI_NAME)
 	@echo "Boot image: $(IMG)"
 	@mdir -i $(IMG) ::/
 else
-image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(PROTONOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(NEUTRINOOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
@@ -403,7 +403,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mcopy -i $(IMG) $(JITTEST_DLL) ::/JITTest.dll
 	mcopy -i $(IMG) $(KORLIB_DLL) ::/korlib.dll
 	mcopy -i $(IMG) $(TESTSUPPORT_DLL) ::/TestSupport.dll
-	mcopy -i $(IMG) $(DDK_DLL) ::/ProtonOS.DDK.dll
+	mcopy -i $(IMG) $(DDK_DLL) ::/NeutrinoOS.DDK.dll
 	mcopy -i $(IMG) $(APPTEST_DLL) ::/AppTest.dll
 	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/HelloApp.dll
 	mcopy -i $(IMG) $(HELLOAPP_DLL) ::/apps/hello.dll
@@ -418,7 +418,7 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	mcopy -i $(IMG) $(AHCI_DLL) ::/drivers/
 	mcopy -i $(IMG) $(NVME_DLL) ::/drivers/
 	mcopy -i $(IMG) $(EXT2_DLL) ::/drivers/
-	mcopy -i $(IMG) $(PROTONOS_NET_DLL) ::/lib/
+	mcopy -i $(IMG) $(NEUTRINOOS_NET_DLL) ::/lib/
 	@echo "Boot image: $(IMG)"
 	@echo "Contents:"
 	@mdir -i $(IMG) ::/

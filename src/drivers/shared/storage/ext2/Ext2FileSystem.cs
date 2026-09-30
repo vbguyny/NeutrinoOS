@@ -1,13 +1,13 @@
-// ProtonOS EXT2 Filesystem Driver
+// NeutrinoOS EXT2 Filesystem Driver
 // Implements IFileSystem for EXT2 filesystems
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.Drivers.Storage.Ext2;
+namespace NeutrinoOS.Drivers.Storage.Ext2;
 
 /// <summary>
 /// EXT2 filesystem driver.

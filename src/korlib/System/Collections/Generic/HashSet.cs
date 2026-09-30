@@ -1,4 +1,4 @@
-// ProtonOS korlib - HashSet<T>
+// NeutrinoOS korlib - HashSet<T>
 // Represents a set of values.
 
 namespace System.Collections.Generic;

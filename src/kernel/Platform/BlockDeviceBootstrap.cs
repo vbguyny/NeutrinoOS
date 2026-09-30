@@ -12,11 +12,11 @@
 //   sda, sda1, ...  USB mass storage (registered on attach in UsbStorage)
 
 using System;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Storage;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Storage;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Registers bound storage drivers in the block device registry.</summary>
 public static unsafe class BlockDeviceBootstrap
@@ -38,7 +38,7 @@ public static unsafe class BlockDeviceBootstrap
             return;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            driverId, "ProtonOS.Drivers.Storage.Ahci", "AhciEntry");
+            driverId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
         if (typeToken == 0)
         {
             Console.WriteLine("[Blocks] WARNING: AhciEntry not found for registration");
@@ -83,7 +83,7 @@ public static unsafe class BlockDeviceBootstrap
             return;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            driverId, "ProtonOS.Drivers.Storage.Nvme", "NvmeEntry");
+            driverId, "NeutrinoOS.Drivers.Storage.Nvme", "NvmeEntry");
         if (typeToken == 0)
         {
             Console.WriteLine("[Blocks] WARNING: NvmeEntry not found for registration");

@@ -1,7 +1,7 @@
 // NeutrinoOS kernel - block device registry (Phase 10 Task 4).
 //
 // The kernel-side table of attached block devices (AHCI ports, NVMe
-// namespaces, USB mass storage) that the ProtonOS.DDK storage tooling
+// namespaces, USB mass storage) that the NeutrinoOS.DDK storage tooling
 // enumerates through the Kernel_BlockDevice* exports. Each entry stores
 // the device identity plus (for externally loaded drivers) the JIT'd
 // code addresses of the driver's sector-read/write/flush statics with a
@@ -21,10 +21,10 @@
 // /mnt/usb/<name> without round-tripping into the DDK.
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Usb;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Usb;
 
-namespace ProtonOS.Storage;
+namespace NeutrinoOS.Storage;
 
 /// <summary>One registered block device (see file header).</summary>
 public sealed unsafe class BlockDevice

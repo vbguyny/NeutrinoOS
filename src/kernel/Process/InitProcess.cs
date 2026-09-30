@@ -1,15 +1,15 @@
-// ProtonOS kernel - Init Process Creation
+// NeutrinoOS kernel - Init Process Creation
 // Creates and runs the init process (PID 1).
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
-using ProtonOS.IO;
-using ProtonOS.Syscall;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
+using NeutrinoOS.IO;
+using NeutrinoOS.Syscall;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Init process setup and management
@@ -33,7 +33,7 @@ public static unsafe class InitProcess
 
     private static readonly ulong[] _resumeContext = new ulong[KernelResumeContextQwords];
     private static Process* _initProc;
-    private static ProtonOS.Threading.Thread* _mainThread;
+    private static NeutrinoOS.Threading.Thread* _mainThread;
     private static int _lastExitCode;
 
     /// <summary>

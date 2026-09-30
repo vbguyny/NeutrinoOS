@@ -15,9 +15,9 @@
 // following ReadLine is not polluted by keys the application read itself).
 
 using System;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Line discipline for the serial console: echo, editing, history and
@@ -162,7 +162,7 @@ public static unsafe class LineDiscipline
         if (_escState == 0)
             return;
 
-        ulong now = ProtonOS.Arch.APIC.TickCount;
+        ulong now = NeutrinoOS.Arch.APIC.TickCount;
         ulong elapsed = now - _escTick;
 
         if (_escState == 1 && elapsed >= 50)
@@ -302,7 +302,7 @@ public static unsafe class LineDiscipline
         if (b == 0x1B)
         {
             _escState = 1;
-            _escTick = ProtonOS.Arch.APIC.TickCount;
+            _escTick = NeutrinoOS.Arch.APIC.TickCount;
             return;
         }
 
@@ -404,7 +404,7 @@ public static unsafe class LineDiscipline
                 if (_tabCompleter != null && !_keyReadActive)
                 {
                     _tabPending = true;
-                    _tabTick = ProtonOS.Arch.APIC.TickCount;
+                    _tabTick = NeutrinoOS.Arch.APIC.TickCount;
                 }
                 else
                 {
@@ -896,7 +896,7 @@ public static unsafe class LineDiscipline
             return;
 
         // Debounce: wait until the line has been quiet briefly.
-        if (ProtonOS.Arch.APIC.TickCount - _tabTick < 20)
+        if (NeutrinoOS.Arch.APIC.TickCount - _tabTick < 20)
             return;
 
         _tabPending = false;

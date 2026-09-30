@@ -14,7 +14,7 @@
 // enums) take int in the helper (the JIT passes 32-bit values); ReadKey uses
 // the hidden-return-buffer convention (registered with ReturnStructSize=17).
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Forwarding helpers bridging JIT-compiled System.Console calls to the

@@ -1,10 +1,10 @@
-// ProtonOS - .NET Metadata Reader
+// NeutrinoOS - .NET Metadata Reader
 // Parses CLI metadata from .NET assemblies (ECMA-335 compliant)
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Metadata stream information
@@ -4215,7 +4215,7 @@ public static unsafe class MetadataReader
     /// <summary>
     /// Cached String MethodTable pointer for allocating new strings.
     /// Stored as void* to avoid type conflicts between System.Runtime.MethodTable
-    /// and ProtonOS.Runtime.MethodTable.
+    /// and NeutrinoOS.Runtime.MethodTable.
     /// </summary>
     private static void* _stringMethodTable;
 

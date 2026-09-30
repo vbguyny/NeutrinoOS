@@ -1,4 +1,4 @@
-// ProtonOS DDK - SSH wire buffers (Phase 6)
+// NeutrinoOS DDK - SSH wire buffers (Phase 6)
 //
 // SshWriter/SshReader implement the SSH data-type encodings (RFC 4251):
 // byte, boolean, uint32, string, mpint and name-lists, on top of plain
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Services.Ssh;
+namespace NeutrinoOS.DDK.Services.Ssh;
 
 /// <summary>Growable write buffer for SSH payloads.</summary>
 public sealed class SshWriter

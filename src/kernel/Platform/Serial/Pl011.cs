@@ -8,7 +8,7 @@
 
 #if ARCH_ARM64
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>PL011 UART driver for the ARM64 console (QEMU virt 0x09000000).</summary>
 public static unsafe class Pl011

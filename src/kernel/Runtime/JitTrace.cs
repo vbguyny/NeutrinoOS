@@ -16,9 +16,9 @@
 // they always print.
 
 using System.Diagnostics;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>Compile-time-gated runtime traces (see file header).</summary>
 public static class JitTrace

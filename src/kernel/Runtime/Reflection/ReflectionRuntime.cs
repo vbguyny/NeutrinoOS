@@ -1,14 +1,14 @@
-// ProtonOS kernel - Reflection Runtime
+// NeutrinoOS kernel - Reflection Runtime
 // Provides kernel-side support for reflection operations.
 // Exports functions that korlib can call via DllImport("*").
 
 using System.Runtime;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Runtime.Reflection;
+namespace NeutrinoOS.Runtime.Reflection;
 
 /// <summary>
 /// Information about a type for reflection.

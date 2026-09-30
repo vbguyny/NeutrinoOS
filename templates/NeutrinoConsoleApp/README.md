@@ -47,5 +47,5 @@ neutrinoos> run /apps/MyApp.dll
 
 Full walkthrough: `docs/SDK-GETTING-STARTED.md`.
 - For kernel/driver access (network stack, debug output) reference
-  `src/ddk/DDK.csproj` or `src/lib/ProtonOS.Net/ProtonOS.Net.csproj` the
+  `src/ddk/DDK.csproj` or `src/lib/NeutrinoOS.Net/NeutrinoOS.Net.csproj` the
   way `src/AppTest` does.

@@ -1,10 +1,10 @@
-// ProtonOS DDK - UDP Protocol (L4)
+// NeutrinoOS DDK - UDP Protocol (L4)
 // Handles UDP packet parsing and building
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// UDP header structure (8 bytes).

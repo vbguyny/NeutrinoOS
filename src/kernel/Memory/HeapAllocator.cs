@@ -1,12 +1,12 @@
-// ProtonOS kernel - Kernel heap allocator
+// NeutrinoOS kernel - Kernel heap allocator
 // Simple free-list allocator for variable-sized allocations.
 // Uses PageAllocator for backing memory, grows on demand.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Block header stored at the start of each allocation.

@@ -162,7 +162,7 @@ def main():
     lines.append("// host sees the canonical case mapping, and the driver's decompressor")
     lines.append("// is verified against it.")
     lines.append("")
-    lines.append("namespace ProtonOS.DDK.Storage.ExFat;")
+    lines.append("namespace NeutrinoOS.DDK.Storage.ExFat;")
     lines.append("")
     lines.append("/// <summary>The canonical exFAT up-case table, compressed (spec 7.2.2).</summary>")
     lines.append("public static class ExFatStdUpcase")

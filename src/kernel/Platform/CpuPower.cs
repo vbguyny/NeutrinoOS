@@ -25,11 +25,11 @@
 // Output lines are stable ("[cpupower] ...") so acceptance scripts can
 // assert on them.
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>CPU C-state/P-state detection and reporting (Phase 9).</summary>
 public static unsafe class CpuPower

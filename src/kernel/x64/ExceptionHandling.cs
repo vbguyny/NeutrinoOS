@@ -1,15 +1,15 @@
-// ProtonOS kernel - x64 Exception Handling Infrastructure
+// NeutrinoOS kernel - x64 Exception Handling Infrastructure
 // Provides SEH-compatible exception handling for JIT code and kernel.
 // Based on Windows x64 exception handling model (RUNTIME_FUNCTION, UNWIND_INFO).
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Runtime;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Runtime;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Exception codes (Win32 compatible)
@@ -367,11 +367,11 @@ public static unsafe class ExceptionHandling
 
             // Try to get type name from reflection runtime
             uint assemblyId = 0, typeToken = 0;
-            ProtonOS.Runtime.Reflection.ReflectionRuntime.GetTypeInfo(exMT, &assemblyId, &typeToken);
+            NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeInfo(exMT, &assemblyId, &typeToken);
             if (assemblyId != 0 && typeToken != 0)
             {
-                byte* typeName = ProtonOS.Runtime.Reflection.ReflectionRuntime.GetTypeName(assemblyId, typeToken);
-                byte* typeNs = ProtonOS.Runtime.Reflection.ReflectionRuntime.GetTypeNamespace(assemblyId, typeToken);
+                byte* typeName = NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeName(assemblyId, typeToken);
+                byte* typeNs = NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeNamespace(assemblyId, typeToken);
                 DebugConsole.Write("[EH] Type: ");
                 if (typeNs != null && *typeNs != 0)
                 {

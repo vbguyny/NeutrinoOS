@@ -1,4 +1,4 @@
-// ProtonOS korlib - IAsyncResult
+// NeutrinoOS korlib - IAsyncResult
 // Represents the status of an asynchronous operation.
 
 using System.Threading;

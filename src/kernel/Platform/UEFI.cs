@@ -1,10 +1,10 @@
-// ProtonOS kernel - UEFI type definitions and boot services
+// NeutrinoOS kernel - UEFI type definitions and boot services
 // Provides access to UEFI memory map and boot services for kernel initialization.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 // ============================================================================
 // UEFI Status Codes

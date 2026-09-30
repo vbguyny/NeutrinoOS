@@ -1,13 +1,13 @@
-// ProtonOS kernel - Local APIC driver
+// NeutrinoOS kernel - Local APIC driver
 // Provides Local APIC timer for preemptive scheduling.
 // Timer is calibrated using HPET for accurate timing.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Local APIC Register offsets (memory-mapped at APIC base)
@@ -553,7 +553,7 @@ public static unsafe class APIC
         _tickCount++;
 
         // Phase 7: feed the kernel sampling profiler with the interrupted RIP.
-        ProtonOS.Profiling.Profiler.Sample(frame->Rip);
+        NeutrinoOS.Profiling.Profiler.Sample(frame->Rip);
 
         // Send EOI first to allow nested interrupts
         SendEoi();

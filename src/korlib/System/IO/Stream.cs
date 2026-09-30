@@ -1,4 +1,4 @@
-// ProtonOS korlib - Stream
+// NeutrinoOS korlib - Stream
 // Minimal stub for System.IO.Stream to support reflection APIs.
 
 namespace System.IO

@@ -6,9 +6,9 @@
 // clearing, and the prompt-tail tracking used by line redraws.
 
 using System;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Console device backed by the COM1 UART (registered as /dev/ttyS0).

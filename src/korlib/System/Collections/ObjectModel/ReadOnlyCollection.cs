@@ -1,4 +1,4 @@
-// ProtonOS korlib - ReadOnlyCollection<T>
+// NeutrinoOS korlib - ReadOnlyCollection<T>
 // Provides a read-only wrapper around a list.
 
 using System.Collections.Generic;

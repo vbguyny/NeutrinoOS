@@ -1,4 +1,4 @@
-// ProtonOS korlib - DefaultInterpolatedStringHandler
+// NeutrinoOS korlib - DefaultInterpolatedStringHandler
 // Minimal handler for string interpolation without StringBuilder.
 
 namespace System.Runtime.CompilerServices

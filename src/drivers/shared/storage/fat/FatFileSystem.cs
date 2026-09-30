@@ -1,13 +1,13 @@
-// ProtonOS FAT Filesystem Driver
+// NeutrinoOS FAT Filesystem Driver
 // Implements IFileSystem for FAT12, FAT16, and FAT32
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.Drivers.Storage.Fat;
+namespace NeutrinoOS.Drivers.Storage.Fat;
 
 /// <summary>
 /// FAT filesystem driver supporting FAT12, FAT16, and FAT32.

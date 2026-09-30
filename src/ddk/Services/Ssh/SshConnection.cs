@@ -1,4 +1,4 @@
-// ProtonOS DDK - SSH connection state machine (Phase 6)
+// NeutrinoOS DDK - SSH connection state machine (Phase 6)
 //
 // One SshConnection drives a single client through the full session:
 // version exchange, binary packet protocol (plain, then aes*-ctr with
@@ -12,13 +12,13 @@
 // buffer and the state machine consumes whole packets as they arrive.
 
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Users;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Users;
 
-namespace ProtonOS.DDK.Services.Ssh;
+namespace NeutrinoOS.DDK.Services.Ssh;
 
 /// <summary>Server-side SSH connection (see file header).</summary>
 public sealed unsafe class SshConnection

@@ -2,11 +2,11 @@
 // See XhciTypes.cs for the register/TRB definitions and the polling note.
 
 using System;
-using ProtonOS.Arch;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Usb.Xhci;
+namespace NeutrinoOS.Usb.Xhci;
 
 /// <summary>Per-endpoint transfer ring state.</summary>
 public unsafe struct XhciEpRing
@@ -145,10 +145,10 @@ public sealed unsafe class XhciController
         // drivers (usb) run. HPET runs from early boot.
         if (HPET.IsInitialized)
             return HPET.TicksToNanoseconds(HPET.ReadCounter()) / 1_000_000UL;
-        ulong freq = ProtonOS.Arch.Arch.GetTimerFrequency();
+        ulong freq = NeutrinoOS.Arch.Arch.GetTimerFrequency();
         if (freq == 0)
             return 0;
-        return ProtonOS.Arch.Arch.GetTickCount() * 1000 / freq;
+        return NeutrinoOS.Arch.Arch.GetTickCount() * 1000 / freq;
     }
 
     /// <summary>Poll until predicate true or timeout; returns final predicate.</summary>
@@ -162,7 +162,7 @@ public sealed unsafe class XhciController
             PollEvents();
             if (predicate())
                 return true;
-            ProtonOS.Arch.CPU.Pause();
+            NeutrinoOS.Arch.CPU.Pause();
             spin++;
             if (spin >= 100_000u)
             {

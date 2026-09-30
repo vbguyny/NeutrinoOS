@@ -1,4 +1,4 @@
-// ProtonOS korlib - SystemException
+// NeutrinoOS korlib - SystemException
 // Base class for system exceptions.
 
 namespace System

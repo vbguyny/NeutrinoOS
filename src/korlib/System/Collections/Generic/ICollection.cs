@@ -1,4 +1,4 @@
-// ProtonOS korlib - ICollection<T> interface
+// NeutrinoOS korlib - ICollection<T> interface
 
 namespace System.Collections.Generic;
 

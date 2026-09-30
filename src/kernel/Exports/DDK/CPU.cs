@@ -1,11 +1,11 @@
-// ProtonOS kernel - DDK CPU Exports
+// NeutrinoOS kernel - DDK CPU Exports
 // Exposes CPU topology and affinity APIs to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for CPU topology and thread affinity.

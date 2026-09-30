@@ -1,10 +1,10 @@
-// ProtonOS DDK - CPU Kernel Wrappers
+// NeutrinoOS DDK - CPU Kernel Wrappers
 // DllImport wrappers for kernel CPU topology and affinity exports.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// CPU information structure matching kernel's CpuInfo.

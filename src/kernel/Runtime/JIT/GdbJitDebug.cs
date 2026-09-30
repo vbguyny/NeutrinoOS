@@ -8,11 +8,11 @@ using System;
 using System.Runtime;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Runtime.JIT
+namespace NeutrinoOS.Runtime.JIT
 {
     /// <summary>
     /// GDB JIT action flags
@@ -55,26 +55,26 @@ namespace ProtonOS.Runtime.JIT
     /// </summary>
     public static unsafe class GdbJitDebug
     {
-        // Import native ProtonOS JIT helper functions
+        // Import native NeutrinoOS JIT helper functions
         // Uses custom names to avoid triggering GDB's built-in JIT handler
         // which has bugs when used with add-symbol-file
-        [RuntimeImport("*", "__proton_jit_register")]
+        [RuntimeImport("*", "__neutrino_jit_register")]
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void NativeJitDebugRegisterCode();
 
-        [RuntimeImport("*", "__proton_jit_set_action")]
+        [RuntimeImport("*", "__neutrino_jit_set_action")]
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void NativeSetAction(uint action);
 
-        [RuntimeImport("*", "__proton_jit_set_relevant_entry")]
+        [RuntimeImport("*", "__neutrino_jit_set_relevant_entry")]
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void NativeSetRelevantEntry(JitCodeEntry* entry);
 
-        [RuntimeImport("*", "__proton_jit_set_first_entry")]
+        [RuntimeImport("*", "__neutrino_jit_set_first_entry")]
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void NativeSetFirstEntry(JitCodeEntry* entry);
 
-        [RuntimeImport("*", "__proton_jit_get_first_entry")]
+        [RuntimeImport("*", "__neutrino_jit_get_first_entry")]
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern JitCodeEntry* NativeGetFirstEntry();
 
@@ -120,7 +120,7 @@ namespace ProtonOS.Runtime.JIT
             if (_initialized)
                 return;
 
-            // Native __proton_jit_descriptor is already initialized in assembly
+            // Native __neutrino_jit_descriptor is already initialized in assembly
             // Just set up our managed state
             _lock = new SpinLock();
             _jitPool = null;

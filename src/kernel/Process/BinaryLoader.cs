@@ -1,14 +1,14 @@
-// ProtonOS kernel - Simple Binary Loader
+// NeutrinoOS kernel - Simple Binary Loader
 // Loads raw binary executables without ELF support.
 // Binary format: header followed by code/data.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// Simple binary header format for user programs

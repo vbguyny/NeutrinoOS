@@ -1,4 +1,4 @@
-// ProtonOS korlib - Async State Machine Attributes
+// NeutrinoOS korlib - Async State Machine Attributes
 // Compiler-generated attributes for async/await pattern.
 
 namespace System.Runtime.CompilerServices

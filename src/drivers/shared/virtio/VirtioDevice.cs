@@ -1,13 +1,13 @@
-// ProtonOS Virtio Driver - Base Device Implementation
+// NeutrinoOS Virtio Driver - Base Device Implementation
 // Common PCI virtio device initialization and management
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Kernel;
 // Debug class provides: Debug.WriteLine(format, args...)
 
-namespace ProtonOS.Drivers.Virtio;
+namespace NeutrinoOS.Drivers.Virtio;
 
 /// <summary>
 /// Base class for virtio PCI devices.

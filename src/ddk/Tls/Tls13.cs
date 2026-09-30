@@ -1,4 +1,4 @@
-// ProtonOS DDK - TLS 1.3 server (Phase 6)
+// NeutrinoOS DDK - TLS 1.3 server (Phase 6)
 //
 // Minimal RFC 8446 server implementation for the NeutrinoOS HTTPS
 // capability: single certificate (Ed25519), key exchange via X25519,
@@ -14,11 +14,11 @@
 // calls Step() and ReadApp()/WriteApp() as the socket becomes ready.
 
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Sockets;
 
-namespace ProtonOS.DDK.Tls;
+namespace NeutrinoOS.DDK.Tls;
 
 /// <summary>TLS 1.3 server connection state (see file header).</summary>
 public sealed unsafe class Tls13Connection

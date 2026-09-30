@@ -1,4 +1,4 @@
-// ProtonOS korlib - DateTime
+// NeutrinoOS korlib - DateTime
 // Represents an instant in time.
 
 namespace System

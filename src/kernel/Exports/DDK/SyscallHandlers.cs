@@ -1,10 +1,10 @@
-// ProtonOS kernel - Syscall Handler Registration Exports
+// NeutrinoOS kernel - Syscall Handler Registration Exports
 // Allows DDK to register callbacks for filesystem syscalls.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Syscall;
+using NeutrinoOS.Syscall;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// Exports for registering syscall handlers from the DDK.

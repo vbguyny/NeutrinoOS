@@ -1,6 +1,6 @@
-// ProtonOS DDK - Proc Filesystem Content Generator Interface
+// NeutrinoOS DDK - Proc Filesystem Content Generator Interface
 
-namespace ProtonOS.DDK.Storage.Proc;
+namespace NeutrinoOS.DDK.Storage.Proc;
 
 /// <summary>
 /// Interface for generating dynamic content for /proc files.

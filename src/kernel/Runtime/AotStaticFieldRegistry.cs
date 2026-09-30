@@ -1,11 +1,11 @@
-// ProtonOS kernel - AOT Static Field Registry
+// NeutrinoOS kernel - AOT Static Field Registry
 // Provides lookup for static fields in AOT-compiled types that are excluded from korlib.dll.
 // When JIT code accesses static fields on types like Boolean, IntPtr, etc., this registry
 // provides the actual addresses of those fields in the AOT kernel image.
 
 using System;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Entry for a registered AOT static field.

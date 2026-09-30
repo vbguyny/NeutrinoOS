@@ -1,4 +1,4 @@
-// ProtonOS DDK - Network frame pump (Phase 5)
+// NeutrinoOS DDK - Network frame pump (Phase 5)
 //
 // The kernel captures the virtio-net driver's frame entry points at
 // bind time and exposes them as Kernel_Net* exports (see the kernel's
@@ -14,10 +14,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>NIC frame pump + high-level helpers (see file header).</summary>
 public static unsafe class NetworkPump

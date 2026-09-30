@@ -1,11 +1,11 @@
-// ProtonOS korlib - DDK CPU API
+// NeutrinoOS korlib - DDK CPU API
 // These stubs exist only for IL metadata - JIT code resolves to native exports via token registry.
 
 #if KORLIB_IL
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Kernel;
+namespace NeutrinoOS.Kernel;
 
 /// <summary>
 /// CPU information structure.

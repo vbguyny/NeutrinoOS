@@ -1,15 +1,15 @@
-// ProtonOS AHCI Entry Point
+// NeutrinoOS AHCI Entry Point
 // Static entry point for JIT compilation
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
-using ProtonOS.Drivers.Storage.Fat;
-using ProtonOS.Drivers.Storage.Ext2;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.Drivers.Storage.Fat;
+using NeutrinoOS.Drivers.Storage.Ext2;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// Static entry point for AHCI driver, designed for JIT compilation.

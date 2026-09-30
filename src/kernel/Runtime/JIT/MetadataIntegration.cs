@@ -1,15 +1,15 @@
-// ProtonOS JIT - Metadata Integration Layer
+// NeutrinoOS JIT - Metadata Integration Layer
 // Connects metadata tokens to runtime artifacts (MethodTable pointers, field addresses, etc.)
 // This is the "glue" between MetadataReader and the JIT compiler's resolver interfaces.
 //
 // Phase 2: Routes type/field resolution through AssemblyLoader's per-assembly registries.
 
 using System;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Entry in the type registry mapping TypeDef/TypeRef tokens to MethodTable pointers.

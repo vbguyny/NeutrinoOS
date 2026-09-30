@@ -1,14 +1,14 @@
-// ProtonOS kernel - PAL Thread Local Storage (TLS)
+// NeutrinoOS kernel - PAL Thread Local Storage (TLS)
 // Win32-style TLS implementation for PAL compatibility.
 // Supports TlsAlloc, TlsFree, TlsGetValue, TlsSetValue.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Thread Local Storage management.

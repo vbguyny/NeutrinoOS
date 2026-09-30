@@ -1,10 +1,10 @@
-// ProtonOS EXT2 Filesystem Driver - On-disk structures
+// NeutrinoOS EXT2 Filesystem Driver - On-disk structures
 // Based on Linux ext2 filesystem format
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Drivers.Storage.Ext2;
+namespace NeutrinoOS.Drivers.Storage.Ext2;
 
 /// <summary>
 /// EXT2 superblock - located at byte offset 1024 from start of volume.

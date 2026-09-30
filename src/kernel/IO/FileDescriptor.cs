@@ -1,11 +1,11 @@
-// ProtonOS kernel - File Descriptor Infrastructure
+// NeutrinoOS kernel - File Descriptor Infrastructure
 // Per-process file descriptor tables and file operations.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.IO;
+namespace NeutrinoOS.IO;
 
 /// <summary>
 /// File descriptor type

@@ -1,10 +1,10 @@
-// ProtonOS DDK - Ethernet Layer (L2)
+// NeutrinoOS DDK - Ethernet Layer (L2)
 // Handles Ethernet frame parsing and building
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// Common EtherType values.

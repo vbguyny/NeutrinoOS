@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK ACPI Exports
+// NeutrinoOS kernel - DDK ACPI Exports
 // Exposes ACPI table access to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for ACPI table access.

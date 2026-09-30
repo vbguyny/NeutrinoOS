@@ -23,7 +23,7 @@
 
 using System;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Background job states (see file header).</summary>
 public enum ShellJobState : byte
@@ -251,7 +251,7 @@ public static class JobManager
             int rc = 130;
             if (!killRequested)
             {
-                rc = ProtonOS.Platform.AssemblyRunner.Run(_jobs[i].ExePath, _jobs[i].Args);
+                rc = NeutrinoOS.Platform.AssemblyRunner.Run(_jobs[i].ExePath, _jobs[i].Args);
                 if (rc < 0)
                     rc = ShellExecutor.ExitNotExecutable;
             }

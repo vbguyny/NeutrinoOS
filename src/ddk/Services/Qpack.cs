@@ -1,4 +1,4 @@
-// ProtonOS Phase 9: QPACK (RFC 9204) codec - static table only.
+// NeutrinoOS Phase 9: QPACK (RFC 9204) codec - static table only.
 //
 // The server advertises SETTINGS_QPACK_MAX_TABLE_CAPACITY = 0, so dynamic
 // table instructions never appear in requests and every field section
@@ -6,7 +6,7 @@
 // without Huffman coding (always legal); Huffman DECODING is required
 // for real clients and reuses the HPACK/RFC 7541 code table (the wire
 // format is identical).
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 public static class Qpack
 {

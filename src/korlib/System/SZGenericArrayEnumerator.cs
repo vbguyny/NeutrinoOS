@@ -1,4 +1,4 @@
-// ProtonOS korlib - generic single-dimension array enumerator
+// NeutrinoOS korlib - generic single-dimension array enumerator
 //
 // The runtime returns this enumerator when a T[] is dispatched through
 // IEnumerable<T>/IEnumerator<T> (array MethodTables carry no interface map,

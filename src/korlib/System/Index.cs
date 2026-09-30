@@ -1,4 +1,4 @@
-// ProtonOS korlib - Index type for C# 8.0+ index/range syntax
+// NeutrinoOS korlib - Index type for C# 8.0+ index/range syntax
 
 namespace System;
 

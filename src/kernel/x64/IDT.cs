@@ -1,13 +1,13 @@
-// ProtonOS kernel - x64 Interrupt Descriptor Table
+// NeutrinoOS kernel - x64 Interrupt Descriptor Table
 // Sets up IDT entries pointing to ISR stubs in nernel.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// 16-byte IDT entry for 64-bit mode

@@ -1,4 +1,4 @@
-// ProtonOS DDK - NetworkStack TCP over IPv6 (Phase 9 Task 2)
+// NeutrinoOS DDK - NetworkStack TCP over IPv6 (Phase 9 Task 2)
 //
 // Receive/transmit plumbing for TCPv6: connection lookup (with the same
 // loopback "healing" the v4 path uses), listener SYN handling, and
@@ -6,9 +6,9 @@
 // picks the right pseudo-header for its address family.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 public unsafe partial class NetworkStack
 {

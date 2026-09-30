@@ -1,9 +1,9 @@
-// ProtonOS kernel - PAL Interlocked APIs
+// NeutrinoOS kernel - PAL Interlocked APIs
 // Win32-compatible interlocked operations for PAL compatibility.
 
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Interlocked APIs - Win32-compatible atomic operations.

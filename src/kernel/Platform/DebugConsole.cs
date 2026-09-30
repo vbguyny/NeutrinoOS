@@ -8,7 +8,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// NeutrinoOS serial console: UART 16550 output on COM1 (115200 8N1).

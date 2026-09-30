@@ -3,8 +3,8 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>ProtonOS.Drivers.VirtioBlk</AssemblyName>
-    <RootNamespace>ProtonOS.Drivers.Storage.VirtioBlk</RootNamespace>
+    <AssemblyName>NeutrinoOS.Drivers.VirtioBlk</AssemblyName>
+    <RootNamespace>NeutrinoOS.Drivers.Storage.VirtioBlk</RootNamespace>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>

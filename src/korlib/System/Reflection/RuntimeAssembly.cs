@@ -1,4 +1,4 @@
-// ProtonOS korlib - RuntimeAssembly
+// NeutrinoOS korlib - RuntimeAssembly
 // Runtime implementation of Assembly using kernel PAL reflection APIs.
 
 using System.Runtime;

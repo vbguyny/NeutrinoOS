@@ -1,13 +1,13 @@
-// ProtonOS kernel - Copy-on-Write Page Management
+// NeutrinoOS kernel - Copy-on-Write Page Management
 // Tracks shared pages and handles COW page faults for fork.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
-using ProtonOS.Process;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Process;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Copy-on-Write page management for fork support

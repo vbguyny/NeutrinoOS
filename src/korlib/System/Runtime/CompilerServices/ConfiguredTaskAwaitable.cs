@@ -1,4 +1,4 @@
-// ProtonOS korlib - ConfiguredTaskAwaitable
+// NeutrinoOS korlib - ConfiguredTaskAwaitable
 // Provides an awaitable object that enables configured awaits on a task.
 
 using System.Threading.Tasks;

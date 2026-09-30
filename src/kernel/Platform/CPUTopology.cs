@@ -1,9 +1,9 @@
-// ProtonOS kernel - CPU Topology
+// NeutrinoOS kernel - CPU Topology
 // Enumerates CPUs from ACPI MADT table for SMP support.
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Information about a single CPU in the system

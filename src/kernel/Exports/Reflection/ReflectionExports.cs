@@ -1,11 +1,11 @@
-// ProtonOS kernel - Reflection Exports
+// NeutrinoOS kernel - Reflection Exports
 // Exports reflection APIs to korlib via RuntimeExport.
-// Implementation lives in ProtonOS.Runtime.Reflection.ReflectionRuntime.
+// Implementation lives in NeutrinoOS.Runtime.Reflection.ReflectionRuntime.
 
 using System.Runtime;
-using ProtonOS.Runtime.Reflection;
+using NeutrinoOS.Runtime.Reflection;
 
-namespace ProtonOS.Exports.Reflection;
+namespace NeutrinoOS.Exports.Reflection;
 
 /// <summary>
 /// Reflection exports for korlib.
@@ -320,14 +320,14 @@ public static unsafe class ReflectionExports
     [RuntimeExport("Debug_PrintInt")]
     public static void PrintInt(byte* prefix, int value)
     {
-        ProtonOS.Platform.DebugConsole.Write("[korlib] ");
+        NeutrinoOS.Platform.DebugConsole.Write("[korlib] ");
         while (*prefix != 0)
         {
-            ProtonOS.Platform.DebugConsole.WriteChar((char)*prefix);
+            NeutrinoOS.Platform.DebugConsole.WriteChar((char)*prefix);
             prefix++;
         }
-        ProtonOS.Platform.DebugConsole.WriteDecimal((uint)value);
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.WriteDecimal((uint)value);
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
     }
 
     /// <summary>
@@ -336,13 +336,13 @@ public static unsafe class ReflectionExports
     [RuntimeExport("Debug_Print")]
     public static void Print(byte* message)
     {
-        ProtonOS.Platform.DebugConsole.Write("[korlib] ");
+        NeutrinoOS.Platform.DebugConsole.Write("[korlib] ");
         while (*message != 0)
         {
-            ProtonOS.Platform.DebugConsole.WriteChar((char)*message);
+            NeutrinoOS.Platform.DebugConsole.WriteChar((char)*message);
             message++;
         }
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
     }
 
     /// <summary>
@@ -351,15 +351,15 @@ public static unsafe class ReflectionExports
     [RuntimeExport("Debug_PrintHex")]
     public static void PrintHex(byte* prefix, ulong value)
     {
-        ProtonOS.Platform.DebugConsole.Write("[korlib] ");
+        NeutrinoOS.Platform.DebugConsole.Write("[korlib] ");
         while (*prefix != 0)
         {
-            ProtonOS.Platform.DebugConsole.WriteChar((char)*prefix);
+            NeutrinoOS.Platform.DebugConsole.WriteChar((char)*prefix);
             prefix++;
         }
-        ProtonOS.Platform.DebugConsole.Write("0x");
-        ProtonOS.Platform.DebugConsole.WriteHex(value);
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("0x");
+        NeutrinoOS.Platform.DebugConsole.WriteHex(value);
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
     }
 
     // ========================================================================
@@ -378,7 +378,7 @@ public static unsafe class ReflectionExports
     public static bool IsValueType(void* methodTable)
     {
         if (methodTable == null) return false;
-        var mt = (ProtonOS.Runtime.MethodTable*)methodTable;
+        var mt = (NeutrinoOS.Runtime.MethodTable*)methodTable;
         return mt->IsValueType;
     }
 
@@ -392,7 +392,7 @@ public static unsafe class ReflectionExports
     public static int GetValueSize(void* methodTable)
     {
         if (methodTable == null) return 0;
-        var mt = (ProtonOS.Runtime.MethodTable*)methodTable;
+        var mt = (NeutrinoOS.Runtime.MethodTable*)methodTable;
         if (!mt->IsValueType) return 0;
         // Value size = BaseSize - 8 (minus the MethodTable pointer overhead in boxed representation)
         uint baseSize = mt->BaseSize;

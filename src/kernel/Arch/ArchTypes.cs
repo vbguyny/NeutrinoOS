@@ -1,4 +1,4 @@
-// ProtonOS Architecture Abstraction - Compile-Time Dispatch
+// NeutrinoOS Architecture Abstraction - Compile-Time Dispatch
 // Global using aliases for architecture selection.
 // The correct architecture types are selected at compile time via preprocessor defines.
 
@@ -7,25 +7,25 @@
 //   CurrentEmitter.EmitPrologue(ref code, 16);
 // Instead of:
 //   #if ARCH_X64
-//   ProtonOS.Arch.CPU.DisableInterrupts();
+//   NeutrinoOS.Arch.CPU.DisableInterrupts();
 //   #endif
 
 #if ARCH_X64
 
-global using CurrentArch = ProtonOS.Arch.Arch;
-global using CurrentCpu = ProtonOS.Arch.CPU;
-global using CurrentVMem = ProtonOS.Arch.VirtualMemory;
-global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
+global using CurrentArch = NeutrinoOS.Arch.Arch;
+global using CurrentCpu = NeutrinoOS.Arch.CPU;
+global using CurrentVMem = NeutrinoOS.Arch.VirtualMemory;
+global using CurrentEmitter = NeutrinoOS.Runtime.JIT.X64Emitter;
 
 #elif ARCH_ARM64
 
-global using CurrentArch = ProtonOS.Arch.Arch;
-global using CurrentCpu = ProtonOS.Arch.CPU;
-global using CurrentVMem = ProtonOS.Arch.VirtualMemory;
+global using CurrentArch = NeutrinoOS.Arch.Arch;
+global using CurrentCpu = NeutrinoOS.Arch.CPU;
+global using CurrentVMem = NeutrinoOS.Arch.VirtualMemory;
 // No ARM64 code emitter yet: JIT compilation is x64-only for now, so the
 // alias points at the x64 emitter (the type only matters where JIT code
 // paths are compiled; the ARM64 kernel does not execute them).
-global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
+global using CurrentEmitter = NeutrinoOS.Runtime.JIT.X64Emitter;
 
 #else
 
@@ -34,7 +34,7 @@ global using CurrentEmitter = ProtonOS.Runtime.JIT.X64Emitter;
 
 #endif
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Architecture detection utilities.

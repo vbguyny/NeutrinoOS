@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProtonOS GDB debug helper script.
+NeutrinoOS GDB debug helper script.
 
 This script automates loading kernel symbols at the correct address by:
 1. Setting a watchpoint on the GDB debug marker (0x10000)
@@ -10,10 +10,10 @@ This script automates loading kernel symbols at the correct address by:
 5. Enabling JIT symbol registration (manual handling to work around GDB bug)
 
 Usage in GDB:
-  source tools/gdb-protonos.py
-  proton-connect        # Connect to QEMU and load symbols automatically
-  proton-load-symbols   # Just load symbols (if already connected and base known)
-  proton-jit-enable     # Enable JIT symbol debugging (after symbols loaded)
+  source tools/gdb-neutrinoos.py
+  neutrino-connect        # Connect to QEMU and load symbols automatically
+  neutrino-load-symbols   # Just load symbols (if already connected and base known)
+  neutrino-jit-enable     # Enable JIT symbol debugging (after symbols loaded)
 """
 
 import gdb
@@ -36,7 +36,7 @@ def get_temp_dir():
     """Get or create temp directory for JIT ELF files."""
     global _temp_dir
     if _temp_dir is None:
-        _temp_dir = tempfile.mkdtemp(prefix='protonos_jit_')
+        _temp_dir = tempfile.mkdtemp(prefix='neutrinoos_jit_')
     return _temp_dir
 
 def read_memory(addr, size):
@@ -73,22 +73,22 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             pc = int(gdb.parse_and_eval("$rip"))
             # Try to actually read memory at PC
             _ = bytes(inferior.read_memory(pc, 4))
-            print(f"[ProtonOS] Memory access ready after {warmup+1} warmup attempts (PC={hex(pc)})")
+            print(f"[NeutrinoOS] Memory access ready after {warmup+1} warmup attempts (PC={hex(pc)})")
             memory_ready = True
             break
         except Exception as e:
             if warmup == 0:
-                print(f"[ProtonOS] Waiting for memory access... ({e})")
+                print(f"[NeutrinoOS] Waiting for memory access... ({e})")
             time.sleep(0.5)
 
     if not memory_ready:
-        print("[ProtonOS] WARNING: Memory access not ready, trying recovery methods...")
+        print("[NeutrinoOS] WARNING: Memory access not ready, trying recovery methods...")
 
         # Try multiple recovery methods
         for recovery_attempt in range(3):
             # Method 1: Try continue + interrupt to wake up memory access
             try:
-                print(f"[ProtonOS] Recovery attempt {recovery_attempt+1}: continue+interrupt...")
+                print(f"[NeutrinoOS] Recovery attempt {recovery_attempt+1}: continue+interrupt...")
                 gdb.execute("continue &", to_string=True)
                 time.sleep(0.5)
                 gdb.execute("interrupt", to_string=True)
@@ -99,7 +99,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
                     try:
                         pc = int(gdb.parse_and_eval("$rip"))
                         _ = bytes(inferior.read_memory(pc, 4))
-                        print(f"[ProtonOS] Memory access recovered (PC={hex(pc)})")
+                        print(f"[NeutrinoOS] Memory access recovered (PC={hex(pc)})")
                         memory_ready = True
                         break
                     except:
@@ -113,7 +113,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             # Method 2: Disconnect and reconnect
             if not memory_ready:
                 try:
-                    print(f"[ProtonOS] Recovery attempt {recovery_attempt+1}: reconnect...")
+                    print(f"[NeutrinoOS] Recovery attempt {recovery_attempt+1}: reconnect...")
                     gdb.execute("disconnect", to_string=True)
                     time.sleep(1)
                     gdb.execute("target remote :1234", to_string=True)
@@ -126,7 +126,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
                             pc = int(gdb.parse_and_eval("$rip"))
                             inferior = gdb.selected_inferior()
                             _ = bytes(inferior.read_memory(pc, 4))
-                            print(f"[ProtonOS] Memory access recovered after reconnect (PC={hex(pc)})")
+                            print(f"[NeutrinoOS] Memory access recovered after reconnect (PC={hex(pc)})")
                             memory_ready = True
                             break
                         except:
@@ -135,10 +135,10 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
                     if memory_ready:
                         break
                 except Exception as e:
-                    print(f"[ProtonOS] Reconnect error: {e}")
+                    print(f"[NeutrinoOS] Reconnect error: {e}")
 
     if not memory_ready:
-        print("[ProtonOS] ERROR: Memory access unavailable after all recovery attempts")
+        print("[NeutrinoOS] ERROR: Memory access unavailable after all recovery attempts")
 
     for attempt in range(retries):
         # Delay before each attempt - increases with retries
@@ -149,11 +149,11 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             pc = int(gdb.parse_and_eval("$rip"))
         except Exception as e:
             if verbose:
-                print(f"[ProtonOS] Attempt {attempt+1}: Could not read PC: {e}")
+                print(f"[NeutrinoOS] Attempt {attempt+1}: Could not read PC: {e}")
             continue
 
         if verbose:
-            print(f"[ProtonOS] Attempt {attempt+1}: Scanning around PC={hex(pc)}")
+            print(f"[NeutrinoOS] Attempt {attempt+1}: Scanning around PC={hex(pc)}")
 
         # First verify we can read memory at PC - if not, memory access is broken
         inferior = gdb.selected_inferior()
@@ -161,7 +161,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             _ = bytes(inferior.read_memory(pc, 4))
         except:
             if verbose:
-                print(f"[ProtonOS] Attempt {attempt+1}: Can't read memory at PC, retrying...")
+                print(f"[NeutrinoOS] Attempt {attempt+1}: Can't read memory at PC, retrying...")
             continue
 
         # Round PC down to various boundaries
@@ -184,9 +184,9 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             try:
                 data = bytes(inferior.read_memory(pbase, 2))
                 if verbose:
-                    print(f"[ProtonOS] Priority check {hex(pbase)}: {data.hex()}")
+                    print(f"[NeutrinoOS] Priority check {hex(pbase)}: {data.hex()}")
                 if data == b'MZ':
-                    print(f"[ProtonOS] Found MZ at priority address {hex(pbase)}")
+                    print(f"[NeutrinoOS] Found MZ at priority address {hex(pbase)}")
                     return pbase
             except:
                 pass
@@ -227,7 +227,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
                 checked += 1
                 if data == b'MZ':
                     if verbose:
-                        print(f"[ProtonOS] Found MZ at {hex(base)} after checking {checked} addresses")
+                        print(f"[NeutrinoOS] Found MZ at {hex(base)} after checking {checked} addresses")
                     return base
             except gdb.MemoryError:
                 errors += 1
@@ -235,12 +235,12 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
                 errors += 1
 
         if verbose:
-            print(f"[ProtonOS] Attempt {attempt+1}: Checked {checked} addresses, {errors} errors")
+            print(f"[NeutrinoOS] Attempt {attempt+1}: Checked {checked} addresses, {errors} errors")
 
         # If too many errors relative to checked, try again after delay
         if errors > checked * 2 and attempt < retries - 1:
             if verbose:
-                print(f"[ProtonOS] High error rate, retrying...")
+                print(f"[NeutrinoOS] High error rate, retrying...")
             continue
 
         # If we checked addresses but didn't find it, don't retry
@@ -248,7 +248,7 @@ def find_kernel_base_by_mz_scan(verbose=False, retries=5):
             break
 
     if verbose:
-        print(f"[ProtonOS] No MZ header found after {retries} attempts")
+        print(f"[NeutrinoOS] No MZ header found after {retries} attempts")
     return None
 
 def parse_elf_symbol(elf_data):
@@ -323,9 +323,9 @@ def _scan_jit_list(verbose=False):
 
     try:
         # Get first_entry from descriptor
-        desc_addr = int(gdb.parse_and_eval("(unsigned long long)&__proton_jit_descriptor"))
+        desc_addr = int(gdb.parse_and_eval("(unsigned long long)&__neutrino_jit_descriptor"))
         if verbose:
-            print(f"[ProtonOS] Descriptor at {hex(desc_addr)}")
+            print(f"[NeutrinoOS] Descriptor at {hex(desc_addr)}")
 
         # Read all 24 bytes of descriptor at once
         desc_data = read_memory(desc_addr, 24)
@@ -335,9 +335,9 @@ def _scan_jit_list(verbose=False):
         first_entry = struct.unpack('<Q', desc_data[16:24])[0]
 
         if verbose:
-            print(f"[ProtonOS] version={version} action={action}")
-            print(f"[ProtonOS] relevant_entry={hex(relevant_entry)}")
-            print(f"[ProtonOS] first_entry={hex(first_entry)}")
+            print(f"[NeutrinoOS] version={version} action={action}")
+            print(f"[NeutrinoOS] relevant_entry={hex(relevant_entry)}")
+            print(f"[NeutrinoOS] first_entry={hex(first_entry)}")
 
         if first_entry == 0:
             stop_reason = "first_entry is NULL"
@@ -371,7 +371,7 @@ def _scan_jit_list(verbose=False):
                 symfile_size = struct.unpack('<Q', entry_data[24:32])[0]
 
                 if verbose and total_count <= 5:
-                    print(f"[ProtonOS] Entry {total_count}: addr={hex(entry)} next={hex(next_entry)} elf={hex(symfile_addr)} size={symfile_size}")
+                    print(f"[NeutrinoOS] Entry {total_count}: addr={hex(entry)} next={hex(next_entry)} elf={hex(symfile_addr)} size={symfile_size}")
 
                 if symfile_addr != 0 and symfile_size != 0 and symfile_size < 0x100000:
                     _jit_symbols[symfile_addr] = {
@@ -389,7 +389,7 @@ def _scan_jit_list(verbose=False):
                 # Count how many entries we can't access but continue
                 inaccessible_count += 1
                 if inaccessible_count == 1 and verbose:
-                    print(f"[ProtonOS] First inaccessible entry at {hex(entry)} (low memory not exposed to GDB)")
+                    print(f"[NeutrinoOS] First inaccessible entry at {hex(entry)} (low memory not exposed to GDB)")
                 # We can't continue traversing - we don't know next_entry
                 stop_reason = f"hit inaccessible memory at {hex(entry)} (remaining entries in low memory)"
                 break
@@ -406,66 +406,66 @@ def _scan_jit_list(verbose=False):
         stop_reason = f"initialization error: {e}"
 
     if verbose:
-        print(f"[ProtonOS] Scan complete: {stop_reason}")
+        print(f"[NeutrinoOS] Scan complete: {stop_reason}")
         if inaccessible_count > 0:
-            print(f"[ProtonOS] Note: {inaccessible_count}+ entries in inaccessible low memory")
+            print(f"[NeutrinoOS] Note: {inaccessible_count}+ entries in inaccessible low memory")
 
     return len(_jit_symbols)
 
-class ProtonConnectCommand(gdb.Command):
-    """Connect to QEMU and automatically load ProtonOS kernel symbols."""
+class NeutrinoConnectCommand(gdb.Command):
+    """Connect to QEMU and automatically load NeutrinoOS kernel symbols."""
 
     def __init__(self):
-        super().__init__("proton-connect", gdb.COMMAND_USER)
+        super().__init__("neutrino-connect", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         port = arg.strip() if arg.strip() else "1234"
 
-        print(f"[ProtonOS] Connecting to QEMU on localhost:{port}...")
+        print(f"[NeutrinoOS] Connecting to QEMU on localhost:{port}...")
         gdb.execute(f"target remote localhost:{port}")
 
-        print("[ProtonOS] Setting watchpoint on debug marker (0x10000)...")
+        print("[NeutrinoOS] Setting watchpoint on debug marker (0x10000)...")
         gdb.execute(f"watch *(unsigned long long*){GDB_DEBUG_MARKER_ADDR}")
 
-        print("[ProtonOS] Continuing until kernel writes debug marker...")
+        print("[NeutrinoOS] Continuing until kernel writes debug marker...")
         gdb.execute("continue")
 
         # Check if we hit the watchpoint
         marker = int(gdb.parse_and_eval(f"*(unsigned long long*){GDB_DEBUG_MARKER_ADDR}"))
         if marker != GDB_DEBUG_MARKER_VALUE:
-            print(f"[ProtonOS] Warning: Marker value is {hex(marker)}, expected {hex(GDB_DEBUG_MARKER_VALUE)}")
+            print(f"[NeutrinoOS] Warning: Marker value is {hex(marker)}, expected {hex(GDB_DEBUG_MARKER_VALUE)}")
             return
 
         # Read the actual image base
         actual_base = int(gdb.parse_and_eval(f"*(unsigned long long*){GDB_DEBUG_IMAGEBASE_ADDR}"))
-        print(f"[ProtonOS] Kernel loaded at: {hex(actual_base)}")
+        print(f"[NeutrinoOS] Kernel loaded at: {hex(actual_base)}")
 
         # Calculate offset
         offset = actual_base - PE_IMAGE_BASE
-        print(f"[ProtonOS] Symbol offset: {hex(offset)}")
+        print(f"[NeutrinoOS] Symbol offset: {hex(offset)}")
 
         # Delete the watchpoint (it served its purpose)
         gdb.execute("delete")
 
         # Load symbols with offset
-        print("[ProtonOS] Loading AOT symbols...")
+        print("[NeutrinoOS] Loading AOT symbols...")
         gdb.execute(f"add-symbol-file build/x64/kernel_syms.elf -o {offset}")
 
         # Save offset for JIT symbol support
         global _symbol_offset
         _symbol_offset = offset
 
-        print("[ProtonOS] AOT symbols loaded! You can now set breakpoints by function name.")
-        print("[ProtonOS] Example: break kernel_ProtonOS_Kernel__Main")
-        print("[ProtonOS] ")
-        print("[ProtonOS] JIT: After tests run, use 'proton-jit-scan' to find JIT methods.")
-        print("[ProtonOS] JIT methods will have names like: jit_FullTest_Tests__TestMethod")
+        print("[NeutrinoOS] AOT symbols loaded! You can now set breakpoints by function name.")
+        print("[NeutrinoOS] Example: break kernel_NeutrinoOS_Kernel__Main")
+        print("[NeutrinoOS] ")
+        print("[NeutrinoOS] JIT: After tests run, use 'neutrino-jit-scan' to find JIT methods.")
+        print("[NeutrinoOS] JIT methods will have names like: jit_FullTest_Tests__TestMethod")
 
-class ProtonLoadSymbolsCommand(gdb.Command):
-    """Load ProtonOS symbols using the ImageBase already written to memory."""
+class NeutrinoLoadSymbolsCommand(gdb.Command):
+    """Load NeutrinoOS symbols using the ImageBase already written to memory."""
 
     def __init__(self):
-        super().__init__("proton-load-symbols", gdb.COMMAND_USER)
+        super().__init__("neutrino-load-symbols", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _symbol_offset
@@ -476,36 +476,36 @@ class ProtonLoadSymbolsCommand(gdb.Command):
         try:
             actual_base = int(gdb.parse_and_eval(f"*(unsigned long long*){GDB_DEBUG_IMAGEBASE_ADDR}"))
             if actual_base != 0:
-                print(f"[ProtonOS] Found ImageBase in low memory: {hex(actual_base)}")
+                print(f"[NeutrinoOS] Found ImageBase in low memory: {hex(actual_base)}")
         except gdb.error:
             pass
 
         # If that failed, scan for MZ header
         if actual_base is None or actual_base == 0:
-            print("[ProtonOS] Low memory not accessible, scanning for MZ header...")
+            print("[NeutrinoOS] Low memory not accessible, scanning for MZ header...")
             actual_base = find_kernel_base_by_mz_scan(verbose=True)
             if actual_base:
-                print(f"[ProtonOS] Found kernel at {hex(actual_base)} via MZ scan")
+                print(f"[NeutrinoOS] Found kernel at {hex(actual_base)} via MZ scan")
             else:
-                print("[ProtonOS] Could not find kernel base. Target may not be running.")
+                print("[NeutrinoOS] Could not find kernel base. Target may not be running.")
                 return
 
-        print(f"[ProtonOS] Kernel loaded at: {hex(actual_base)}")
+        print(f"[NeutrinoOS] Kernel loaded at: {hex(actual_base)}")
 
         # Calculate offset
         offset = actual_base - PE_IMAGE_BASE
         _symbol_offset = offset
-        print(f"[ProtonOS] Symbol offset: {hex(offset)}")
+        print(f"[NeutrinoOS] Symbol offset: {hex(offset)}")
 
         # Load symbols with offset
         gdb.execute(f"add-symbol-file build/x64/kernel_syms.elf -o {offset}")
-        print("[ProtonOS] Symbols loaded!")
+        print("[NeutrinoOS] Symbols loaded!")
 
-class ProtonInfoCommand(gdb.Command):
-    """Show ProtonOS debug info addresses."""
+class NeutrinoInfoCommand(gdb.Command):
+    """Show NeutrinoOS debug info addresses."""
 
     def __init__(self):
-        super().__init__("proton-info", gdb.COMMAND_USER)
+        super().__init__("neutrino-info", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         print(f"GDB Debug Marker Address:    {hex(GDB_DEBUG_MARKER_ADDR)}")
@@ -523,53 +523,53 @@ class ProtonInfoCommand(gdb.Command):
         except gdb.error:
             print("\n(Not connected to target)")
 
-class ProtonJitScanCommand(gdb.Command):
+class NeutrinoJitScanCommand(gdb.Command):
     """Scan and list all JIT-compiled methods (requires paused target).
 
-    Usage: proton-jit-scan [-v]
+    Usage: neutrino-jit-scan [-v]
       -v  Verbose mode: show diagnostic details
 
     Note: The target should be paused before scanning. If not, try:
-      - Use proton-jit-pause to pause the target first
+      - Use neutrino-jit-pause to pause the target first
       - Or set a breakpoint before running
     """
 
     def __init__(self):
-        super().__init__("proton-jit-scan", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-scan", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _symbol_offset
 
         if _symbol_offset == 0:
-            print("[ProtonOS] Error: Symbol offset not set. Run proton-connect first.")
+            print("[NeutrinoOS] Error: Symbol offset not set. Run neutrino-connect first.")
             return
 
         verbose = "-v" in arg if arg else False
-        print("[ProtonOS] Scanning JIT method list...")
+        print("[NeutrinoOS] Scanning JIT method list...")
         count = _scan_jit_list(verbose=verbose)
-        print(f"[ProtonOS] Found {count} JIT-compiled methods.")
+        print(f"[NeutrinoOS] Found {count} JIT-compiled methods.")
         if count > 0:
-            print("[ProtonOS] Use 'proton-jit-search <pattern>' to find specific methods.")
-            print("[ProtonOS] Use 'proton-jit-load [pattern]' to load symbols into GDB.")
+            print("[NeutrinoOS] Use 'neutrino-jit-search <pattern>' to find specific methods.")
+            print("[NeutrinoOS] Use 'neutrino-jit-load [pattern]' to load symbols into GDB.")
 
-class ProtonJitPauseCommand(gdb.Command):
+class NeutrinoJitPauseCommand(gdb.Command):
     """Pause the target using QEMU monitor stop command.
 
     This avoids SIGQUIT issues that can occur with Ctrl-C.
     """
 
     def __init__(self):
-        super().__init__("proton-jit-pause", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-pause", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
-        print("[ProtonOS] Sending stop command via QEMU monitor...")
+        print("[NeutrinoOS] Sending stop command via QEMU monitor...")
         try:
             # Use GDB's monitor command to send QEMU command
             gdb.execute("monitor stop", to_string=True)
-            print("[ProtonOS] Target paused via QEMU monitor.")
+            print("[NeutrinoOS] Target paused via QEMU monitor.")
         except gdb.error as e:
-            print(f"[ProtonOS] Error: {e}")
-            print("[ProtonOS] Try: Ctrl-C or set a breakpoint instead.")
+            print(f"[NeutrinoOS] Error: {e}")
+            print("[NeutrinoOS] Try: Ctrl-C or set a breakpoint instead.")
 
 def _resolve_jit_symbol(info):
     """Resolve a JIT symbol's name and code address by reading its ELF data."""
@@ -587,44 +587,44 @@ def _resolve_jit_symbol(info):
         pass
     return False
 
-class ProtonJitListCommand(gdb.Command):
+class NeutrinoJitListCommand(gdb.Command):
     """List registered JIT symbols."""
 
     def __init__(self):
-        super().__init__("proton-jit-list", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-list", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _jit_symbols
 
         if not _jit_symbols:
-            print("[ProtonOS] No JIT symbols registered yet.")
-            print("[ProtonOS] Run 'proton-jit-enable' and continue execution to compile JIT methods.")
+            print("[NeutrinoOS] No JIT symbols registered yet.")
+            print("[NeutrinoOS] Run 'neutrino-jit-enable' and continue execution to compile JIT methods.")
             return
 
-        print(f"[ProtonOS] {len(_jit_symbols)} JIT methods captured.")
-        print("[ProtonOS] Use 'proton-jit-load' to load symbols (pauses target).")
-        print("[ProtonOS] Use 'proton-jit-search <pattern>' to find methods.")
+        print(f"[NeutrinoOS] {len(_jit_symbols)} JIT methods captured.")
+        print("[NeutrinoOS] Use 'neutrino-jit-load' to load symbols (pauses target).")
+        print("[NeutrinoOS] Use 'neutrino-jit-search <pattern>' to find methods.")
 
-class ProtonJitSearchCommand(gdb.Command):
+class NeutrinoJitSearchCommand(gdb.Command):
     """Search for JIT methods by pattern. Resolves names on-demand."""
 
     def __init__(self):
-        super().__init__("proton-jit-search", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-search", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _jit_symbols
 
         if not _jit_symbols:
-            print("[ProtonOS] No JIT symbols registered yet.")
+            print("[NeutrinoOS] No JIT symbols registered yet.")
             return
 
         pattern = arg.strip().lower() if arg else ""
         if not pattern:
-            print("[ProtonOS] Usage: proton-jit-search <pattern>")
-            print("[ProtonOS] Example: proton-jit-search ToString")
+            print("[NeutrinoOS] Usage: neutrino-jit-search <pattern>")
+            print("[NeutrinoOS] Example: neutrino-jit-search ToString")
             return
 
-        print(f"[ProtonOS] Searching {len(_jit_symbols)} methods for '{pattern}'...")
+        print(f"[NeutrinoOS] Searching {len(_jit_symbols)} methods for '{pattern}'...")
         matches = []
 
         for elf_addr, info in _jit_symbols.items():
@@ -636,29 +636,29 @@ class ProtonJitSearchCommand(gdb.Command):
                 matches.append((info['code_addr'], info['name'], elf_addr))
 
         if not matches:
-            print("[ProtonOS] No matches found.")
+            print("[NeutrinoOS] No matches found.")
             return
 
-        print(f"[ProtonOS] Found {len(matches)} matches:")
+        print(f"[NeutrinoOS] Found {len(matches)} matches:")
         for code_addr, name, elf_addr in sorted(matches):
             print(f"  {hex(code_addr)}: {name}")
 
-class ProtonJitLoadCommand(gdb.Command):
+class NeutrinoJitLoadCommand(gdb.Command):
     """Load JIT symbols into GDB (requires paused target)."""
 
     def __init__(self):
-        super().__init__("proton-jit-load", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-load", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _jit_symbols
 
         if not _jit_symbols:
-            print("[ProtonOS] No JIT symbols to load.")
+            print("[NeutrinoOS] No JIT symbols to load.")
             return
 
         pattern = arg.strip().lower() if arg else ""
 
-        print(f"[ProtonOS] Loading JIT symbols{' matching: ' + pattern if pattern else ''}...")
+        print(f"[NeutrinoOS] Loading JIT symbols{' matching: ' + pattern if pattern else ''}...")
         loaded = 0
         errors = 0
 
@@ -691,13 +691,13 @@ class ProtonJitLoadCommand(gdb.Command):
             except Exception as e:
                 errors += 1
 
-        print(f"[ProtonOS] Loaded {loaded} symbols ({errors} errors).")
+        print(f"[NeutrinoOS] Loaded {loaded} symbols ({errors} errors).")
 
-class ProtonJitClearCommand(gdb.Command):
+class NeutrinoJitClearCommand(gdb.Command):
     """Clear JIT symbol tracking and temp files."""
 
     def __init__(self):
-        super().__init__("proton-jit-clear", gdb.COMMAND_USER)
+        super().__init__("neutrino-jit-clear", gdb.COMMAND_USER)
 
     def invoke(self, arg, from_tty):
         global _jit_symbols, _temp_dir
@@ -712,25 +712,25 @@ class ProtonJitClearCommand(gdb.Command):
             shutil.rmtree(_temp_dir, ignore_errors=True)
             _temp_dir = None
 
-        print(f"[ProtonOS] Cleared {count} JIT symbols and temp files.")
+        print(f"[NeutrinoOS] Cleared {count} JIT symbols and temp files.")
 
 # Register commands
-ProtonConnectCommand()
-ProtonLoadSymbolsCommand()
-ProtonInfoCommand()
-ProtonJitScanCommand()
-ProtonJitPauseCommand()
-ProtonJitListCommand()
-ProtonJitSearchCommand()
-ProtonJitLoadCommand()
-ProtonJitClearCommand()
+NeutrinoConnectCommand()
+NeutrinoLoadSymbolsCommand()
+NeutrinoInfoCommand()
+NeutrinoJitScanCommand()
+NeutrinoJitPauseCommand()
+NeutrinoJitListCommand()
+NeutrinoJitSearchCommand()
+NeutrinoJitLoadCommand()
+NeutrinoJitClearCommand()
 
-print("[ProtonOS] GDB helper loaded. Commands available:")
-print("  proton-connect [port]  - Connect to QEMU and load symbols automatically")
-print("  proton-load-symbols    - Load symbols (if ImageBase already available)")
-print("  proton-jit-scan        - Scan for JIT methods (pauses target, no overhead)")
-print("  proton-jit-list        - Show count of scanned JIT methods")
-print("  proton-jit-search <p>  - Search JIT methods by pattern")
-print("  proton-jit-load [pat]  - Load JIT symbols into GDB")
-print("  proton-jit-clear       - Clear JIT symbols and temp files")
-print("  proton-info            - Show debug addresses and current values")
+print("[NeutrinoOS] GDB helper loaded. Commands available:")
+print("  neutrino-connect [port]  - Connect to QEMU and load symbols automatically")
+print("  neutrino-load-symbols    - Load symbols (if ImageBase already available)")
+print("  neutrino-jit-scan        - Scan for JIT methods (pauses target, no overhead)")
+print("  neutrino-jit-list        - Show count of scanned JIT methods")
+print("  neutrino-jit-search <p>  - Search JIT methods by pattern")
+print("  neutrino-jit-load [pat]  - Load JIT symbols into GDB")
+print("  neutrino-jit-clear       - Clear JIT symbols and temp files")
+print("  neutrino-info            - Show debug addresses and current values")

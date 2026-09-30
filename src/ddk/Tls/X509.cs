@@ -1,4 +1,4 @@
-// ProtonOS DDK - X.509 / PEM helpers (Phase 6)
+// NeutrinoOS DDK - X.509 / PEM helpers (Phase 6)
 //
 // Minimal managed X.509 support for the TLS 1.3 server: self-signed
 // Ed25519 certificate generation (DER, written from scratch), PEM
@@ -8,11 +8,11 @@
 // PEM files - and is documented as such in docs/PHASE6-TLS.md.
 
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Util;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Util;
 
-namespace ProtonOS.DDK.Tls;
+namespace NeutrinoOS.DDK.Tls;
 
 /// <summary>Minimal X.509 / PEM utilities for the TLS server (see file header).</summary>
 public static class X509

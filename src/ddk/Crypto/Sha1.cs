@@ -1,4 +1,4 @@
-// ProtonOS DDK - SHA-1 (Phase 6)
+// NeutrinoOS DDK - SHA-1 (Phase 6)
 //
 // Managed C# SHA-1 (FIPS 180-4) for legacy SSH compatibility
 // (diffie-hellman-group14-sha1 era clients, hmac-sha1). SHA-1 is
@@ -7,7 +7,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed SHA-1 hash (legacy compatibility; see file header).</summary>
 public sealed class Sha1

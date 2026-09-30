@@ -1,13 +1,13 @@
-// ProtonOS kernel - PAL Memory APIs
+// NeutrinoOS kernel - PAL Memory APIs
 // Win32-style HeapAlloc/HeapFree and VirtualAlloc/VirtualFree for PAL compatibility.
 // These are PAL (Platform Abstraction Layer) wrappers over kernel memory services.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Heap flags for HeapCreate and HeapAlloc.

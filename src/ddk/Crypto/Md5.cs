@@ -1,4 +1,4 @@
-// ProtonOS DDK - MD5 (Phase 6)
+// NeutrinoOS DDK - MD5 (Phase 6)
 //
 // Managed C# MD5 (RFC 1321) for legacy SSH compatibility only. MD5 is
 // DISABLED by default in the Phase 6 algorithm policy; see
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed MD5 hash (legacy compatibility; see file header).</summary>
 public sealed class Md5

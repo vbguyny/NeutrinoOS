@@ -1,4 +1,4 @@
-// ProtonOS DDK - TLS 1.3 client (Phase 5 HTTPS utilities)
+// NeutrinoOS DDK - TLS 1.3 client (Phase 5 HTTPS utilities)
 //
 // Minimal RFC 8446 client for the NeutrinoOS HTTPS capability, mirroring
 // the server in Tls13.cs: X25519 key exchange, AEAD suites
@@ -22,13 +22,13 @@
 // send/receive loop shape of the http:// path.
 
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Tls;
+namespace NeutrinoOS.DDK.Tls;
 
 /// <summary>TLS 1.3 client connection state (see file header).</summary>
 public sealed unsafe class Tls13Client

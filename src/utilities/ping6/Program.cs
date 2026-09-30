@@ -10,9 +10,9 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utility.Ping6;
 
@@ -22,7 +22,7 @@ public static unsafe class Program
     /// <summary>Entry point; returns 1 when no reply was received.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         int count = 4;
         string host = null;

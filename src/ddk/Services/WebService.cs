@@ -1,4 +1,4 @@
-// ProtonOS DDK - web host service (Phase 6)
+// NeutrinoOS DDK - web host service (Phase 6)
 //
 // The Phase 6 fallback HTTP/1.1 + HTTPS server (Kestrel porting is
 // deferred to Phase 7; see docs/PHASE6-WEB.md). Serves a small built-in
@@ -13,15 +13,15 @@
 
 using System;
 using System.IO;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Tls;
-using ProtonOS.DDK.Util;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Tls;
+using NeutrinoOS.DDK.Util;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 /// <summary>The HTTP/HTTPS web host service (see file header).</summary>
 public static class WebService

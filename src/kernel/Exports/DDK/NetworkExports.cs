@@ -7,7 +7,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>Network frame pump exports (see file header).</summary>
 public static unsafe class NetworkExports

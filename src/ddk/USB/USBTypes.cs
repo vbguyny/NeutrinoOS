@@ -1,9 +1,9 @@
-// ProtonOS DDK - USB Type Definitions
+// NeutrinoOS DDK - USB Type Definitions
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.USB;
+namespace NeutrinoOS.DDK.USB;
 
 /// <summary>
 /// USB speed classification.

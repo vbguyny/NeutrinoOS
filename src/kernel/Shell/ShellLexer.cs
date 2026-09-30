@@ -14,7 +14,7 @@
 
 using System;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Result of one token; internal lexer iteration state.</summary>
 internal struct ShellLexerState

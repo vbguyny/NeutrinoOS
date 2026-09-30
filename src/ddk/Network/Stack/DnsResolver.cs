@@ -1,10 +1,10 @@
-// ProtonOS DDK - DNS Resolver
+// NeutrinoOS DDK - DNS Resolver
 // High-level DNS resolver with timeout and retry support.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// DNS resolver for hostname-to-IP resolution.

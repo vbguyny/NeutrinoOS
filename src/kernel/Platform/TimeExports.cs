@@ -6,9 +6,9 @@
 // (HPET-backed, monotonic).
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Phase 7 time exports (see file header).</summary>
 public static class TimeExports

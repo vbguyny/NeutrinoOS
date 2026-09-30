@@ -1,4 +1,4 @@
-// ProtonOS Phase 9: QUIC v1 (RFC 9000/9001) + HTTP/3 (RFC 9114) server.
+// NeutrinoOS Phase 9: QUIC v1 (RFC 9000/9001) + HTTP/3 (RFC 9114) server.
 //
 // Scope of this implementation (sufficient for real clients such as
 // aioquic and curl --http3):
@@ -18,12 +18,12 @@
 // Tier-0 JIT notes: only byte[] state (no 16-byte struct locals/members
 // crossing call boundaries), plain int offsets, small helpers.
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 public sealed class QuicConnection
 {

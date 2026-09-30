@@ -21,7 +21,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>USB exFAT auto-mount service (see file header).</summary>
 public static unsafe class AutoMount

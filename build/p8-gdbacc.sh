@@ -54,7 +54,7 @@ cat > "$GDBCMDS" <<'EOF'
 set pagination off
 set confirm off
 target remote localhost:1234
-proton-load-symbols
+neutrino-load-symbols
 echo \n=== symbols loaded ===\n
 break RhpThrowEx_Handler
 commands
@@ -64,7 +64,7 @@ commands
   x/16i (*(unsigned long*)$rdx)-0x30
   continue
 end
-break kernel_ProtonOS_Runtime_ExceptionHelpers__Exception_get_Message if (unsigned long)$rcx < 0x100000
+break kernel_NeutrinoOS_Runtime_ExceptionHelpers__Exception_get_Message if (unsigned long)$rcx < 0x100000
 commands
   echo \n=== BOGUS get_Message (rcx small) ===\n
   info registers rax rbx rcx rdx rsi rdi rbp rsp r8 r9 r10 r11 r12 r13 r14 r15 rip
@@ -78,7 +78,7 @@ echo \n=== armed ===\n
 continue
 EOF
 
-( timeout -s KILL 1800 gdb -batch -x tools/gdb-protonos.py -x "$GDBCMDS" > "$GDBOUT" 2>&1 ) &
+( timeout -s KILL 1800 gdb -batch -x tools/gdb-neutrinoos.py -x "$GDBCMDS" > "$GDBOUT" 2>&1 ) &
 GDB_PID=$!
 sleep 6
 grep -aq '=== armed ===' "$GDBOUT" && echo "[accg] gdb armed"

@@ -1,9 +1,9 @@
-// ProtonOS DDK - Input Device Interface
+// NeutrinoOS DDK - Input Device Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Input;
+namespace NeutrinoOS.DDK.Input;
 
 /// <summary>
 /// Input device capabilities.

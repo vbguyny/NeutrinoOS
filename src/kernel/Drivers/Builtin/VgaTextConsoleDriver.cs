@@ -1,4 +1,4 @@
-// ProtonOS Kernel - built-in VGA text console driver.
+// NeutrinoOS Kernel - built-in VGA text console driver.
 //
 // Binds to the PCI VGA-compatible display device (class 0x03/0x00, e.g. the
 // QEMU stdvga 1234:1111) in the device tree and maps the card's MMIO BAR
@@ -11,7 +11,7 @@
 using System;
 using NeutrinoOS.Drivers;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>VGA-compatible display driver (PCI class 0x030000).</summary>
 public sealed class VgaTextConsoleDriver : IDriver

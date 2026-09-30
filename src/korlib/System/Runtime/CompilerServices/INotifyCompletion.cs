@@ -1,4 +1,4 @@
-// ProtonOS korlib - INotifyCompletion
+// NeutrinoOS korlib - INotifyCompletion
 // Represents an operation that schedules continuations when it completes.
 
 namespace System.Runtime.CompilerServices

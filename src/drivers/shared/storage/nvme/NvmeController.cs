@@ -1,4 +1,4 @@
-// ProtonOS NVMe host controller driver (Phase 9 Task 5).
+// NeutrinoOS NVMe host controller driver (Phase 9 Task 5).
 //
 // Minimal but complete NVMe 1.x implementation: controller reset, admin
 // submission/completion queues, IDENTIFY (controller + namespace 1),
@@ -6,11 +6,11 @@
 // 4 KiB PRP pages. Registers live in BAR0 (MMIO); queues and data
 // buffers come from the contiguous page allocator.
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Storage.Nvme;
+namespace NeutrinoOS.Drivers.Storage.Nvme;
 
 /// <summary>NVMe controller instance bound to one PCI function.</summary>
 public unsafe class NvmeController

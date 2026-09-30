@@ -1,12 +1,12 @@
-// ProtonOS DDK - Network Manager
+// NeutrinoOS DDK - Network Manager
 // Central management of network interfaces and configuration.
 
 using System.Collections.Generic;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>
 /// Central manager for network interfaces.

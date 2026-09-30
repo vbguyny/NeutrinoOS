@@ -1,10 +1,10 @@
-// ProtonOS kernel - Kernel Export Registry
+// NeutrinoOS kernel - Kernel Export Registry
 // Maps kernel export entry point names to function addresses for PInvoke resolution.
 
 using System;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Entry in the kernel export registry.

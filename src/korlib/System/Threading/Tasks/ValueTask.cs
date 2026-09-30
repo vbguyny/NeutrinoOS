@@ -1,4 +1,4 @@
-// ProtonOS korlib - ValueTask
+// NeutrinoOS korlib - ValueTask
 // Provides value type wrappers for Task and Task<TResult> to avoid allocation
 // when the result is already available synchronously.
 

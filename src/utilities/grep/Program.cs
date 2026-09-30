@@ -20,7 +20,7 @@ public static class Program
     /// <summary>Entry point; see the exit-code convention in the file header.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         bool ignoreCase = false;
         bool invert = false;

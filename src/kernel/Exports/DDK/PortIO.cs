@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK Port I/O Exports
+// NeutrinoOS kernel - DDK Port I/O Exports
 // Exposes x86 I/O port operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for x86 I/O port operations.

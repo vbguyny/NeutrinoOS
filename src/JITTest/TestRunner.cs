@@ -1,7 +1,7 @@
 // JITTest - Main Test Runner
 // Entry point for comprehensive IL opcode testing
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace JITTest;
 

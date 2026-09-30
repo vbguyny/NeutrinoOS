@@ -1,7 +1,7 @@
 // NeutrinoOS kernel - cooperative service registry (Phase 6)
 //
 // Background services (sshd, the web host, ...) live in the JIT world
-// (ProtonOS.DDK). The kernel starts them on demand by compiling their
+// (NeutrinoOS.DDK). The kernel starts them on demand by compiling their
 // entry points from the DDK assembly - the same technique the network
 // bridge uses for the virtio-net frame pump - and then calls each
 // service's Tick() from the shell idle hook, cooperatively on the boot
@@ -16,10 +16,10 @@
 // does not support arrays of pointer types.)
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
 
-namespace ProtonOS.Services;
+namespace NeutrinoOS.Services;
 
 /// <summary>Cooperative background service registry (see file header).</summary>
 public static unsafe class ServiceRegistry
@@ -97,12 +97,12 @@ public static unsafe class ServiceRegistry
         string type;
         if (name == "sshd")
         {
-            ns = "ProtonOS.DDK.Services";
+            ns = "NeutrinoOS.DDK.Services";
             type = "SshService";
         }
         else if (name == "webhost")
         {
-            ns = "ProtonOS.DDK.Services";
+            ns = "NeutrinoOS.DDK.Services";
             type = "WebService";
         }
         else

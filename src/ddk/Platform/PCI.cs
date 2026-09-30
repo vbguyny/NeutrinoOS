@@ -1,12 +1,12 @@
-// ProtonOS DDK - PCI Bus Access
+// NeutrinoOS DDK - PCI Bus Access
 // Provides PCI configuration space access for drivers.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Platform;
+namespace NeutrinoOS.DDK.Platform;
 
 /// <summary>
 /// PCI configuration space access.

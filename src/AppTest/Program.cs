@@ -1,14 +1,14 @@
-// ProtonOS Application-Level Tests
+// NeutrinoOS Application-Level Tests
 // Tests application-level libraries like HTTP after drivers are loaded
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Storage.Proc;
-using ProtonOS.Net.Http;
-using ProtonOS.Drivers.Network.VirtioNet;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Storage.Proc;
+using NeutrinoOS.Net.Http;
+using NeutrinoOS.Drivers.Network.VirtioNet;
 
 namespace AppTest;
 
@@ -126,7 +126,7 @@ public static class TestRunner
     private static unsafe void TestProcCpuinfo()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/cpuinfo", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/cpuinfo", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -171,7 +171,7 @@ public static class TestRunner
     private static unsafe void TestProcMeminfo()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/meminfo", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/meminfo", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -216,7 +216,7 @@ public static class TestRunner
     private static unsafe void TestProcStat()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/stat", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/stat", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -261,7 +261,7 @@ public static class TestRunner
     private static unsafe void TestProcNetDev()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/net/dev", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/net/dev", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -300,7 +300,7 @@ public static class TestRunner
     private static unsafe void TestProcNetArp()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/net/arp", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/net/arp", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -339,7 +339,7 @@ public static class TestRunner
     private static unsafe void TestProcNetTcp()
     {
         IFileHandle? handle;
-        var result = VFS.OpenFile("/proc/net/tcp", ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out handle);
+        var result = VFS.OpenFile("/proc/net/tcp", NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out handle);
 
         if (result != FileResult.Success || handle == null)
         {
@@ -393,7 +393,7 @@ public static class TestRunner
         bool foundStat = false;
         bool foundNet = false;
 
-        ProtonOS.DDK.Storage.FileInfo? entry;
+        NeutrinoOS.DDK.Storage.FileInfo? entry;
         while ((entry = handle.ReadNext()) != null)
         {
             count++;
@@ -459,7 +459,7 @@ public static class TestRunner
         bool foundArp = false;
         bool foundTcp = false;
 
-        ProtonOS.DDK.Storage.FileInfo? entry;
+        NeutrinoOS.DDK.Storage.FileInfo? entry;
         while ((entry = handle.ReadNext()) != null)
         {
             count++;
@@ -1194,7 +1194,7 @@ public static class TestRunner
         ushort port = 8080;  // Use port 8080 where test server runs
 
         // Create HTTP client with longer timeout for real network
-        var httpClient = new ProtonOS.Net.Http.HttpClient(stack, 10000);
+        var httpClient = new NeutrinoOS.Net.Http.HttpClient(stack, 10000);
 
         // Make HTTP GET request using static method delegates
         HttpResult result = httpClient.Get(
@@ -1418,7 +1418,7 @@ public static class TestRunner
     }
 }
 
-// Entry point for .NET runtime (not used in ProtonOS, but required for compilation)
+// Entry point for .NET runtime (not used in NeutrinoOS, but required for compilation)
 public class Program
 {
     public static void Main() { }

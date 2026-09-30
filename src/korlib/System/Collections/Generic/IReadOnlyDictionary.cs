@@ -1,4 +1,4 @@
-// ProtonOS korlib - IReadOnlyDictionary<TKey, TValue> interface
+// NeutrinoOS korlib - IReadOnlyDictionary<TKey, TValue> interface
 
 namespace System.Collections.Generic;
 

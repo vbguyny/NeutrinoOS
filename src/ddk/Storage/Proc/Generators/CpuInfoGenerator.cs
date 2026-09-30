@@ -1,9 +1,9 @@
-// ProtonOS DDK - /proc/cpuinfo Generator
+// NeutrinoOS DDK - /proc/cpuinfo Generator
 // Generates CPU topology information in Linux-compatible format.
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Storage.Proc.Generators;
+namespace NeutrinoOS.DDK.Storage.Proc.Generators;
 
 /// <summary>
 /// Generates content for /proc/cpuinfo.

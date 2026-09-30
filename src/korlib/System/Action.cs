@@ -1,4 +1,4 @@
-// ProtonOS korlib - Action delegates
+// NeutrinoOS korlib - Action delegates
 
 namespace System
 {

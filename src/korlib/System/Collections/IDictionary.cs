@@ -1,4 +1,4 @@
-// ProtonOS korlib - IDictionary interface (non-generic)
+// NeutrinoOS korlib - IDictionary interface (non-generic)
 
 namespace System.Collections;
 

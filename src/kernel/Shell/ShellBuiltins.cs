@@ -11,13 +11,13 @@
 //
 // Every built-in prints a usage line for --help (or -h).
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System;
 using System.IO;
-using ProtonOS.Platform;
-using ProtonOS.Profiling;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Profiling;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>
 /// Built-in command implementations. <see cref="TryRun"/> returns false
@@ -281,7 +281,7 @@ public static class ShellBuiltins
             return true;
         }
 
-        int count = ProtonOS.Platform.LineDiscipline.GetHistoryCount();
+        int count = NeutrinoOS.Platform.LineDiscipline.GetHistoryCount();
         int first = 1;
         if (args.Length > 1 && TryParseInt(args[1], out int n) && n >= 0 && n < count)
             first = count - n + 1;
@@ -561,7 +561,7 @@ public static class ShellBuiltins
     private static bool RunVersion(string[] args, out int exitCode)
     {
         exitCode = 0;
-        Console.WriteLine(ProtonOS.Exports.DDK.SystemInfoExports.VersionString);
+        Console.WriteLine(NeutrinoOS.Exports.DDK.SystemInfoExports.VersionString);
         return true;
     }
 
@@ -584,17 +584,17 @@ public static class ShellBuiltins
         }
 
         Console.WriteLine("Shutting down NeutrinoOS (ACPI S5)...");
-        if (!ProtonOS.Platform.PowerManagement.IsAvailable)
+        if (!NeutrinoOS.Platform.PowerManagement.IsAvailable)
         {
-            ProtonOS.Platform.PowerManagement.Initialize();
-            if (!ProtonOS.Platform.PowerManagement.IsAvailable)
+            NeutrinoOS.Platform.PowerManagement.Initialize();
+            if (!NeutrinoOS.Platform.PowerManagement.IsAvailable)
             {
                 Console.Error.WriteLine("poweroff: ACPI S5 is not available on this machine");
                 exitCode = 1;
                 return true;
             }
         }
-        ProtonOS.Platform.PowerManagement.PowerOff();
+        NeutrinoOS.Platform.PowerManagement.PowerOff();
         exitCode = 0;
         return true;
     }
@@ -615,7 +615,7 @@ public static class ShellBuiltins
         }
 
         Console.WriteLine("Rebooting NeutrinoOS...");
-        ProtonOS.Platform.PowerManagement.Reboot();
+        NeutrinoOS.Platform.PowerManagement.Reboot();
         exitCode = 0;
         return true;
     }
@@ -639,7 +639,7 @@ public static class ShellBuiltins
         }
 
         Console.WriteLine("Suspending NeutrinoOS to RAM (ACPI S3)...");
-        if (!ProtonOS.Platform.PowerManagement.Sleep())
+        if (!NeutrinoOS.Platform.PowerManagement.Sleep())
         {
             Console.Error.WriteLine(name + ": ACPI S3 is not available on this machine");
             exitCode = 1;
@@ -665,7 +665,7 @@ public static class ShellBuiltins
             return true;
         }
 
-        ProtonOS.Platform.CpuPower.PrintReport();
+        NeutrinoOS.Platform.CpuPower.PrintReport();
         return true;
     }
 
@@ -685,7 +685,7 @@ public static class ShellBuiltins
             return true;
         }
 
-        var controller = ProtonOS.Usb.UsbStack.Controller;
+        var controller = NeutrinoOS.Usb.UsbStack.Controller;
         if (controller == null)
         {
             JitTrace.WriteLine("[usb] no xHCI controller bound");
@@ -695,14 +695,14 @@ public static class ShellBuiltins
         JitTrace.Write("[usb] xHCI: ports=");
         JitTrace.Write(controller.MaxPorts.ToString());
         JitTrace.Write(" devices=");
-        JitTrace.Write(ProtonOS.Usb.UsbStack.DeviceCount.ToString());
+        JitTrace.Write(NeutrinoOS.Usb.UsbStack.DeviceCount.ToString());
         JitTrace.Write(" failures=");
-        JitTrace.Write(ProtonOS.Usb.UsbStack.EnumerationFailures.ToString());
+        JitTrace.Write(NeutrinoOS.Usb.UsbStack.EnumerationFailures.ToString());
         JitTrace.WriteLine();
 
-        for (int i = 0; i < ProtonOS.Usb.UsbStack.DeviceCount; i++)
+        for (int i = 0; i < NeutrinoOS.Usb.UsbStack.DeviceCount; i++)
         {
-            var dev = ProtonOS.Usb.UsbStack.GetDevice(i);
+            var dev = NeutrinoOS.Usb.UsbStack.GetDevice(i);
             if (dev == null)
                 continue;
             JitTrace.Write("[usb] dev");
@@ -710,7 +710,7 @@ public static class ShellBuiltins
             JitTrace.Write(": port=");
             JitTrace.Write((dev.Port + 1).ToString());
             JitTrace.Write(" ");
-            JitTrace.Write(ProtonOS.Usb.UsbStack.SpeedName(dev.Speed));
+            JitTrace.Write(NeutrinoOS.Usb.UsbStack.SpeedName(dev.Speed));
             JitTrace.Write(" ");
             JitTrace.Write(Hex4(dev.VendorId));
             JitTrace.Write(":");
@@ -719,13 +719,13 @@ public static class ShellBuiltins
             JitTrace.WriteLine(dev.Status);
         }
 
-        for (int i = 0; i < ProtonOS.Usb.UsbStorage.DiskCount; i++)
+        for (int i = 0; i < NeutrinoOS.Usb.UsbStorage.DiskCount; i++)
         {
-            var disk = ProtonOS.Usb.UsbStorage.GetDisk(i);
+            var disk = NeutrinoOS.Usb.UsbStorage.GetDisk(i);
             if (disk == null)
                 continue;
             JitTrace.Write("[usb] disk ");
-            JitTrace.Write(ProtonOS.Usb.UsbStorage.DiskName(disk));
+            JitTrace.Write(NeutrinoOS.Usb.UsbStorage.DiskName(disk));
             JitTrace.Write(": ");
             JitTrace.Write(disk.Vendor);
             JitTrace.Write(" ");
@@ -736,9 +736,9 @@ public static class ShellBuiltins
             JitTrace.WriteLine(disk.Ready ? "1" : "0");
         }
 
-        for (int i = 0; i < ProtonOS.Usb.UsbSerial.PortCount; i++)
+        for (int i = 0; i < NeutrinoOS.Usb.UsbSerial.PortCount; i++)
         {
-            var port = ProtonOS.Usb.UsbSerial.GetPort(i);
+            var port = NeutrinoOS.Usb.UsbSerial.GetPort(i);
             if (port == null)
                 continue;
             JitTrace.Write("[usb] serial ");
@@ -746,7 +746,7 @@ public static class ShellBuiltins
             JitTrace.Write(": ready=");
             JitTrace.Write(port.Ready ? "1" : "0");
             JitTrace.Write(" rx=");
-            JitTrace.Write(ProtonOS.Usb.UsbSerial.Available(port).ToString());
+            JitTrace.Write(NeutrinoOS.Usb.UsbSerial.Available(port).ToString());
             JitTrace.WriteLine();
         }
 

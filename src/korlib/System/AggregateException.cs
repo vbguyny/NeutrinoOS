@@ -1,4 +1,4 @@
-// ProtonOS korlib - AggregateException
+// NeutrinoOS korlib - AggregateException
 // Represents one or more errors that occur during application execution.
 
 using System.Collections.Generic;

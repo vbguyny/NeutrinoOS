@@ -15,7 +15,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using NeutrinoOS.Packaging;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
 namespace NeutrinoOS.Packaging.SelfTest
 {

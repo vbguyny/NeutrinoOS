@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK Thread Exports
+// NeutrinoOS kernel - DDK Thread Exports
 // Exposes thread management operations to JIT-compiled drivers and tests.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for thread management.

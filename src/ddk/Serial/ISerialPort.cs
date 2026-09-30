@@ -1,9 +1,9 @@
-// ProtonOS DDK - Serial Port Interface
+// NeutrinoOS DDK - Serial Port Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Serial;
+namespace NeutrinoOS.DDK.Serial;
 
 /// <summary>
 /// Serial port baud rates.

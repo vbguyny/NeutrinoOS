@@ -7,10 +7,10 @@
 // referenced).
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utils;
 
@@ -301,10 +301,10 @@ public static unsafe class Http
 public sealed class Https
 {
     /// <summary>TLS 1.3 session (null once fallen back).</summary>
-    public ProtonOS.DDK.Tls.Tls13Client Tls13;
+    public NeutrinoOS.DDK.Tls.Tls13Client Tls13;
 
     /// <summary>TLS 1.2 session (set when the 1.3 attempt failed).</summary>
-    public ProtonOS.DDK.Tls.Tls12Client Tls12;
+    public NeutrinoOS.DDK.Tls.Tls12Client Tls12;
 
     /// <summary>True when one of the sessions completed its handshake.</summary>
     public bool Established =>

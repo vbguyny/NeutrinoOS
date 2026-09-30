@@ -3,7 +3,7 @@
 #   - the GUI variant (VGA console mirrored, console-active-vga +
 #     skip-boot-tests markers) produced by build/gui-image.sh, plus
 #   - the Phase 5 utility suite (32 x .NET 10) in ::/bin,
-#   - /etc/profile and the synced root ProtonOS.DDK.dll copy (the same
+#   - /etc/profile and the synced root NeutrinoOS.DDK.dll copy (the same
 #     instance the driver world and the utilities share).
 #
 # Usage (after build/p5-all.sh has built the kernel + utilities):
@@ -29,8 +29,8 @@ fi
 
 # Keep the root DDK copy in sync (utilities resolve their reference to
 # the root copy - the same instance the kernel/driver world uses).
-if [ -f /root/phase5bin/ProtonOS.DDK.dll ]; then
-  mcopy -o -i "$DST" /root/phase5bin/ProtonOS.DDK.dll ::/ProtonOS.DDK.dll
+if [ -f /root/phase5bin/NeutrinoOS.DDK.dll ]; then
+  mcopy -o -i "$DST" /root/phase5bin/NeutrinoOS.DDK.dll ::/NeutrinoOS.DDK.dll
 fi
 
 # --- /etc/profile -------------------------------------------------------------
@@ -47,5 +47,5 @@ cp -f "$DST" /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img
 
 echo "=== Phase 5 VBox image ready ==="
 mdir -i "$DST" ::/bin | tail -5
-mdir -i "$DST" :: | grep -iE 'skip|console|PROTON' || true
+mdir -i "$DST" :: | grep -iE 'skip|console|NEUTRINO' || true
 echo "=== copied to /mnt/d/Projects/Code/NeutrinoOS/build/neutrinoos-gui.img"

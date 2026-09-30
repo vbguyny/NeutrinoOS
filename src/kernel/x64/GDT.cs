@@ -1,13 +1,13 @@
-// ProtonOS kernel - Global Descriptor Table
+// NeutrinoOS kernel - Global Descriptor Table
 // In 64-bit long mode, segmentation is mostly disabled but GDT is still required
 // for privilege levels, TSS, and the syscall/sysret instructions.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// GDT segment selectors (byte offsets into GDT)

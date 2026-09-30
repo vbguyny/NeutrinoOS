@@ -1,4 +1,4 @@
-// ProtonOS DDK - HPACK header compression (RFC 7541) - Phase 9 Task 3
+// NeutrinoOS DDK - HPACK header compression (RFC 7541) - Phase 9 Task 3
 //
 // Encoder side (server responses): static-table lookups, literals with
 // and without name references, Huffman string encoding, integer
@@ -12,7 +12,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 /// <summary>HPACK integer/string primitives + static table lookup.</summary>
 public static class Hpack

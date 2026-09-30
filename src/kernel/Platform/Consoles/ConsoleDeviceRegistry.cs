@@ -4,7 +4,7 @@
 // addressed as /dev/ttyS0 (Phase 2). A full VFS-backed /dev tree is
 // deferred to a later phase; this registry is intentionally tiny.
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Registry of named console devices (e.g. "/dev/ttyS0"). Used by the

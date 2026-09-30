@@ -7,10 +7,10 @@
 // the DDK, so it lands in the shared VFS and every utility sees it.
 
 using System;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Polls the DDK USB auto-mount service (see file header).</summary>
 public static unsafe class AutoMountBridge
@@ -34,7 +34,7 @@ public static unsafe class AutoMountBridge
         tick();
     }
 
-    /// <summary>JIT-compiles ProtonOS.DDK.Storage.ExFat.AutoMount.Tick.</summary>
+    /// <summary>JIT-compiles NeutrinoOS.DDK.Storage.ExFat.AutoMount.Tick.</summary>
     private static bool EnsureJitted()
     {
         uint ddkId = Kernel.DdkAssemblyId;
@@ -42,7 +42,7 @@ public static unsafe class AutoMountBridge
             return false;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            ddkId, "ProtonOS.DDK.Storage.ExFat", "AutoMount");
+            ddkId, "NeutrinoOS.DDK.Storage.ExFat", "AutoMount");
         if (typeToken == 0)
         {
             Console.WriteLine("[automount] WARNING: AutoMount type not found in DDK");

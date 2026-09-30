@@ -1,9 +1,9 @@
-// ProtonOS DDK - /proc/net/arp Generator
+// NeutrinoOS DDK - /proc/net/arp Generator
 // Generates ARP cache entries in Linux-compatible format.
 
-using ProtonOS.DDK.Network;
+using NeutrinoOS.DDK.Network;
 
-namespace ProtonOS.DDK.Storage.Proc.Generators;
+namespace NeutrinoOS.DDK.Storage.Proc.Generators;
 
 /// <summary>
 /// Generates content for /proc/net/arp.

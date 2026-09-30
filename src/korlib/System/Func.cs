@@ -1,4 +1,4 @@
-// ProtonOS korlib - Func delegates
+// NeutrinoOS korlib - Func delegates
 
 namespace System
 {

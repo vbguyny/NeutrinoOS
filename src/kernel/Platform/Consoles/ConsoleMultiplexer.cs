@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Multiplexes console output across registered devices and reads input

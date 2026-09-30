@@ -1,4 +1,4 @@
-// ProtonOS NVMe Entry Point (Phase 9 Task 5).
+// NeutrinoOS NVMe Entry Point (Phase 9 Task 5).
 //
 // Static entry point designed for kernel JIT compilation, mirroring the
 // AHCI entry: Probe (PCI class match) + Bind (controller bring-up) plus
@@ -6,11 +6,11 @@
 // verify when the boot volume contains a 'nvme-write-test' flag file).
 using System;
 using System.IO;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Storage.Nvme;
+namespace NeutrinoOS.Drivers.Storage.Nvme;
 
 /// <summary>Static entry point for the NVMe driver.</summary>
 public static unsafe class NvmeEntry

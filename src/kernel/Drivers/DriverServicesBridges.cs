@@ -1,4 +1,4 @@
-// ProtonOS Kernel - AOT bridges for kernel driver services (Phase 8).
+// NeutrinoOS Kernel - AOT bridges for kernel driver services (Phase 8).
 //
 // Packaged drivers are JIT-compiled: their calls to IDriverServices land on
 // the kernel's KernelDriverServices object, which is AOT-compiled and has
@@ -18,10 +18,10 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>AOT bridges exposing KernelDriverServices to JIT-compiled drivers.</summary>
 internal static unsafe class DriverServicesBridges

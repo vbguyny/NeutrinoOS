@@ -1,11 +1,11 @@
-// ProtonOS DDK - Network Stack Manager
+// NeutrinoOS DDK - Network Stack Manager
 // Ties together Ethernet, ARP, and higher protocol layers
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Sockets;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// Network interface configuration.

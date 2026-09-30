@@ -1,13 +1,13 @@
-// ProtonOS kernel - PAL Condition Variables
+// NeutrinoOS kernel - PAL Condition Variables
 // Win32-style condition variable implementation for PAL compatibility.
 // Used with Critical Sections for producer/consumer and wait patterns.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Condition Variable - allows threads to atomically release a lock

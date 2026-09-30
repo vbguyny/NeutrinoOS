@@ -1,11 +1,11 @@
-// ProtonOS kernel - DDK Memory Exports
+// NeutrinoOS kernel - DDK Memory Exports
 // Exposes memory allocation and mapping operations to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for memory management operations.

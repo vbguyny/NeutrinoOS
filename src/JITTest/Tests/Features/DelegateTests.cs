@@ -1,7 +1,7 @@
 // JITTest - Delegate Tests
 // Tests delegate creation and invocation
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace JITTest;
 

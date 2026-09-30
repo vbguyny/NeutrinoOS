@@ -1,16 +1,16 @@
-// ProtonOS DDK - DDK Initialization
+// NeutrinoOS DDK - DDK Initialization
 // Entry point for DDK initialization and bootstrap.
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.USB;
-using ProtonOS.DDK.Input;
-using ProtonOS.DDK.Serial;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.USB;
+using NeutrinoOS.DDK.Input;
+using NeutrinoOS.DDK.Serial;
 
-namespace ProtonOS.DDK;
+namespace NeutrinoOS.DDK;
 
 /// <summary>
 /// DDK initialization state.

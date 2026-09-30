@@ -1,17 +1,17 @@
-// ProtonOS JIT - Method Runtime Information
+// NeutrinoOS JIT - Method Runtime Information
 // Stores exception handling metadata for JIT-compiled methods:
 // - RUNTIME_FUNCTION for SEH
 // - UNWIND_INFO for stack unwinding
 // - NativeAOT-compatible EH clause data
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
-using ProtonOS.Threading;
-using ProtonOS.Runtime;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Runtime;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Storage for JIT method runtime information.

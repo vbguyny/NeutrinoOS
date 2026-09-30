@@ -17,9 +17,9 @@
 // always delivers scancode set 1 regardless of the keyboard's native
 // set (matches the QEMU and VirtualBox emulation defaults).
 
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// PS/2 keyboard driver (IRQ1 / vector 33). Initialized by the CAL once
@@ -93,7 +93,7 @@ public static unsafe class Ps2Keyboard
         WriteCommand(0xAE);         // re-enable keyboard
         Uart16550.Write("[PS2-4]");
 
-        ProtonOS.Arch.Arch.RegisterHandler(IrqVector, &IrqHandler);
+        NeutrinoOS.Arch.Arch.RegisterHandler(IrqVector, &IrqHandler);
         Uart16550.Write("[PS2-5]");
         IOAPIC.UnmaskIrq(1);
         Uart16550.Write("[PS2-6]");

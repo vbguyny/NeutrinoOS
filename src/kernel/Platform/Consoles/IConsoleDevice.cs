@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// A console device: character output plus key/line input.

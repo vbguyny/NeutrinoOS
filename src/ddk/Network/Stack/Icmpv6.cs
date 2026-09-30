@@ -1,4 +1,4 @@
-// ProtonOS DDK - ICMPv6 (RFC 4443) + Neighbor Discovery (RFC 4861)
+// NeutrinoOS DDK - ICMPv6 (RFC 4443) + Neighbor Discovery (RFC 4861)
 // Echo for ping6, Neighbor Solicitation/Advertisement, Router
 // Solicitation/Advertisement with Prefix Information, MTU and RDNSS
 // options, and the checksum helpers needed by all of them.
@@ -6,7 +6,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>ICMPv6 message types used by this stack.</summary>
 public static class Icmpv6Type

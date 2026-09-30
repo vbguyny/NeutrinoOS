@@ -1,12 +1,12 @@
-// ProtonOS FAT Filesystem Driver - Directory Handle
+// NeutrinoOS FAT Filesystem Driver - Directory Handle
 // Implements IDirectoryHandle for FAT directory enumeration
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Storage;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Storage;
 
-namespace ProtonOS.Drivers.Storage.Fat;
+namespace NeutrinoOS.Drivers.Storage.Fat;
 
 /// <summary>
 /// Directory handle for FAT filesystem enumeration.

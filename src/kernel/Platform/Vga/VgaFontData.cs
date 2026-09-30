@@ -12,7 +12,7 @@
 // byte) because the kernel compiler cannot codegen large byte[] array
 // initializers (VgaFontData..cctor codegen failure).
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Standard CP437 VGA character generator fonts.</summary>
 public static class VgaFontData

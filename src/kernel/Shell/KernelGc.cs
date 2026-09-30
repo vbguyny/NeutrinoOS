@@ -6,12 +6,12 @@
 // managed System.GC.Collect() path (korlib) is used by the collection
 // itself so the shell and JIT-compiled code share one GC.
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Implements the gc built-in (see file header).</summary>
 public static class KernelGc
@@ -19,7 +19,7 @@ public static class KernelGc
     /// <summary>
     /// Runs a diagnostic garbage collection (full mark phase; the sweep
     /// and compaction stages are allocation-driven kernel steps and are
-    /// deferred in this mode — see ProtonOS.Memory.GC.CollectMarkOnly)
+    /// deferred in this mode — see NeutrinoOS.Memory.GC.CollectMarkOnly)
     /// and prints statistics: SOH/LOH allocation before and after,
     /// objects marked, roots scanned and the wall-clock duration (APIC
     /// tick = 1 ms resolution).
@@ -30,13 +30,13 @@ public static class KernelGc
         GCHeap.GetLOHStats(out ulong lohBefore, out ulong lohObjectsBefore);
 
         ulong startTick = APIC.TickCount;
-        int marked = ProtonOS.Memory.GC.CollectMarkOnly();
+        int marked = NeutrinoOS.Memory.GC.CollectMarkOnly();
         ulong elapsedMs = APIC.TickCount - startTick;
 
         GCHeap.GetStats(out ulong socAfter, out ulong objectsAfter, out ulong freeAfter);
         GCHeap.GetLOHStats(out ulong lohAfter, out ulong lohObjectsAfter);
 
-        ProtonOS.Memory.GC.GetStats(out ulong collections, out ulong lastMarked, out ulong lastRoots);
+        NeutrinoOS.Memory.GC.GetStats(out ulong collections, out ulong lastMarked, out ulong lastRoots);
 
         JitTrace.WriteLine("[gc] NeutrinoOS garbage collection (mark phase) complete");
         JitTrace.Write("[gc] heap before: ");

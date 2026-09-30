@@ -11,7 +11,7 @@
 
 #if ARCH_ARM64
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>GICv2 interrupt controller driver (QEMU virt layout).</summary>
 public static unsafe class GicV2

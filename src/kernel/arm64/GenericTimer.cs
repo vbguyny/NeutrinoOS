@@ -7,10 +7,10 @@
 
 #if ARCH_ARM64
 
-using ProtonOS.Platform;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>ARM64 generic timer (CNTP) used as the scheduler tick source.</summary>
 public static unsafe class GenericTimer
@@ -66,7 +66,7 @@ public static unsafe class GenericTimer
         // another thread and this stack won't run again for a while.
         ProgramNextExpiry();
 
-        ProtonOS.Profiling.Profiler.Sample(frame->Rip);
+        NeutrinoOS.Profiling.Profiler.Sample(frame->Rip);
         Scheduler.TimerTick();
     }
 }

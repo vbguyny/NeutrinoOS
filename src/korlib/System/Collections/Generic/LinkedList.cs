@@ -1,4 +1,4 @@
-// ProtonOS korlib - LinkedList<T>
+// NeutrinoOS korlib - LinkedList<T>
 // Represents a doubly linked list.
 
 namespace System.Collections.Generic

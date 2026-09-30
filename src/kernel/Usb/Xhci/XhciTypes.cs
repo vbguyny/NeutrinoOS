@@ -24,11 +24,11 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Usb.Xhci;
+namespace NeutrinoOS.Usb.Xhci;
 
 // ============================================================================
 // TRB (transfer request block, 16 bytes)

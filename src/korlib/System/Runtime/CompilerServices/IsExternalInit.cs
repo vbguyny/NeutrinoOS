@@ -1,4 +1,4 @@
-// ProtonOS korlib - IsExternalInit for C# 9.0+ init accessors
+// NeutrinoOS korlib - IsExternalInit for C# 9.0+ init accessors
 
 namespace System.Runtime.CompilerServices;
 

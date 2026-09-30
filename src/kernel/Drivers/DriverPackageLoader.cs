@@ -1,4 +1,4 @@
-// ProtonOS Kernel - npkg driver-package loader (Phase 8, driver framework).
+// NeutrinoOS Kernel - npkg driver-package loader (Phase 8, driver framework).
 //
 // Second framework phase: after the root filesystem is mounted (and the
 // legacy /drivers loader has run), scan the npkg installed database for
@@ -21,13 +21,13 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Runtime.Reflection;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Runtime.Reflection;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Loads npkg-installed driver packages onto the driver framework.</summary>
 public static unsafe class DriverPackageLoader

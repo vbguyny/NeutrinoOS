@@ -5,8 +5,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>ProtonOS.Drivers.Test</AssemblyName>
-    <RootNamespace>ProtonOS.Drivers.Test</RootNamespace>
+    <AssemblyName>NeutrinoOS.Drivers.Test</AssemblyName>
+    <RootNamespace>NeutrinoOS.Drivers.Test</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

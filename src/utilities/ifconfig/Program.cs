@@ -11,8 +11,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utility.Ifconfig;
 
@@ -22,7 +22,7 @@ public static class Program
     /// <summary>Entry point; always returns 0.</summary>
     public static unsafe int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         bool showHelp = false;
         string name = null;
@@ -91,7 +91,7 @@ public static class Program
             {
                 if (!iface.Stack.V6Configured || !iface.Stack.V6RouterSeen)
                 {
-                    ProtonOS.DDK.Network.NetworkPump.BringUpV6(iface.Stack, 10000);
+                    NeutrinoOS.DDK.Network.NetworkPump.BringUpV6(iface.Stack, 10000);
                     Console.Write(name);
                     Console.WriteLine(iface.Stack.V6RouterSeen
                         ? ": IPv6 up (router advertisement received)"

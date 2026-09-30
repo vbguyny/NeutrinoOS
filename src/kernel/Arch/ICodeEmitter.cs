@@ -1,10 +1,10 @@
-// ProtonOS Architecture Abstraction - Code Emitter Interface
+// NeutrinoOS Architecture Abstraction - Code Emitter Interface
 // High-level interface for JIT code generation.
 // Uses C# 11 static abstract members for compile-time polymorphism.
 
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// High-level code emitter interface for JIT compilation.

@@ -39,7 +39,7 @@ if dotnet build "$SRC/src/korlib/korlib.csproj" -c Release -o "$LIBS" > /tmp/p8-
 else
   echo "WARN: korlib.csproj did not build standalone; omitting korlib.dll"
 fi
-for dll in NeutrinoOS.Packaging.dll NeutrinoOS.Driver.Abstractions.dll ProtonOS.DDK.dll korlib.dll; do
+for dll in NeutrinoOS.Packaging.dll NeutrinoOS.Driver.Abstractions.dll NeutrinoOS.DDK.dll korlib.dll; do
   [ -f "$LIBS/$dll" ] && cp "$LIBS/$dll" "$STAGE/lib/"
 done
 cp "$LIBS"/*.xml "$STAGE/lib/" 2>/dev/null || true

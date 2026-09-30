@@ -1,4 +1,4 @@
-// ProtonOS korlib - TaskStatus
+// NeutrinoOS korlib - TaskStatus
 // Represents the current stage in the lifecycle of a Task.
 
 namespace System.Threading.Tasks

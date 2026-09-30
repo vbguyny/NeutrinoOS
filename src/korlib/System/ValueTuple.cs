@@ -1,4 +1,4 @@
-// ProtonOS korlib - ValueTuple types for C# 7.0+ tuple syntax
+// NeutrinoOS korlib - ValueTuple types for C# 7.0+ tuple syntax
 // Based on .NET runtime ValueTuple implementation
 
 using System.Collections;

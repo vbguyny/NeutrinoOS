@@ -6,9 +6,9 @@
 // and cluster addressing into the cluster heap.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>
 /// Parsed and validated exFAT volume geometry with the low-level

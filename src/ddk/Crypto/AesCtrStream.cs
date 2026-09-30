@@ -1,4 +1,4 @@
-// ProtonOS DDK - AES-CTR streaming helper (Phase 6)
+// NeutrinoOS DDK - AES-CTR streaming helper (Phase 6)
 //
 // Aes.CtrXor restarts from a counter block; SSH needs a CTR stream
 // whose keystream position continues across packets for the lifetime
@@ -7,7 +7,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Continuous AES-CTR keystream (see file header).</summary>
 public sealed class AesCtrStream

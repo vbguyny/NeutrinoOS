@@ -1,12 +1,12 @@
-// ProtonOS kernel - Code Heap for JIT-compiled code
+// NeutrinoOS kernel - Code Heap for JIT-compiled code
 // Allocates executable memory pages with proper W^X separation.
 // Code pages are mapped without the NX (No-Execute) bit.
 
-using ProtonOS.Platform;
-using ProtonOS.Arch;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Threading;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Code heap for JIT-compiled executable code.
@@ -108,7 +108,7 @@ public static unsafe class CodeHeap
             _currentChunkSize = chunkSize;
             _totalAllocated += chunkSize;
 
-            if (ProtonOS.Runtime.JitDiag.VerboseJit)
+            if (NeutrinoOS.Runtime.JitDiag.VerboseJit)
             {
                 DebugConsole.Write("[CodeHeap] New chunk at 0x");
                 DebugConsole.WriteHex(virtAddr);

@@ -1,4 +1,4 @@
-// ProtonOS Phase 9: TLS 1.3 handshake driver for QUIC (RFC 9001).
+// NeutrinoOS Phase 9: TLS 1.3 handshake driver for QUIC (RFC 9001).
 //
 // QUIC carries handshake messages in CRYPTO frames instead of TLS
 // records, so the record-layer-oriented Tls13Connection cannot be
@@ -14,10 +14,10 @@
 // the local length counters were silently lost (en/cn/vn/hn read back as
 // garbage), producing near-empty messages.
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 public sealed class QuicTlsServer
 {

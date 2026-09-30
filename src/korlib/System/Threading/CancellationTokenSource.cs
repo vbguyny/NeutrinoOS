@@ -1,4 +1,4 @@
-// ProtonOS korlib - CancellationTokenSource
+// NeutrinoOS korlib - CancellationTokenSource
 // Signals to a CancellationToken that it should be canceled.
 
 using System.Collections.Generic;

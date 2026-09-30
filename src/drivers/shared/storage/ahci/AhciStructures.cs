@@ -1,10 +1,10 @@
-// ProtonOS AHCI Driver - Data Structures
+// NeutrinoOS AHCI Driver - Data Structures
 // AHCI 1.3.1 Specification compliant
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// Command header structure (32 bytes per entry, 32 entries in command list).

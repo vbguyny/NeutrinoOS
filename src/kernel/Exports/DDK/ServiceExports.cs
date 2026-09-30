@@ -5,9 +5,9 @@
 // compiles their entry points from the DDK assembly by name.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Services;
+using NeutrinoOS.Services;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>DDK service-management exports (see file header).</summary>
 public static unsafe class ServiceExports

@@ -8,9 +8,9 @@
 // docs/PHASE9-USB.md).
 
 using System;
-using ProtonOS.Usb.Xhci;
+using NeutrinoOS.Usb.Xhci;
 
-namespace ProtonOS.Usb;
+namespace NeutrinoOS.Usb;
 
 /// <summary>A bound CDC-ACM adapter.</summary>
 public sealed unsafe class UsbSerialPort

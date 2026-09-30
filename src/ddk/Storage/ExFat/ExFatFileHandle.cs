@@ -8,7 +8,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>An open exFAT file.</summary>
 public unsafe class ExFatFileHandle : IFileHandle

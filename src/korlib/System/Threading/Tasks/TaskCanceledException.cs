@@ -1,4 +1,4 @@
-// ProtonOS korlib - TaskCanceledException
+// NeutrinoOS korlib - TaskCanceledException
 // Represents an exception used to communicate task cancellation.
 
 namespace System.Threading.Tasks

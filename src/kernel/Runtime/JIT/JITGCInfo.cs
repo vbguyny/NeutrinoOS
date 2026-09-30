@@ -1,4 +1,4 @@
-// ProtonOS kernel - JIT GCInfo Builder
+// NeutrinoOS kernel - JIT GCInfo Builder
 // Generates NativeAOT-compatible GCInfo for JIT-compiled methods.
 //
 // GCInfo describes which stack slots and registers contain live GC references
@@ -10,9 +10,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Tracks a stack slot that contains a GC reference.

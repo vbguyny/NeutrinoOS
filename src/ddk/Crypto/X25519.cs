@@ -1,4 +1,4 @@
-// ProtonOS DDK - X25519 (Curve25519 ECDH) (Phase 6)
+// NeutrinoOS DDK - X25519 (Curve25519 ECDH) (Phase 6)
 //
 // Managed C# X25519 (RFC 7748) with radix-2^51 field arithmetic
 // (the classic ref10 layout) and a hand-rolled 64x64->128 multiply,
@@ -9,7 +9,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>X25519 scalar multiplication (RFC 7748); see file header.</summary>
 public static class X25519

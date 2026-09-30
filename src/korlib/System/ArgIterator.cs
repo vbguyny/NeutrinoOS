@@ -1,4 +1,4 @@
-// ProtonOS korlib - ArgIterator for varargs support
+// NeutrinoOS korlib - ArgIterator for varargs support
 
 using System.Runtime.InteropServices;
 

@@ -1,4 +1,4 @@
-// ProtonOS korlib - StringComparison enum
+// NeutrinoOS korlib - StringComparison enum
 
 namespace System;
 

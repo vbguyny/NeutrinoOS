@@ -21,7 +21,7 @@ using System.IO;
 using System.Text;
 using NeutrinoOS.Packaging;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
 namespace NeutrinoOS.Utility.Npkg;
 

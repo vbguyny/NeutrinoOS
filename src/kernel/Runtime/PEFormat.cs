@@ -1,9 +1,9 @@
-// ProtonOS - PE/COFF Format Structures
+// NeutrinoOS - PE/COFF Format Structures
 // Portable Executable format definitions for parsing PE images.
 
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// PE format magic constants

@@ -1,7 +1,7 @@
-// ProtonOS Architecture Abstraction - Main Architecture Interface
+// NeutrinoOS Architecture Abstraction - Main Architecture Interface
 // Top-level interface for architecture initialization and management.
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Main architecture interface for kernel initialization.

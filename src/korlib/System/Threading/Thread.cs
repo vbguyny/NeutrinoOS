@@ -1,4 +1,4 @@
-// ProtonOS korlib - System.Threading.Thread
+// NeutrinoOS korlib - System.Threading.Thread
 // Provides .NET-compatible Thread class wrapping kernel thread functionality.
 
 namespace System
@@ -436,29 +436,29 @@ namespace System.Threading
             uint flags,
             out uint threadId)
         {
-            return ProtonOS.Threading.Scheduler.CreateThread(entryPoint, parameter, stackSize, flags, out threadId);
+            return NeutrinoOS.Threading.Scheduler.CreateThread(entryPoint, parameter, stackSize, flags, out threadId);
         }
 
         private static uint GetCurrentThreadIdNative()
         {
-            return ProtonOS.Threading.Scheduler.GetCurrentThreadId();
+            return NeutrinoOS.Threading.Scheduler.GetCurrentThreadId();
         }
 
         private static unsafe int GetThreadStateNative(void* thread)
         {
-            var t = (ProtonOS.Threading.Thread*)thread;
+            var t = (NeutrinoOS.Threading.Thread*)thread;
             if (t == null) return -1;
             return (int)t->State;
         }
 
         private static void SleepNative(uint milliseconds)
         {
-            ProtonOS.Threading.Scheduler.Sleep(milliseconds);
+            NeutrinoOS.Threading.Scheduler.Sleep(milliseconds);
         }
 
         private static void YieldNative()
         {
-            ProtonOS.Threading.Scheduler.Yield();
+            NeutrinoOS.Threading.Scheduler.Yield();
         }
 #else
         // IL stubs - actual implementation provided by JIT resolution to kernel exports

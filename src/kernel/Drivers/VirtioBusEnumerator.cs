@@ -1,4 +1,4 @@
-// ProtonOS Kernel - VirtIO bus enumerator for the driver framework.
+// NeutrinoOS Kernel - VirtIO bus enumerator for the driver framework.
 //
 // Runs after the PCI enumerator: every PCI function with vendor 0x1AF4 is a
 // VirtIO device. The device id encodes the VirtIO device type (legacy
@@ -8,7 +8,7 @@
 using System;
 using NeutrinoOS.Drivers;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Enumerates VirtIO devices (PCI vendor 0x1AF4) into the tree.</summary>
 public static class VirtioBusEnumerator

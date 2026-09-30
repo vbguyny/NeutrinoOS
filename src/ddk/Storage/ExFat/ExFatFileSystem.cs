@@ -7,10 +7,10 @@
 // with a FAT-chain fallback).
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>
 /// exFAT filesystem driver. Mount it through the VFS on any block

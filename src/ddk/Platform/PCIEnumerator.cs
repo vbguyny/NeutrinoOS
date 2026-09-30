@@ -1,12 +1,12 @@
-// ProtonOS DDK - PCI Bus Enumeration
+// NeutrinoOS DDK - PCI Bus Enumeration
 // Enumerates PCI devices and notifies the driver manager.
 
 using System;
 using System.Collections.Generic;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Platform;
+namespace NeutrinoOS.DDK.Platform;
 
 /// <summary>
 /// PCI bus enumerator.

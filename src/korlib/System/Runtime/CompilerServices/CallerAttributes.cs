@@ -1,4 +1,4 @@
-// ProtonOS korlib - Caller information attributes for C# 5.0+
+// NeutrinoOS korlib - Caller information attributes for C# 5.0+
 
 namespace System.Runtime.CompilerServices;
 

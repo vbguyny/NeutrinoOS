@@ -1,10 +1,10 @@
-// ProtonOS DDK - Thread Management API
+// NeutrinoOS DDK - Thread Management API
 // Provides thread operations for drivers and JIT code.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// Thread states matching kernel ThreadState enum.

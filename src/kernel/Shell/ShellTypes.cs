@@ -7,7 +7,7 @@
 // parser reports syntax errors as (message, column) pairs instead of
 // throwing, matching the kernel's no-exception style.
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Token kinds produced by <see cref="ShellLexer"/>.</summary>
 public enum ShellTokenKind : byte

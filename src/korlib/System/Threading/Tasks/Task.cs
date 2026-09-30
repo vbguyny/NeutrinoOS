@@ -1,4 +1,4 @@
-// ProtonOS korlib - Task
+// NeutrinoOS korlib - Task
 // Represents an asynchronous operation.
 
 using System.Runtime.CompilerServices;

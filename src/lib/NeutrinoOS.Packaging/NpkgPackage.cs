@@ -8,7 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
 namespace NeutrinoOS.Packaging
 {

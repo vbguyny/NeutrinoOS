@@ -1,4 +1,4 @@
-// ProtonOS korlib - IComparable interfaces
+// NeutrinoOS korlib - IComparable interfaces
 
 namespace System;
 

@@ -16,10 +16,10 @@
 // argument block stays on the caller's stack, which remains mapped.
 
 using System.Runtime.InteropServices;
-using ProtonOS.IO;
-using ProtonOS.Memory;
+using NeutrinoOS.IO;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Runs a code body on a private large stack (see file header).

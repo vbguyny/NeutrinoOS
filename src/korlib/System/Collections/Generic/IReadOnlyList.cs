@@ -1,4 +1,4 @@
-// ProtonOS korlib - IReadOnlyList<T> interface
+// NeutrinoOS korlib - IReadOnlyList<T> interface
 
 namespace System.Collections.Generic;
 

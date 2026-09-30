@@ -1,4 +1,4 @@
-// ProtonOS kernel - AOT Method Registry
+// NeutrinoOS kernel - AOT Method Registry
 // Provides lookup for AOT-compiled korlib methods that can be called from JIT code.
 // These methods have no JIT metadata - they're compiled directly into the kernel.
 
@@ -10,12 +10,12 @@
 #define BRIDGE_PART_ENV
 
 using System;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Runtime.Reflection;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Runtime.Reflection;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Flags byte for AotMethodEntry.
@@ -1937,79 +1937,79 @@ public static unsafe class AotMethodRegistry
     /// <summary>
     /// Register Span helper methods.
     /// These are static helpers that operate on the raw memory layout of Span<T>.
-    /// Registered under "ProtonOS.Runtime.SpanHelpers" for direct JIT access.
+    /// Registered under "NeutrinoOS.Runtime.SpanHelpers" for direct JIT access.
     /// </summary>
     private static void RegisterSpanMethods()
     {
         // SpanHelpers.GetLength(nint spanPtr) - works for any Span<T>
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "GetLength",
+            "NeutrinoOS.Runtime.SpanHelpers", "GetLength",
             (nint)(delegate*<nint, int>)&SpanHelpers.GetLength,
             1, ReturnKind.Int32, false, false);
 
         // SpanHelpers.GetPointer(nint spanPtr) - get data pointer
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "GetPointer",
+            "NeutrinoOS.Runtime.SpanHelpers", "GetPointer",
             (nint)(delegate*<nint, nint>)&SpanHelpers.GetPointer,
             1, ReturnKind.IntPtr, false, false);
 
         // SpanHelpers.IsEmpty(nint spanPtr)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "IsEmpty",
+            "NeutrinoOS.Runtime.SpanHelpers", "IsEmpty",
             (nint)(delegate*<nint, bool>)&SpanHelpers.IsEmpty,
             1, ReturnKind.Int32, false, false);
 
         // SpanHelpers.InitByteSpanFromArray(nint spanPtr, byte[] array)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "InitByteSpanFromArray",
+            "NeutrinoOS.Runtime.SpanHelpers", "InitByteSpanFromArray",
             (nint)(delegate*<nint, byte[]?, void>)&SpanHelpers.InitByteSpanFromArray,
             2, ReturnKind.Void, false, false);
 
         // SpanHelpers.InitIntSpanFromArray(nint spanPtr, int[] array)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "InitIntSpanFromArray",
+            "NeutrinoOS.Runtime.SpanHelpers", "InitIntSpanFromArray",
             (nint)(delegate*<nint, int[]?, void>)&SpanHelpers.InitIntSpanFromArray,
             2, ReturnKind.Void, false, false);
 
         // SpanHelpers.InitSpanFromPointer(nint spanPtr, void* pointer, int length)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "InitSpanFromPointer",
+            "NeutrinoOS.Runtime.SpanHelpers", "InitSpanFromPointer",
             (nint)(delegate*<nint, void*, int, void>)&SpanHelpers.InitSpanFromPointer,
             3, ReturnKind.Void, false, false);
 
         // SpanHelpers.GetByte(nint spanPtr, int index)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "GetByte",
+            "NeutrinoOS.Runtime.SpanHelpers", "GetByte",
             (nint)(delegate*<nint, int, byte>)&SpanHelpers.GetByte,
             2, ReturnKind.Int32, false, false);
 
         // SpanHelpers.SetByte(nint spanPtr, int index, byte value)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "SetByte",
+            "NeutrinoOS.Runtime.SpanHelpers", "SetByte",
             (nint)(delegate*<nint, int, byte, void>)&SpanHelpers.SetByte,
             3, ReturnKind.Void, false, false);
 
         // SpanHelpers.GetInt(nint spanPtr, int index)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "GetInt",
+            "NeutrinoOS.Runtime.SpanHelpers", "GetInt",
             (nint)(delegate*<nint, int, int>)&SpanHelpers.GetInt,
             2, ReturnKind.Int32, false, false);
 
         // SpanHelpers.SetInt(nint spanPtr, int index, int value)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "SetInt",
+            "NeutrinoOS.Runtime.SpanHelpers", "SetInt",
             (nint)(delegate*<nint, int, int, void>)&SpanHelpers.SetInt,
             3, ReturnKind.Void, false, false);
 
         // SpanHelpers.ClearByteSpan(nint spanPtr)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "ClearByteSpan",
+            "NeutrinoOS.Runtime.SpanHelpers", "ClearByteSpan",
             (nint)(delegate*<nint, void>)&SpanHelpers.ClearByteSpan,
             1, ReturnKind.Void, false, false);
 
         // SpanHelpers.FillByteSpan(nint spanPtr, byte value)
         Register(
-            "ProtonOS.Runtime.SpanHelpers", "FillByteSpan",
+            "NeutrinoOS.Runtime.SpanHelpers", "FillByteSpan",
             (nint)(delegate*<nint, byte, void>)&SpanHelpers.FillByteSpan,
             2, ReturnKind.Void, false, false);
 
@@ -4580,38 +4580,38 @@ public static class ReflectionHelpers
     /// </summary>
     public static Type? FieldInfoGetFieldType(System.Reflection.FieldInfo field)
     {
-        ProtonOS.Platform.DebugConsole.Write("[FieldInfoGetFieldType] called");
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[FieldInfoGetFieldType] called");
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         if (field is null)
         {
-            ProtonOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] field is null");
+            NeutrinoOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] field is null");
             return null;
         }
 
         // Dispatch to the concrete implementation
         if (field is System.Reflection.RuntimeFieldInfo rfi)
         {
-            ProtonOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] -> RuntimeFieldInfo");
+            NeutrinoOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] -> RuntimeFieldInfo");
             var result = rfi.FieldType;
             if (result is null)
             {
-                ProtonOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] result is null");
+                NeutrinoOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] result is null");
             }
             else
             {
-                ProtonOS.Platform.DebugConsole.Write("[FieldInfoGetFieldType] result=");
+                NeutrinoOS.Platform.DebugConsole.Write("[FieldInfoGetFieldType] result=");
                 var name = result.Name;
                 if (name != null)
                 {
-                    ProtonOS.Platform.DebugConsole.Write(name);
+                    NeutrinoOS.Platform.DebugConsole.Write(name);
                 }
-                ProtonOS.Platform.DebugConsole.WriteLine();
+                NeutrinoOS.Platform.DebugConsole.WriteLine();
             }
             return result;
         }
 
-        ProtonOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] not RuntimeFieldInfo");
+        NeutrinoOS.Platform.DebugConsole.WriteLine("[FieldInfoGetFieldType] not RuntimeFieldInfo");
         // Fallback - shouldn't happen in practice
         return null;
     }
@@ -4902,8 +4902,8 @@ public static unsafe class MemberInfoHelpers
         if (member == null)
             return null;
 
-        ProtonOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] called");
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] called");
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         // Try to determine the actual type and dispatch accordingly
         // We check the types in order of likely frequency
@@ -4911,8 +4911,8 @@ public static unsafe class MemberInfoHelpers
         // Check if it's a RuntimeMethodInfo
         if (member is System.Reflection.RuntimeMethodInfo rmi)
         {
-            ProtonOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] -> RuntimeMethodInfo");
-            ProtonOS.Platform.DebugConsole.WriteLine();
+            NeutrinoOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] -> RuntimeMethodInfo");
+            NeutrinoOS.Platform.DebugConsole.WriteLine();
             return rmi.Name;
         }
 
@@ -4937,16 +4937,16 @@ public static unsafe class MemberInfoHelpers
         // Check if it's a Type (RuntimeType)
         if (member is Type type)
         {
-            ProtonOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] -> Type");
-            ProtonOS.Platform.DebugConsole.WriteLine();
+            NeutrinoOS.Platform.DebugConsole.Write("[MemberInfoHelpers.GetName] -> Type");
+            NeutrinoOS.Platform.DebugConsole.WriteLine();
             return TypeMethodHelpers.GetName(type);
         }
 
         // Fallback - try to read name from the object directly
         // This is a last resort if we can't identify the type
-        ProtonOS.Platform.DebugConsole.Write("[MemberInfoHelpers] Unknown MemberInfo type at 0x");
-        ProtonOS.Platform.DebugConsole.WriteHex((ulong)System.Runtime.CompilerServices.Unsafe.AsPointer(ref member));
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[MemberInfoHelpers] Unknown MemberInfo type at 0x");
+        NeutrinoOS.Platform.DebugConsole.WriteHex((ulong)System.Runtime.CompilerServices.Unsafe.AsPointer(ref member));
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
         return null;
     }
 }
@@ -5084,9 +5084,9 @@ public static unsafe class TypeMethodHelpers
     /// </summary>
     public static Type? GetTypeFromHandle(nint handle)
     {
-        ProtonOS.Platform.DebugConsole.Write("[GetTypeFromHandle] handle=0x");
-        ProtonOS.Platform.DebugConsole.WriteHex((ulong)handle);
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[GetTypeFromHandle] handle=0x");
+        NeutrinoOS.Platform.DebugConsole.WriteHex((ulong)handle);
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         if (handle == 0)
             return null;
@@ -5097,9 +5097,9 @@ public static unsafe class TypeMethodHelpers
 
         // Debug: check what got stored via TypeHandle property
         nint typeHandleValue = result.TypeHandle.Value;
-        ProtonOS.Platform.DebugConsole.Write("[GetTypeFromHandle] TypeHandle.Value=0x");
-        ProtonOS.Platform.DebugConsole.WriteHex((ulong)typeHandleValue);
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[GetTypeFromHandle] TypeHandle.Value=0x");
+        NeutrinoOS.Platform.DebugConsole.WriteHex((ulong)typeHandleValue);
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         return result;
     }
@@ -5210,11 +5210,11 @@ public static unsafe class TypeMethodHelpers
     /// </summary>
     public static System.Reflection.MethodInfo? GetMethod(Type type, string? name)
     {
-        ProtonOS.Platform.DebugConsole.Write("[AOT.GetMethod] type=");
-        ProtonOS.Platform.DebugConsole.Write(type == null ? "null" : "ok");
-        ProtonOS.Platform.DebugConsole.Write(" name=");
-        ProtonOS.Platform.DebugConsole.Write(name ?? "null");
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[AOT.GetMethod] type=");
+        NeutrinoOS.Platform.DebugConsole.Write(type == null ? "null" : "ok");
+        NeutrinoOS.Platform.DebugConsole.Write(" name=");
+        NeutrinoOS.Platform.DebugConsole.Write(name ?? "null");
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         if (type == null || name == null)
             return null;
@@ -5226,9 +5226,9 @@ public static unsafe class TypeMethodHelpers
         else
             result = type.GetMethod(name);
 
-        ProtonOS.Platform.DebugConsole.Write("[AOT.GetMethod] result=");
-        ProtonOS.Platform.DebugConsole.Write(result == null ? "null" : "found");
-        ProtonOS.Platform.DebugConsole.WriteLine();
+        NeutrinoOS.Platform.DebugConsole.Write("[AOT.GetMethod] result=");
+        NeutrinoOS.Platform.DebugConsole.Write(result == null ? "null" : "found");
+        NeutrinoOS.Platform.DebugConsole.WriteLine();
 
         return result;
     }
@@ -5951,10 +5951,10 @@ public static class ThreadHelpers
         {
             // Infinite sleep - sleep in chunks
             while (true)
-                ProtonOS.Threading.Scheduler.Sleep(uint.MaxValue);
+                NeutrinoOS.Threading.Scheduler.Sleep(uint.MaxValue);
         }
 
-        ProtonOS.Threading.Scheduler.Sleep((uint)millisecondsTimeout);
+        NeutrinoOS.Threading.Scheduler.Sleep((uint)millisecondsTimeout);
     }
 
     /// <summary>
@@ -5973,7 +5973,7 @@ public static class ThreadHelpers
     /// </summary>
     public static bool Yield()
     {
-        ProtonOS.Threading.Scheduler.Yield();
+        NeutrinoOS.Threading.Scheduler.Yield();
         return true;
     }
 
@@ -5993,7 +5993,7 @@ public static class ThreadHelpers
     /// </summary>
     public static System.Threading.Thread? get_CurrentThread()
     {
-        uint currentId = ProtonOS.Threading.Scheduler.GetCurrentThreadId();
+        uint currentId = NeutrinoOS.Threading.Scheduler.GetCurrentThreadId();
 
         // Check if we already have a cached Thread for this kernel thread
         if (s_cachedThread != null && s_cachedThreadId == currentId)
@@ -6036,7 +6036,7 @@ public static unsafe class UnsafeHelpers
     /// </summary>
     public static void InitBlock(void* startAddress, byte value, uint byteCount)
     {
-        ProtonOS.Arch.CPU.MemSet(startAddress, value, byteCount);
+        NeutrinoOS.Arch.CPU.MemSet(startAddress, value, byteCount);
     }
 
     /// <summary>
@@ -6045,6 +6045,6 @@ public static unsafe class UnsafeHelpers
     /// </summary>
     public static void CopyBlock(void* destination, void* source, uint byteCount)
     {
-        ProtonOS.Arch.CPU.MemCopy(destination, source, byteCount);
+        NeutrinoOS.Arch.CPU.MemCopy(destination, source, byteCount);
     }
 }

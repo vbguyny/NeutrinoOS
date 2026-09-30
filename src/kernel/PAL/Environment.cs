@@ -1,13 +1,13 @@
-// ProtonOS kernel - PAL Environment APIs
+// NeutrinoOS kernel - PAL Environment APIs
 // Win32-compatible environment variable APIs for PAL compatibility.
 // Used by CoreCLR for configuration and tuning.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Environment variable entry - stored as wide string name=value.

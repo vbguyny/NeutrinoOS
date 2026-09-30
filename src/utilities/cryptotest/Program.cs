@@ -7,7 +7,7 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
 namespace NeutrinoOS.Utility.Cryptotest;
 
@@ -20,7 +20,7 @@ public static class Program
     /// <summary>Entry point; runs every KAT group.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         Console.WriteLine("[cryptotest] NeutrinoOS managed crypto KATs");
 
@@ -73,13 +73,13 @@ public static class Program
             key[i] = 0x0b;
         byte[] data = Bytes("Hi There");
 
-        Check("HMAC-SHA256(rfc4231-1)", ProtonOS.DDK.Crypto.Hmac.Compute(HashKind.Sha256, key, data),
+        Check("HMAC-SHA256(rfc4231-1)", NeutrinoOS.DDK.Crypto.Hmac.Compute(HashKind.Sha256, key, data),
             Hex("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"));
-        Check("HMAC-SHA512(rfc4231-1)", ProtonOS.DDK.Crypto.Hmac.Compute(HashKind.Sha512, key, data),
+        Check("HMAC-SHA512(rfc4231-1)", NeutrinoOS.DDK.Crypto.Hmac.Compute(HashKind.Sha512, key, data),
             Hex("87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cde" +
                 "daa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854"));
         // RFC 2202 test case 1.
-        Check("HMAC-SHA1(rfc2202-1)", ProtonOS.DDK.Crypto.Hmac.Compute(HashKind.Sha1, key, data),
+        Check("HMAC-SHA1(rfc2202-1)", NeutrinoOS.DDK.Crypto.Hmac.Compute(HashKind.Sha1, key, data),
             Hex("b617318655057264e28bc0b6fb378c8ef146be00"));
     }
 

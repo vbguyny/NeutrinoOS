@@ -18,9 +18,9 @@
 
 using System;
 using System.IO;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Parses and executes shell command lines (see file header).</summary>
 public static class ShellExecutor

@@ -9,7 +9,7 @@
 using System;
 using System.IO;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>
 /// Global shell state (single interactive shell instance per console;

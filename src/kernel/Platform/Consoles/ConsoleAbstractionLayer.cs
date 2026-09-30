@@ -26,9 +26,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Console Abstraction Layer: multiplexer ownership and the kernel-side

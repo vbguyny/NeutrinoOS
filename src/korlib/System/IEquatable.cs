@@ -1,4 +1,4 @@
-// ProtonOS korlib - IEquatable<T> interface
+// NeutrinoOS korlib - IEquatable<T> interface
 
 namespace System;
 

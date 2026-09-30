@@ -1,11 +1,11 @@
-// ProtonOS DDK - TCP Connection State Management
+// NeutrinoOS DDK - TCP Connection State Management
 // Manages individual TCP connection state and data transfer
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Sockets;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// Represents a TCP connection endpoint.

@@ -1,10 +1,10 @@
-// ProtonOS DDK - /proc/net/tcp Generator
+// NeutrinoOS DDK - /proc/net/tcp Generator
 // Generates TCP connection table in Linux-compatible format.
 
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Storage.Proc.Generators;
+namespace NeutrinoOS.DDK.Storage.Proc.Generators;
 
 /// <summary>
 /// Generates content for /proc/net/tcp.

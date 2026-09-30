@@ -1,4 +1,4 @@
-// ProtonOS kernel - Garbage Collector
+// NeutrinoOS kernel - Garbage Collector
 // Mark phase implementation with stop-the-world multi-thread root enumeration.
 //
 // Mark Phase Algorithm:
@@ -18,13 +18,13 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Garbage collector for the managed heap.
@@ -819,7 +819,7 @@ public static unsafe class GC
 
         _gcInProgress = true;
         _collectionsPerformed++;
-        ulong pauseStartTicks = ProtonOS.Arch.HPET.IsInitialized ? ProtonOS.Arch.HPET.ReadCounter() : 0;
+        ulong pauseStartTicks = NeutrinoOS.Arch.HPET.IsInitialized ? NeutrinoOS.Arch.HPET.ReadCounter() : 0;
         JitTrace.WriteLine("[GC] Starting mark-only collection...");
 
         StopTheWorld();
@@ -850,8 +850,8 @@ public static unsafe class GC
         // Phase 7: record the pause duration (HPET-backed).
         if (pauseStartTicks != 0)
         {
-            ulong delta = ProtonOS.Arch.HPET.ReadCounter() - pauseStartTicks;
-            LastPauseMs = ProtonOS.Arch.HPET.TicksToNanoseconds(delta) / 1_000_000;
+            ulong delta = NeutrinoOS.Arch.HPET.ReadCounter() - pauseStartTicks;
+            LastPauseMs = NeutrinoOS.Arch.HPET.TicksToNanoseconds(delta) / 1_000_000;
             TotalPauseMs += LastPauseMs;
         }
 

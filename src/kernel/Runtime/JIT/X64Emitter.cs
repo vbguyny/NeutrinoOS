@@ -1,10 +1,10 @@
-// ProtonOS JIT - x64 Instruction Emitter
+// NeutrinoOS JIT - x64 Instruction Emitter
 // Emits x64 machine code with proper REX prefix and ModR/M encoding.
 // Implements ICodeEmitter for architecture-neutral JIT support.
 
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// x64 register encoding

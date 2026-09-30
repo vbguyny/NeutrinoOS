@@ -1,4 +1,4 @@
-// ProtonOS DDK - AES core + CTR mode (Phase 6)
+// NeutrinoOS DDK - AES core + CTR mode (Phase 6)
 //
 // Managed C# AES (FIPS 197) block cipher with key sizes 128/192/256
 // and CTR mode (NIST SP 800-38A). Only the ENCRYPT direction is
@@ -10,7 +10,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed AES block cipher + CTR mode (see file header).</summary>
 public sealed class Aes

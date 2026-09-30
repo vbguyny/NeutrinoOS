@@ -9,7 +9,7 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.Utility.Kill;
 
@@ -19,7 +19,7 @@ public static class Program
     /// <summary>Entry point; returns 1 for invalid arguments or unknown jobs.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         bool force = false;
         var targets = new System.Collections.Generic.List<string>();

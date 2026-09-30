@@ -127,7 +127,7 @@ MAX_LOADED_FILES    equ 256
 ;; BootInfo Constants (must match BootInfo.cs)
 ;; ============================================================================
 
-BOOTINFO_MAGIC      equ 0x50524F544F4E4F53  ; "PROTONOS"
+BOOTINFO_MAGIC      equ 0x4E45555452494E4F  ; "NEUTRINO"
 BOOTINFO_VERSION    equ 2                    ; Version 2: bootloader handles ExitBootServices
 BOOTINFO_SIZE       equ 256                  ; Size of BootInfo struct (fixed header)
 
@@ -156,7 +156,7 @@ BI_FILES_ADDR       equ 64
 BI_FILES_COUNT      equ 72
 BI_ACPI_RSDP        equ 80
 ; Offsets 88-111: Reserved.
-; (Formerly framebuffer information in ProtonOS; NeutrinoOS is console-only
+; (Formerly framebuffer information in NeutrinoOS; NeutrinoOS is console-only
 ; and never populates these fields. Layout kept for boot protocol version 2.)
 BI_SERIAL_PORT      equ 112
 ; Offsets 120-135: Reserved[8]

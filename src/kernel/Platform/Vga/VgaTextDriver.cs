@@ -20,9 +20,9 @@
 //
 // Memory model: single VGA head, static state (one text console).
 
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Low-level driver for the standard VGA text-mode framebuffer.

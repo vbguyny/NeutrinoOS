@@ -1,10 +1,10 @@
-// ProtonOS DDK - Port I/O Kernel Wrappers
+// NeutrinoOS DDK - Port I/O Kernel Wrappers
 // DllImport wrappers for x86 port I/O operations.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// DDK wrappers for x86 port I/O operations.

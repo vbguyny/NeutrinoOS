@@ -1,4 +1,4 @@
-// ProtonOS korlib - Nullable attributes for C# 8.0+ nullable reference types
+// NeutrinoOS korlib - Nullable attributes for C# 8.0+ nullable reference types
 
 namespace System.Runtime.CompilerServices;
 

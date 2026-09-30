@@ -9,9 +9,9 @@
 #if ARCH_ARM64
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Exception frame built by the VBAR_EL1 stubs. The offsets of

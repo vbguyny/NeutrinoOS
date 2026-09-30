@@ -1,13 +1,13 @@
-// ProtonOS - Multi-Assembly Loader
+// NeutrinoOS - Multi-Assembly Loader
 // Manages loading, tracking, and unloading of .NET assemblies.
 // Each assembly gets its own context (metadata, type registry, static storage).
 
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Runtime.Reflection;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Runtime.Reflection;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Lifecycle flags for a loaded assembly.
@@ -5974,7 +5974,7 @@ public static unsafe class AssemblyLoader
         pathBuf[pos++] = 'l';
         pathBuf[pos++] = 'l';
 
-        int size = ProtonOS.Platform.FileExports.KernelBootSize(pathBuf, pos);
+        int size = NeutrinoOS.Platform.FileExports.KernelBootSize(pathBuf, pos);
         if (size <= 0 || size > 64 * 1024 * 1024)
             return InvalidAssemblyId;
 
@@ -5982,7 +5982,7 @@ public static unsafe class AssemblyLoader
         if (bytes == null)
             return InvalidAssemblyId;
 
-        int read = ProtonOS.Platform.FileExports.KernelBootRead(pathBuf, pos, bytes, size);
+        int read = NeutrinoOS.Platform.FileExports.KernelBootRead(pathBuf, pos, bytes, size);
         if (read != size)
         {
             HeapAllocator.Free(bytes);
@@ -7312,7 +7312,7 @@ public static unsafe class AssemblyLoader
                             // Look up SpanHelpers.InitSpanFromPointer
                             byte* helperType = stackalloc byte[32];
                             byte* helperMethod = stackalloc byte[24];
-                            // "ProtonOS.Runtime.SpanHelpers"
+                            // "NeutrinoOS.Runtime.SpanHelpers"
                             helperType[0] = (byte)'P'; helperType[1] = (byte)'r'; helperType[2] = (byte)'o';
                             helperType[3] = (byte)'t'; helperType[4] = (byte)'o'; helperType[5] = (byte)'n';
                             helperType[6] = (byte)'O'; helperType[7] = (byte)'S'; helperType[8] = (byte)'.';
@@ -7355,7 +7355,7 @@ public static unsafe class AssemblyLoader
                             DebugConsole.WriteLine("[AsmLoader] Redirecting Span.get_Length to SpanHelpers.GetLength");
                             byte* helperType = stackalloc byte[32];
                             byte* helperMethod = stackalloc byte[16];
-                            // "ProtonOS.Runtime.SpanHelpers"
+                            // "NeutrinoOS.Runtime.SpanHelpers"
                             helperType[0] = (byte)'P'; helperType[1] = (byte)'r'; helperType[2] = (byte)'o';
                             helperType[3] = (byte)'t'; helperType[4] = (byte)'o'; helperType[5] = (byte)'n';
                             helperType[6] = (byte)'O'; helperType[7] = (byte)'S'; helperType[8] = (byte)'.';

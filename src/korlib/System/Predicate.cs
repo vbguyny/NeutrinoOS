@@ -1,4 +1,4 @@
-// ProtonOS korlib - Predicate and related delegates
+// NeutrinoOS korlib - Predicate and related delegates
 
 namespace System
 {

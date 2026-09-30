@@ -7,10 +7,10 @@
 // (keyboard input becomes the active CAL input source).
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Usb.Xhci;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Usb.Xhci;
 
-namespace ProtonOS.Usb;
+namespace NeutrinoOS.Usb;
 
 /// <summary>Class-driver dispatch for enumerated devices.</summary>
 public static unsafe class UsbClasses

@@ -1,9 +1,9 @@
-// ProtonOS DDK - Network Configuration Parser
+// NeutrinoOS DDK - Network Configuration Parser
 // Parses /etc/network/interfaces style configuration files.
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>
 /// Parsed interface configuration from config file.

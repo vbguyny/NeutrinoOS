@@ -1,15 +1,15 @@
-// ProtonOS kernel - Kernel Scheduler
+// NeutrinoOS kernel - Kernel Scheduler
 // Round-robin preemptive scheduler with support for thread creation and context switching.
 // Designed for future Win32 PAL compatibility (CreateThread, WaitForSingleObject, etc.)
 // Uses heap allocation for thread structures - no artificial thread limits.
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Threading;
+namespace NeutrinoOS.Threading;
 
 /// <summary>
 /// Kernel thread scheduler - manages thread lifecycle and context switching.

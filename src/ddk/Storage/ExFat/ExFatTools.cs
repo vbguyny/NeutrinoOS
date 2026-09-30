@@ -7,7 +7,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>Volume label access on a raw exFAT device.</summary>
 public static class ExFatLabel

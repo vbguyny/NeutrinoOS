@@ -14,10 +14,10 @@
 // console abstraction layer.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// UART 16550 driver. One instance per COM port; Phase 2 uses COM1.
@@ -222,13 +222,13 @@ public static unsafe class Uart16550
         // dispatcher performs the EOI before the handler runs (see
         // ExceptionVectors), so SerialIrqHandler does not EOI.
         Pl011.EnableRxInterrupt();
-        ProtonOS.Arch.GicV2.SetPriority(ProtonOS.Arch.GicV2.Uart0IntId, 0xA0);
-        ProtonOS.Arch.GicV2.EnableInterrupt(ProtonOS.Arch.GicV2.Uart0IntId);
-        ProtonOS.Arch.Arch.RegisterHandler((int)(32 + ProtonOS.Arch.GicV2.Uart0IntId), &SerialIrqHandler);
+        NeutrinoOS.Arch.GicV2.SetPriority(NeutrinoOS.Arch.GicV2.Uart0IntId, 0xA0);
+        NeutrinoOS.Arch.GicV2.EnableInterrupt(NeutrinoOS.Arch.GicV2.Uart0IntId);
+        NeutrinoOS.Arch.Arch.RegisterHandler((int)(32 + NeutrinoOS.Arch.GicV2.Uart0IntId), &SerialIrqHandler);
         _interruptsEnabled = true;
         return;
 #else
-        ProtonOS.Arch.Arch.RegisterHandler(IrqVectorAt(_portIndex), &SerialIrqHandler);
+        NeutrinoOS.Arch.Arch.RegisterHandler(IrqVectorAt(_portIndex), &SerialIrqHandler);
         byte ier = IER_RX_AVAILABLE | IER_RX_STATUS;
         if (TxPending())
             ier |= IER_THRE;

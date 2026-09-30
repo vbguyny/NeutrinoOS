@@ -1,4 +1,4 @@
-// ProtonOS korlib - TaskAwaiter
+// NeutrinoOS korlib - TaskAwaiter
 // Provides an object that waits for the completion of an asynchronous task.
 
 using System.Threading.Tasks;

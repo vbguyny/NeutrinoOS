@@ -7,9 +7,9 @@
 // device (see docs/PHASE9-USB.md for the /dev/sda wiring).
 
 using System;
-using ProtonOS.Usb.Xhci;
+using NeutrinoOS.Usb.Xhci;
 
-namespace ProtonOS.Usb;
+namespace NeutrinoOS.Usb;
 
 /// <summary>A bound USB mass storage drive.</summary>
 public sealed unsafe class UsbDisk
@@ -104,7 +104,7 @@ public static unsafe class UsbStorage
 
             // Phase 10: publish the drive to the block device registry so
             // the exFAT driver and disk tooling can open it (/dev/sda...).
-            ProtonOS.Storage.BlockDeviceRegistry.RegisterUsb(disk, DiskName(disk));
+            NeutrinoOS.Storage.BlockDeviceRegistry.RegisterUsb(disk, DiskName(disk));
         }
         else
         {
@@ -121,7 +121,7 @@ public static unsafe class UsbStorage
             if (d == null || d.Device != device)
                 continue;
             // Phase 10: drop the drive from the block device registry first.
-            ProtonOS.Storage.BlockDeviceRegistry.UnregisterUsb(d);
+            NeutrinoOS.Storage.BlockDeviceRegistry.UnregisterUsb(d);
             UsbDma t;
             t = d.Cbw; UsbDma.Free(ref t);
             t = d.Csw; UsbDma.Free(ref t);

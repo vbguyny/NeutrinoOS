@@ -1,12 +1,12 @@
-// ProtonOS JIT - Compiled Method Registry
+// NeutrinoOS JIT - Compiled Method Registry
 // Tracks compiled methods using a chunked block-based structure.
 // Blocks are non-contiguous and allocated on demand - no hard limits.
 
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Return type classification for calling convention purposes.
@@ -1394,22 +1394,22 @@ public static unsafe class CompiledMethodRegistry
                 if (!entries[i].IsUsed)
                     continue;
 
-                // Fully qualified: plain "Arch" binds to the ProtonOS.Arch
-                // namespace from inside ProtonOS.Runtime.JIT (enclosing
+                // Fully qualified: plain "Arch" binds to the NeutrinoOS.Arch
+                // namespace from inside NeutrinoOS.Runtime.JIT (enclosing
                 // namespaces win over using directives).
-                ProtonOS.Arch.Arch.RawDiagRaw("[j|0x");
-                ProtonOS.Arch.Arch.RawDiagHex((ulong)entries[i].Token);
-                ProtonOS.Arch.Arch.RawDiagRaw(" at 0x");
-                ProtonOS.Arch.Arch.RawDiagHex((ulong)entries[i].NativeCode);
+                NeutrinoOS.Arch.Arch.RawDiagRaw("[j|0x");
+                NeutrinoOS.Arch.Arch.RawDiagHex((ulong)entries[i].Token);
+                NeutrinoOS.Arch.Arch.RawDiagRaw(" at 0x");
+                NeutrinoOS.Arch.Arch.RawDiagHex((ulong)entries[i].NativeCode);
                 if (!entries[i].IsCompiled)
-                    ProtonOS.Arch.Arch.RawDiagRaw(" (pending)");
-                ProtonOS.Arch.Arch.RawDiagEndLine();
+                    NeutrinoOS.Arch.Arch.RawDiagRaw(" (pending)");
+                NeutrinoOS.Arch.Arch.RawDiagEndLine();
                 dumped++;
             }
         }
-        ProtonOS.Arch.Arch.RawDiagRaw("[j|total=");
-        ProtonOS.Arch.Arch.RawDiagHex((ulong)dumped);
-        ProtonOS.Arch.Arch.RawDiagEndLine();
+        NeutrinoOS.Arch.Arch.RawDiagRaw("[j|total=");
+        NeutrinoOS.Arch.Arch.RawDiagHex((ulong)dumped);
+        NeutrinoOS.Arch.Arch.RawDiagEndLine();
     }
 
     // === Private helpers ===

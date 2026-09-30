@@ -1,9 +1,9 @@
-// ProtonOS.Net - HTTP Protocol (Application Layer)
+// NeutrinoOS.Net - HTTP Protocol (Application Layer)
 // Handles HTTP/1.1 request building and response parsing
 
 using System;
 
-namespace ProtonOS.Net.Http;
+namespace NeutrinoOS.Net.Http;
 
 /// <summary>
 /// HTTP methods.

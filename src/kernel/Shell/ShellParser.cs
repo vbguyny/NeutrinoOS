@@ -11,7 +11,7 @@
 
 using System;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Parses shell lines into <see cref="ShellScript"/> trees (see file header).</summary>
 public static class ShellParser

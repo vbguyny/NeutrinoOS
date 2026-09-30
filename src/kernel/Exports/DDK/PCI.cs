@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK PCI Exports
+// NeutrinoOS kernel - DDK PCI Exports
 // Exposes PCI configuration space access to JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for PCI configuration space access.

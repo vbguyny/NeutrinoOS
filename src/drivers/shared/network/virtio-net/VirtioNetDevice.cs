@@ -1,13 +1,13 @@
-// ProtonOS VirtioNet Device Implementation
+// NeutrinoOS VirtioNet Device Implementation
 // Virtio network device driver
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.Drivers.Virtio;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.Drivers.Virtio;
 
-namespace ProtonOS.Drivers.Network.VirtioNet;
+namespace NeutrinoOS.Drivers.Network.VirtioNet;
 
 /// <summary>
 /// Virtio network device driver.

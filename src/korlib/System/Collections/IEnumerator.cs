@@ -1,4 +1,4 @@
-// ProtonOS korlib - IEnumerator interface (non-generic)
+// NeutrinoOS korlib - IEnumerator interface (non-generic)
 
 namespace System.Collections;
 

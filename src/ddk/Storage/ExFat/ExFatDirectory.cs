@@ -8,7 +8,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>
 /// A parsed exFAT file/directory entry set (one File Directory Entry

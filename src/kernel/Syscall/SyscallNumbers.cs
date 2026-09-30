@@ -1,7 +1,7 @@
-// ProtonOS kernel - System Call Numbers
+// NeutrinoOS kernel - System Call Numbers
 // Linux-compatible syscall numbers for user-space compatibility.
 
-namespace ProtonOS.Syscall;
+namespace NeutrinoOS.Syscall;
 
 /// <summary>
 /// System call numbers (Linux x86_64 ABI compatible where practical)
@@ -142,7 +142,7 @@ public static class SyscallNumbers
     public const int SYS_GETRANDOM = 318;
     public const int SYS_DUP3 = 292;
 
-    // ==================== ProtonOS extensions ====================
+    // ==================== NeutrinoOS extensions ====================
     /// <summary>
     /// Phase 7 security: install a syscall allow-mask for the calling
     /// process (pointer to 512 bits, i.e. 8 x u64). The first call sets

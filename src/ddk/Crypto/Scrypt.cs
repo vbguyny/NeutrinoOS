@@ -1,4 +1,4 @@
-// ProtonOS DDK - scrypt password KDF (Phase 6)
+// NeutrinoOS DDK - scrypt password KDF (Phase 6)
 //
 // Managed C# scrypt (RFC 7914) built on HMAC-SHA256 and the Salsa20/8
 // core. Used for /etc/shadow password hashes and for SSH password
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed scrypt key derivation (see file header).</summary>
 public static class Scrypt

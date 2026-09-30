@@ -23,7 +23,7 @@ public static class Program
         if (HasVersionFlag(args))
         {
             Console.WriteLine("npkg (NeutrinoOS) 1.0.0");
-            ProtonOS.DDK.Util.VersionFlag.Handle(args);
+            NeutrinoOS.DDK.Util.VersionFlag.Handle(args);
             return 0;
         }
         if (args == null || args.Length == 0)

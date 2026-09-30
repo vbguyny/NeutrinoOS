@@ -1,7 +1,7 @@
-// ProtonOS Architecture Abstraction - Virtual Memory Interface
+// NeutrinoOS Architecture Abstraction - Virtual Memory Interface
 // Architecture-neutral virtual memory management.
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Page protection flags (architecture-neutral).

@@ -1,11 +1,11 @@
-// ProtonOS DDK - Kernel service + shell bridge wrappers (Phase 6)
+// NeutrinoOS DDK - Kernel service + shell bridge wrappers (Phase 6)
 // DllImport wrappers for the cooperative background-service registry
 // and the remote-session shell bridge.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>DDK wrappers for background services (see file header).</summary>
 public static unsafe class Services

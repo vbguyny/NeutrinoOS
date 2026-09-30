@@ -1,4 +1,4 @@
-// ProtonOS kernel - GC Compaction
+// NeutrinoOS kernel - GC Compaction
 // Implements the Lisp-2 compacting garbage collection algorithm.
 //
 // The Lisp-2 algorithm uses three passes:
@@ -10,12 +10,12 @@
 // Gaps created by pinned objects remain as free space.
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Threading;
-using ProtonOS.Runtime;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Memory;
+namespace NeutrinoOS.Memory;
 
 /// <summary>
 /// Compacting garbage collector using the Lisp-2 algorithm.

@@ -1,4 +1,4 @@
-// ProtonOS kernel - Static Field Initialization
+// NeutrinoOS kernel - Static Field Initialization
 // Initializes the GCStaticRegion by allocating pinned objects for each static GC field.
 //
 // NativeAOT generates a GCStaticRegion containing relative pointers to "static blocks".
@@ -17,10 +17,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Flags used in GC static block values.

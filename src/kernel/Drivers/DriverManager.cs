@@ -1,4 +1,4 @@
-// ProtonOS Kernel - driver manager.
+// NeutrinoOS Kernel - driver manager.
 //
 // Registers driver instances, matches them against the device tree
 // (Match -> Probe -> Start lifecycle from the NeutrinoOS.Drivers ABI) and
@@ -7,9 +7,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>A driver registered with the manager.</summary>
 public sealed class DriverRegistration

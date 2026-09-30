@@ -1,13 +1,13 @@
-// ProtonOS kernel - Per-CPU State
+// NeutrinoOS kernel - Per-CPU State
 // Each CPU has its own PerCpuState structure accessible via GS segment base.
 // This enables efficient per-CPU scheduling queues and current thread tracking.
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Threading;
+namespace NeutrinoOS.Threading;
 
 /// <summary>
 /// Per-CPU state structure.

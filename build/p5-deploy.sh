@@ -19,10 +19,10 @@ for f in /root/phase5bin/*.dll; do
 done
 
 # Keep the root copy of the DDK in sync with the freshly built one:
-# utilities resolve their ProtonOS.DDK reference to the root copy (the
+# utilities resolve their NeutrinoOS.DDK reference to the root copy (the
 # same instance the kernel driver world uses), so a stale root DLL
 # would silently run old DDK code in every utility.
-mcopy -i /root/run.img -o /root/phase5bin/ProtonOS.DDK.dll ::/ProtonOS.DDK.dll
+mcopy -i /root/run.img -o /root/phase5bin/NeutrinoOS.DDK.dll ::/NeutrinoOS.DDK.dll
 
 # /etc with a default profile (sourced by the shell at startup)
 mmd -i /root/run.img ::/etc 2>/dev/null || true

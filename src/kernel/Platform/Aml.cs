@@ -20,7 +20,7 @@
 
 using System;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Minimal AML term evaluator (Phase 9 ACPI power management).</summary>
 public static unsafe class Aml

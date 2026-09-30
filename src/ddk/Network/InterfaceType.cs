@@ -1,7 +1,7 @@
-// ProtonOS DDK - Network Interface Types
+// NeutrinoOS DDK - Network Interface Types
 // Enumeration of supported network interface types.
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>
 /// Network interface types.

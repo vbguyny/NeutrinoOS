@@ -10,14 +10,14 @@ else:
         'AHCI_DIR := $(DRIVERS_DIR)/shared/storage/ahci\n'
         'NVME_DIR := $(DRIVERS_DIR)/shared/storage/nvme')
     s = s.replace(
-        'AHCI_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ahci.dll',
-        'AHCI_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Ahci.dll\n'
-        'NVME_DLL := $(BUILD_DIR)/ProtonOS.Drivers.Nvme.dll')
+        'AHCI_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Ahci.dll',
+        'AHCI_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Ahci.dll\n'
+        'NVME_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Nvme.dll')
     rule = (
         '# Build NVMe driver (Phase 9)\n'
         'NVME_SRC := $(call rwildcard,$(NVME_DIR),*.cs)\n'
         '$(NVME_DLL): $(NVME_SRC) $(NVME_DIR)/Nvme.csproj $(DDK_DLL) | $(BUILD_DIR)\n'
-        '\t@echo "DOTNET build ProtonOS.Drivers.Nvme"\n'
+        '\t@echo "DOTNET build NeutrinoOS.Drivers.Nvme"\n'
         '\tdotnet build $(NVME_DIR)/Nvme.csproj -c Release -o $(BUILD_DIR) --nologo -v q\n'
         '\n'
         '# EXT2 filesystem driver')

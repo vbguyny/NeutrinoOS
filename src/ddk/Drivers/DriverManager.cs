@@ -1,10 +1,10 @@
-// ProtonOS DDK - Driver Manager
+// NeutrinoOS DDK - Driver Manager
 // Handles driver registration, device binding, and lifecycle management.
 
 using System;
 using System.Collections.Generic;
 
-namespace ProtonOS.DDK.Drivers;
+namespace NeutrinoOS.DDK.Drivers;
 
 /// <summary>
 /// Information about a registered driver.

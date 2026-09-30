@@ -1,7 +1,7 @@
 // JITTest - Interface Tests
 // Tests interface dispatch, isinst, castclass, and default interface methods
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace JITTest;
 

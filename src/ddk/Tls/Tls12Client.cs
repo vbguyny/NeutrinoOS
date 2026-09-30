@@ -1,4 +1,4 @@
-// ProtonOS DDK - TLS 1.2 client (Phase 5 HTTPS utilities, legacy fallback)
+// NeutrinoOS DDK - TLS 1.2 client (Phase 5 HTTPS utilities, legacy fallback)
 //
 // Minimal RFC 5246 client for servers that do not speak TLS 1.3 (the
 // webhost of battaglia.ddns.net, for example, resets 1.3-only
@@ -27,13 +27,13 @@
 // record sequence number, and the AAD is seq || type || version || len.
 
 using System;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Tls;
+namespace NeutrinoOS.DDK.Tls;
 
 /// <summary>TLS 1.2 client connection state (see file header).</summary>
 public sealed unsafe class Tls12Client

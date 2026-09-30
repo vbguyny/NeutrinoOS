@@ -1,11 +1,11 @@
-// ProtonOS DDK - IPv6 Layer (L3)
+// NeutrinoOS DDK - IPv6 Layer (L3)
 // Address type, 40-byte header build/parse, extension header walking,
 // pseudo-header checksums and utility helpers (RFC 8200).
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// IPv6 next-header (protocol) numbers used by this stack.

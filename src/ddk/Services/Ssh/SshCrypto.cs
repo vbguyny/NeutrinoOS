@@ -1,13 +1,13 @@
-// ProtonOS DDK - SSH cryptography contexts (Phase 6)
+// NeutrinoOS DDK - SSH cryptography contexts (Phase 6)
 //
 // Key derivation per RFC 4253 section 7.2 (with the RFC 6668
 // encrypt-then-MAC variant) and the per-direction packet cipher/MAC
 // state used by the binary packet protocol.
 
 using System;
-using ProtonOS.DDK.Crypto;
+using NeutrinoOS.DDK.Crypto;
 
-namespace ProtonOS.DDK.Services.Ssh;
+namespace NeutrinoOS.DDK.Services.Ssh;
 
 /// <summary>SSH packet cryptography for one direction.</summary>
 public sealed class SshPacketCrypto

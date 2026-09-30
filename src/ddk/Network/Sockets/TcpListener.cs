@@ -1,11 +1,11 @@
-// ProtonOS DDK - TCP Listener
+// NeutrinoOS DDK - TCP Listener
 // Manages TCP listening sockets for server functionality
 
 using System;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Network.Sockets;
+namespace NeutrinoOS.DDK.Network.Sockets;
 
 /// <summary>
 /// TCP listener for accepting incoming connections.

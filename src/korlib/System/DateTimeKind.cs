@@ -1,4 +1,4 @@
-// ProtonOS korlib - DateTimeKind enum
+// NeutrinoOS korlib - DateTimeKind enum
 
 namespace System;
 

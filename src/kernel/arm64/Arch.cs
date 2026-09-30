@@ -1,14 +1,14 @@
-// ProtonOS kernel - x64 Architecture Initialization
+// NeutrinoOS kernel - x64 Architecture Initialization
 // Static initialization to avoid 'new' keyword issues in stdlib:zero
 // Implements IArchitecture for architecture-neutral kernel code.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Static storage for interrupt handlers (fixed buffer wrapper)
@@ -26,7 +26,7 @@ internal unsafe struct HandlerStorage
 /// Note: This is a struct (not static class) to enable static abstract interface implementation,
 /// but all members remain static. Use Arch.Method() syntax as before.
 /// </summary>
-public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
+public unsafe struct Arch : NeutrinoOS.Arch.IArchitecture<Arch>
 {
     private static bool _stage1Complete;
     private static bool _stage2Complete;
@@ -487,7 +487,7 @@ public unsafe struct Arch : ProtonOS.Arch.IArchitecture<Arch>
             RawDiag(" code:", frame->Rip);
             RawDiagCodeBytes(frame->Rip, 16);
             RawDiagCrlf();
-            ProtonOS.Runtime.JIT.CompiledMethodRegistry.RawDumpForFault();
+            NeutrinoOS.Runtime.JIT.CompiledMethodRegistry.RawDumpForFault();
 
             // Try to dispatch through exception handling infrastructure
             if (ExceptionHandling.DispatchException(frame, vector))

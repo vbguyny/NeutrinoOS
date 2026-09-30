@@ -1,11 +1,11 @@
-// ProtonOS kernel - RTC (Real-Time Clock) driver
+// NeutrinoOS kernel - RTC (Real-Time Clock) driver
 // Reads the CMOS RTC to get wall-clock time at boot.
 // Uses HPET to track elapsed time for ongoing timekeeping.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// RTC (Real-Time Clock) driver for reading wall-clock time from CMOS.

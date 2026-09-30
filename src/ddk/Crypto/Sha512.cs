@@ -1,11 +1,11 @@
-// ProtonOS DDK - SHA-512 and SHA-384 (Phase 6)
+// NeutrinoOS DDK - SHA-512 and SHA-384 (Phase 6)
 //
 // Managed C# SHA-512/SHA-384 (FIPS 180-4). Used by HMAC-SHA512,
 // TLS 1.3 key schedule and SSH (rsa-sha2-512, hmac-sha2-512).
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>
 /// Shared SHA-512 compression engine; SHA-384 is SHA-512 with a different

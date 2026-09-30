@@ -5,8 +5,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>ProtonOS.Drivers.Ext2</AssemblyName>
-    <RootNamespace>ProtonOS.Drivers.Storage.Ext2</RootNamespace>
+    <AssemblyName>NeutrinoOS.Drivers.Ext2</AssemblyName>
+    <RootNamespace>NeutrinoOS.Drivers.Storage.Ext2</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

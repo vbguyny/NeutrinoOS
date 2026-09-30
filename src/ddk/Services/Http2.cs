@@ -1,4 +1,4 @@
-// ProtonOS DDK - HTTP/2 server connection (RFC 9113) - Phase 9 Task 3
+// NeutrinoOS DDK - HTTP/2 server connection (RFC 9113) - Phase 9 Task 3
 //
 // Framing layer (DATA/HEADERS/PRIORITY/RST_STREAM/SETTINGS/PUSH_PROMISE/
 // PING/GOAWAY/WINDOW_UPDATE/CONTINUATION), stream lifecycle, connection
@@ -10,9 +10,9 @@
 // no BCL collections, no address-of on class fields.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Services;
+namespace NeutrinoOS.DDK.Services;
 
 /// <summary>HTTP/2 frame types (RFC 9113 section 6).</summary>
 public static class H2Frame

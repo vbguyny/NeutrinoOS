@@ -1,10 +1,10 @@
-// ProtonOS kernel - PAL Console APIs
+// NeutrinoOS kernel - PAL Console APIs
 // Win32-compatible console I/O APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Standard handle types for GetStdHandle.
@@ -18,7 +18,7 @@ public static class StdHandle
 
 /// <summary>
 /// Pseudo-handle values for standard I/O.
-/// In ProtonOS, these map to the debug console (COM1 serial port).
+/// In NeutrinoOS, these map to the debug console (COM1 serial port).
 /// </summary>
 public static class ConsoleHandles
 {
@@ -31,7 +31,7 @@ public static class ConsoleHandles
 
 /// <summary>
 /// PAL Console APIs - Win32-compatible console I/O functions.
-/// In ProtonOS, console output goes to the debug console (COM1 serial port).
+/// In NeutrinoOS, console output goes to the debug console (COM1 serial port).
 /// </summary>
 public static unsafe class Console
 {

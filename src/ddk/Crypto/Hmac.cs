@@ -1,4 +1,4 @@
-// ProtonOS DDK - HMAC (Phase 6)
+// NeutrinoOS DDK - HMAC (Phase 6)
 //
 // Managed C# HMAC (RFC 2104) over the Phase 6 hash primitives.
 // Used by SSH MAC negotiation (hmac-sha2-256/512), HKDF and SNMP-style
@@ -7,7 +7,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Hash selection for the HMAC engine.</summary>
 public enum HashKind

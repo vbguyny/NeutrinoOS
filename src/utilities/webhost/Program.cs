@@ -3,7 +3,7 @@
 // Usage: webhost [start|stop|status]
 //
 // The HTTP/1.1 + TLS 1.3 server lives in the DDK
-// (ProtonOS.DDK.Services.WebService); this shim asks the kernel service
+// (NeutrinoOS.DDK.Services.WebService); this shim asks the kernel service
 // registry to start it. The kernel calls the service's Tick() from the
 // shell idle hook, so the server runs cooperatively without extra
 // threads.
@@ -14,8 +14,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Services;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Services;
 
 namespace NeutrinoOS.Utility.Webhost;
 
@@ -25,7 +25,7 @@ public static class Program
     /// <summary>Entry point.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         string cmd = args.Length > 0 ? args[0] : "start";
 

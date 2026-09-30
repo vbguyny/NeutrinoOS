@@ -1,10 +1,10 @@
-// ProtonOS DDK - ACPI Kernel Wrappers
+// NeutrinoOS DDK - ACPI Kernel Wrappers
 // DllImport wrappers for ACPI table access.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// ACPI table header structure.

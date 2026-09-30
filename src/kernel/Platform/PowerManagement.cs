@@ -23,10 +23,10 @@
 // exceptions on the probe path; all table access through raw pointers
 // (identity-mapped physical addresses, same as the Phase 1 ACPI parser).
 
-using ProtonOS.Runtime;
+using NeutrinoOS.Runtime;
 using System;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>ACPI power-off (S5) and reset (Phase 9).</summary>
 public static unsafe class PowerManagement
@@ -221,7 +221,7 @@ public static unsafe class PowerManagement
 
         // If the platform ignored the write, spin with interrupts off
         // rather than running on in an undefined state.
-        ProtonOS.Arch.CPU.HaltForever();
+        NeutrinoOS.Arch.CPU.HaltForever();
     }
 
     /// <summary>
@@ -242,18 +242,18 @@ public static unsafe class PowerManagement
             JitTrace.Write(" value 0x");
             JitTrace.WriteHex(_resetValue);
             JitTrace.WriteLine();
-            ProtonOS.Arch.CPU.OutByte(_resetRegPort, _resetValue);
+            NeutrinoOS.Arch.CPU.OutByte(_resetRegPort, _resetValue);
         }
         else
         {
             JitTrace.WriteLine("[power] reset via PCI port 0xCF9 (0x06)");
-            ProtonOS.Arch.CPU.OutByte(PciResetPort, PciResetValue);
+            NeutrinoOS.Arch.CPU.OutByte(PciResetPort, PciResetValue);
         }
 
         // Fallback chain if the first pulse was ignored.
         JitTrace.WriteLine("[power] reset fallback: keyboard controller 0x64 <- 0xFE");
-        ProtonOS.Arch.CPU.OutByte(KbcCommandPort, KbcResetCommand);
-        ProtonOS.Arch.CPU.HaltForever();
+        NeutrinoOS.Arch.CPU.OutByte(KbcCommandPort, KbcResetCommand);
+        NeutrinoOS.Arch.CPU.HaltForever();
     }
 
     /// <summary>
@@ -340,11 +340,11 @@ public static unsafe class PowerManagement
     private static void WritePm1Cnt(ushort port, ulong value)
     {
         if (_pm1CntLen == 1)
-            ProtonOS.Arch.CPU.OutByte(port, (byte)value);
+            NeutrinoOS.Arch.CPU.OutByte(port, (byte)value);
         else if (_pm1CntLen == 4)
-            ProtonOS.Arch.CPU.OutDword(port, (uint)value);
+            NeutrinoOS.Arch.CPU.OutDword(port, (uint)value);
         else
-            ProtonOS.Arch.CPU.OutWord(port, (ushort)value);
+            NeutrinoOS.Arch.CPU.OutWord(port, (ushort)value);
     }
 
     private static string Hex4(ushort v)

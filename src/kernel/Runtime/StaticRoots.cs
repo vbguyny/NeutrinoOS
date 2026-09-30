@@ -1,4 +1,4 @@
-// ProtonOS kernel - Static Roots Enumeration
+// NeutrinoOS kernel - Static Roots Enumeration
 // Enumerates all static fields containing object references for GC root scanning.
 //
 // NativeAOT generates a __GCStaticRegion containing pointers to static GC roots.
@@ -10,9 +10,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 /// <summary>
 /// Enumerates static GC roots from the __GCStaticRegion.

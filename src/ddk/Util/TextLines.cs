@@ -1,4 +1,4 @@
-// ProtonOS DDK - Text line helpers (Phase 6)
+// NeutrinoOS DDK - Text line helpers (Phase 6)
 //
 // File.ReadAllLines / WriteAllLines have no proven path in the guest
 // JIT world, so user files use ReadAllText/WriteAllText plus these
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Util;
+namespace NeutrinoOS.DDK.Util;
 
 /// <summary>Line splitting/joining without String.Split (JIT-safe).</summary>
 public static class TextLines

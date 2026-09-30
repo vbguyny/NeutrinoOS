@@ -1,9 +1,9 @@
-// ProtonOS DDK - Filesystem Interface
+// NeutrinoOS DDK - Filesystem Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>
 /// Filesystem capabilities flags.

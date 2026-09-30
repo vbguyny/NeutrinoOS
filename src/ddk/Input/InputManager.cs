@@ -1,10 +1,10 @@
-// ProtonOS DDK - Input Manager
+// NeutrinoOS DDK - Input Manager
 // Centralizes input from all input devices.
 
 using System;
 using System.Collections.Generic;
 
-namespace ProtonOS.DDK.Input;
+namespace NeutrinoOS.DDK.Input;
 
 /// <summary>
 /// Delegate for input event callbacks.

@@ -1,7 +1,7 @@
-// ProtonOS Architecture Abstraction - Virtual Registers
+// NeutrinoOS Architecture Abstraction - Virtual Registers
 // Architecture-neutral register representation for JIT compilation.
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Architecture-neutral virtual registers.

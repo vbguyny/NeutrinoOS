@@ -1,10 +1,10 @@
-// ProtonOS DDK - Virtual Filesystem Layer
+// NeutrinoOS DDK - Virtual Filesystem Layer
 // Provides unified filesystem access across mounted filesystems.
 
 using System;
 using System.Collections.Generic;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>
 /// Mount point information.

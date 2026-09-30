@@ -3,7 +3,7 @@
 // Do not edit by hand: build.sh / build/wsl-rebuild.sh regenerate this file
 // and increment the build number (.buildnum at the repository root) on every
 // build. Committed so a fresh clone builds without running the bump.
-namespace ProtonOS;
+namespace NeutrinoOS;
 
 /// <summary>Build-stamped NeutrinoOS version ("major.minor.build").</summary>
 public static class NeutrinoVersion
@@ -15,8 +15,8 @@ public static class NeutrinoVersion
     public const int Minor = 1;
 
     /// <summary>Build number; increments on every build.</summary>
-    public const int Build = 2;
+    public const int Build = 3;
 
     /// <summary>"major.minor.build" version string (e.g. "0.1.7").</summary>
-    public const string ShortVersion = "0.1.2";
+    public const string ShortVersion = "0.1.3";
 }

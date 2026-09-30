@@ -18,10 +18,10 @@
 // cross this boundary (see korlib System.IO.File for the pinning side).
 
 using System.Runtime.InteropServices;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>Kernel exports backing korlib's System.IO (see file header).</summary>
 public static unsafe class FileExports
@@ -72,7 +72,7 @@ public static unsafe class FileExports
             return false;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            ddkId, "ProtonOS.DDK.Storage", "VfsPathBridge");
+            ddkId, "NeutrinoOS.DDK.Storage", "VfsPathBridge");
         if (typeToken == 0)
             return false;
 
@@ -194,7 +194,7 @@ public static unsafe class FileExports
             return false;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            asmId, "ProtonOS.Drivers.Storage.Ahci", "AhciEntry");
+            asmId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
         if (typeToken == 0)
             return false;
 

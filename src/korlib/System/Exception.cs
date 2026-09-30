@@ -1,4 +1,4 @@
-// ProtonOS korlib - Exception
+// NeutrinoOS korlib - Exception
 // Exception class hierarchy for managed exception support.
 
 namespace System;

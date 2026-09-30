@@ -1,11 +1,11 @@
-// ProtonOS kernel - PAL Thread APIs
+// NeutrinoOS kernel - PAL Thread APIs
 // Win32-compatible thread management APIs for PAL compatibility.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// Context flags for GetThreadContext/SetThreadContext.
@@ -553,7 +553,7 @@ public static unsafe class ThreadApi
     /// <returns>HRESULT (S_OK on success)</returns>
     public static int SetThreadDescription(ThreadHandle hThread, char* lpThreadDescription)
     {
-        // Thread descriptions are not implemented in ProtonOS
+        // Thread descriptions are not implemented in NeutrinoOS
         // This is a stub that always succeeds
         // In a full implementation, we would store this in the Thread structure
         return 0;  // S_OK

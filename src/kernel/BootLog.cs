@@ -4,10 +4,10 @@
 // hypervisors (e.g. VirtualBox under NEM) where a full boot takes minutes
 // and appears "stuck" without periodic status output.
 
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS;
+namespace NeutrinoOS;
 
 public static class BootLog
 {

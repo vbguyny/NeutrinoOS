@@ -1,10 +1,10 @@
-// ProtonOS korlib - DDK Port I/O API
+// NeutrinoOS korlib - DDK Port I/O API
 // These stubs exist only for IL metadata - JIT code resolves to native exports via token registry.
 
 #if KORLIB_IL
 using System;
 
-namespace ProtonOS.Kernel;
+namespace NeutrinoOS.Kernel;
 
 /// <summary>
 /// DDK Port I/O API for x86/x64 port operations.

@@ -20,9 +20,9 @@
 
 using System;
 using System.IO;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Services.Ssh;
+namespace NeutrinoOS.DDK.Services.Ssh;
 
 /// <summary>Per-IP SSH auth failure tracking + /var/log/auth.log audit.</summary>
 public static class SshAuthGuard

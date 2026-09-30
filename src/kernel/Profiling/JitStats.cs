@@ -8,7 +8,7 @@
 
 using System;
 
-namespace ProtonOS.Profiling;
+namespace NeutrinoOS.Profiling;
 
 /// <summary>Tier-0 JIT compile-time statistics (see file header).</summary>
 public static class JitStats

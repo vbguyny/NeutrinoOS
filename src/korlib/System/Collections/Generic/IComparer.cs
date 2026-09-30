@@ -1,4 +1,4 @@
-// ProtonOS korlib - IComparer<T> interface
+// NeutrinoOS korlib - IComparer<T> interface
 
 namespace System.Collections.Generic;
 

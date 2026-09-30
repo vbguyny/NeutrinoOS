@@ -1,10 +1,10 @@
-// ProtonOS JIT - IL Exception Handling Clause Parser
+// NeutrinoOS JIT - IL Exception Handling Clause Parser
 // Parses EH clauses from IL method bodies (ECMA-335 II.25.4.5-6)
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// IL Method header flags (ECMA-335 II.25.4.1-4)

@@ -1,15 +1,15 @@
-// ProtonOS kernel - System Call Dispatch
+// NeutrinoOS kernel - System Call Dispatch
 // Dispatch table and basic syscall implementations.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.IO;
-using ProtonOS.Process;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.IO;
+using NeutrinoOS.Process;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Syscall;
+namespace NeutrinoOS.Syscall;
 
 /// <summary>
 /// Syscall dispatch table and handler registry

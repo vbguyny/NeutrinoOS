@@ -1,4 +1,4 @@
-// ProtonOS korlib - IAsyncStateMachine
+// NeutrinoOS korlib - IAsyncStateMachine
 // Represents state machines that are generated for async methods.
 
 namespace System.Runtime.CompilerServices

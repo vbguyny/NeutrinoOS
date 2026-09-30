@@ -7,14 +7,14 @@ using System.Runtime;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
-/// Magic value for BootInfo validation ("PROTONOS" in ASCII)
+/// Magic value for BootInfo validation ("NEUTRINO" in ASCII)
 /// </summary>
 public static class BootInfoConstants
 {
-    public const ulong Magic = 0x50524F544F4E4F53; // "PROTONOS"
+    public const ulong Magic = 0x4E45555452494E4F; // "NEUTRINO"
     public const uint Version = 2;  // Version 2: bootloader handles ExitBootServices and file loading
 }
 

@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>Directory enumeration over an in-memory exFAT directory.</summary>
 public sealed class ExFatDirectoryHandle : IDirectoryHandle

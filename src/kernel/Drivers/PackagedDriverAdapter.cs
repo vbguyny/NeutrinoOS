@@ -1,4 +1,4 @@
-// ProtonOS Kernel - packaged driver adapter (Phase 8, driver framework).
+// NeutrinoOS Kernel - packaged driver adapter (Phase 8, driver framework).
 //
 // Binds a JIT-loaded driver instance to the driver manager without AOT
 // code ever calling an interface method ON the JIT object: AOT->JIT
@@ -17,9 +17,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Kernel-side IDriver that forwards to a JIT'd driver instance.</summary>
 public sealed unsafe class PackagedDriverAdapter : IDriver

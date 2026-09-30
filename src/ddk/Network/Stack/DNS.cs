@@ -1,10 +1,10 @@
-// ProtonOS DDK - DNS Protocol Implementation
+// NeutrinoOS DDK - DNS Protocol Implementation
 // DNS query/response building and parsing for hostname resolution.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// DNS protocol constants and packet building/parsing.

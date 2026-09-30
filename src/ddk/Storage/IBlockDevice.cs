@@ -1,9 +1,9 @@
-// ProtonOS DDK - Block Device Interface
+// NeutrinoOS DDK - Block Device Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>
 /// Block device capabilities flags.

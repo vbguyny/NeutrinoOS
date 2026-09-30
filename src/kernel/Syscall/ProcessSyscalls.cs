@@ -1,16 +1,16 @@
-// ProtonOS kernel - Process System Calls
+// NeutrinoOS kernel - Process System Calls
 // Fork, wait, and exec implementations.
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.IO;
-using ProtonOS.Process;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.IO;
+using NeutrinoOS.Process;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Syscall;
+namespace NeutrinoOS.Syscall;
 
 /// <summary>
 /// Wait options flags

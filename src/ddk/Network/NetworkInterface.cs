@@ -1,10 +1,10 @@
-// ProtonOS DDK - Network Interface
+// NeutrinoOS DDK - Network Interface
 // Represents a single network interface with configuration and state.
 
 using System;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Network;
+namespace NeutrinoOS.DDK.Network;
 
 /// <summary>
 /// Represents a network interface with its configuration and state.

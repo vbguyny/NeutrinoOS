@@ -5,7 +5,7 @@
 // under NEM/WHPX). They are therefore off by default - boot the
 // "verbose-jit" marker file to re-enable them when debugging.
 
-namespace ProtonOS.Runtime;
+namespace NeutrinoOS.Runtime;
 
 public static class JitDiag
 {

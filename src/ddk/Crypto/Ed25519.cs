@@ -1,4 +1,4 @@
-// ProtonOS DDK - Ed25519 signatures (Phase 6)
+// NeutrinoOS DDK - Ed25519 signatures (Phase 6)
 //
 // Managed C# Ed25519 (RFC 8032) with radix-2^51 field arithmetic and
 // the complete twisted-Edwards addition formulas. Scalars are reduced
@@ -11,7 +11,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed Ed25519 (see file header).</summary>
 public static class Ed25519

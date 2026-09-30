@@ -1,13 +1,13 @@
-// ProtonOS kernel - Per-Process Address Space Management
+// NeutrinoOS kernel - Per-Process Address Space Management
 // Creates and manages separate virtual address spaces for user processes.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Process;
+namespace NeutrinoOS.Process;
 
 /// <summary>
 /// User-space virtual address layout constants

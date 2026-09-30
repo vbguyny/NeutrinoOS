@@ -1,10 +1,10 @@
-// ProtonOS DDK - TCP Protocol (L4)
+// NeutrinoOS DDK - TCP Protocol (L4)
 // Handles TCP packet parsing, building, and connection state management
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// TCP flags.

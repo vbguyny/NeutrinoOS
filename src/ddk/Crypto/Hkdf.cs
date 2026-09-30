@@ -1,4 +1,4 @@
-// ProtonOS DDK - HKDF (Phase 6)
+// NeutrinoOS DDK - HKDF (Phase 6)
 //
 // Managed C# HKDF (RFC 5869) built on the Phase 6 HMAC. Used by the
 // TLS 1.3 key schedule and SSH key derivation (RFC 4253 section 7.2
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>HKDF-Extract/Expand over the Phase 6 hash primitives.</summary>
 public sealed class Hkdf

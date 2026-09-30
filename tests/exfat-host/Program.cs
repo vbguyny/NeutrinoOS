@@ -26,8 +26,8 @@
 //   ro <command...>             - mount read-only and run the command
 
 using System;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Storage.ExFat;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Storage.ExFat;
 using SysFile = System.IO;
 
 namespace ExFatHost;
@@ -57,10 +57,10 @@ public sealed unsafe class FileBlockDevice : IBlockDevice
     public Version DriverVersion => new Version(1, 0, 0);
 
     /// <summary>Device type.</summary>
-    public ProtonOS.DDK.Drivers.DriverType Type => ProtonOS.DDK.Drivers.DriverType.Storage;
+    public NeutrinoOS.DDK.Drivers.DriverType Type => NeutrinoOS.DDK.Drivers.DriverType.Storage;
 
     /// <summary>State.</summary>
-    public ProtonOS.DDK.Drivers.DriverState State => ProtonOS.DDK.Drivers.DriverState.Running;
+    public NeutrinoOS.DDK.Drivers.DriverState State => NeutrinoOS.DDK.Drivers.DriverState.Running;
 
     /// <summary>No-op.</summary>
     public bool Initialize() => true;
@@ -289,7 +289,7 @@ public static class Program
     private static string ReadAll(ExFatFileSystem fs, string path)
     {
         IFileHandle? h;
-        var rc = fs.OpenFile(path, ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out h);
+        var rc = fs.OpenFile(path, NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out h);
         if (rc != FileResult.Success || h == null)
             return "\u0001ERR:" + rc;
         var sb = new System.Text.StringBuilder();
@@ -314,8 +314,8 @@ public static class Program
     private static int WriteAll(ExFatFileSystem fs, string path, byte[] data, bool append)
     {
         IFileHandle? h;
-        var mode = append ? ProtonOS.DDK.Storage.FileMode.Append : ProtonOS.DDK.Storage.FileMode.Create;
-        var rc = fs.OpenFile(path, mode, ProtonOS.DDK.Storage.FileAccess.Write, out h);
+        var mode = append ? NeutrinoOS.DDK.Storage.FileMode.Append : NeutrinoOS.DDK.Storage.FileMode.Create;
+        var rc = fs.OpenFile(path, mode, NeutrinoOS.DDK.Storage.FileAccess.Write, out h);
         if (rc != FileResult.Success || h == null)
             return -(int)rc;
         unsafe
@@ -437,8 +437,8 @@ public static class Program
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         IFileHandle? w;
-        var wrc = fs.OpenFile(path, ProtonOS.DDK.Storage.FileMode.Create,
-            ProtonOS.DDK.Storage.FileAccess.Write, out w);
+        var wrc = fs.OpenFile(path, NeutrinoOS.DDK.Storage.FileMode.Create,
+            NeutrinoOS.DDK.Storage.FileAccess.Write, out w);
         bool ok = wrc == FileResult.Success && w != null;
         if (!ok)
         {
@@ -484,7 +484,7 @@ public static class Program
         Console.WriteLine("write MB/s=" + (mb * 1000.0 / Math.Max(1, sw.ElapsedMilliseconds)));
 
         IFileHandle? h;
-        var orc = fs.OpenFile(path, ProtonOS.DDK.Storage.FileMode.Open, ProtonOS.DDK.Storage.FileAccess.Read, out h);
+        var orc = fs.OpenFile(path, NeutrinoOS.DDK.Storage.FileMode.Open, NeutrinoOS.DDK.Storage.FileAccess.Read, out h);
         if (orc != FileResult.Success || h == null)
         {
             Check("big open", false, orc.ToString());

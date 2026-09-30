@@ -1,4 +1,4 @@
-// ProtonOS DDK - Poly1305 one-time authenticator (Phase 6)
+// NeutrinoOS DDK - Poly1305 one-time authenticator (Phase 6)
 //
 // Managed C# Poly1305 (RFC 8439 section 2.5) using 26-bit limbs and
 // 64-bit intermediate arithmetic (the classic "poly1305-donna" layout).
@@ -6,7 +6,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed Poly1305 MAC (see file header).</summary>
 public sealed class Poly1305

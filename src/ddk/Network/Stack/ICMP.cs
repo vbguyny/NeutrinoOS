@@ -1,10 +1,10 @@
-// ProtonOS DDK - ICMP Protocol (L3)
+// NeutrinoOS DDK - ICMP Protocol (L3)
 // Handles ICMP packet parsing and building for ping support
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// ICMP message types.

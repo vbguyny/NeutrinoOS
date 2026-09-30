@@ -1,4 +1,4 @@
-// ProtonOS Kernel - built-in PS/2 keyboard driver (8042 controller).
+// NeutrinoOS Kernel - built-in PS/2 keyboard driver (8042 controller).
 //
 // Binds to the platform ps2 device (I/O 0x60/0x64, IRQ1 keyboard + IRQ12
 // mouse) in the device tree. Through IDriverServices the driver owns the
@@ -8,9 +8,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>PS/2 keyboard driver (8042 controller, IRQ1).</summary>
 public sealed class Ps2KeyboardDriver : IDriver

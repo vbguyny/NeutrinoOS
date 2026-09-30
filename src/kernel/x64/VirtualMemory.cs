@@ -1,14 +1,14 @@
-// ProtonOS kernel - x64 Virtual Memory Manager
+// NeutrinoOS kernel - x64 Virtual Memory Manager
 // Implements 4-level paging (PML4 -> PDPT -> PD -> PT) for x64.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
 
-using ArchPageFlags = ProtonOS.Arch.ArchPageFlags;
+using ArchPageFlags = NeutrinoOS.Arch.ArchPageFlags;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Page table entry flags for x64 4-level paging
@@ -44,7 +44,7 @@ public static class PageFlags
 /// Note: This is a struct (not static class) to enable static abstract interface implementation,
 /// but all members remain static. Use VirtualMemory.Method() syntax as before.
 /// </summary>
-public unsafe struct VirtualMemory : ProtonOS.Arch.IVirtualMemory<VirtualMemory>
+public unsafe struct VirtualMemory : NeutrinoOS.Arch.IVirtualMemory<VirtualMemory>
 {
     // Page sizes (const for internal use)
     private const ulong _pageSize = 4096;           // 4KB

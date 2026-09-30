@@ -1,7 +1,7 @@
-// ProtonOS Architecture Abstraction - CPU Interface
+// NeutrinoOS Architecture Abstraction - CPU Interface
 // Architecture-neutral CPU operations for kernel use.
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// CPU operations interface using static abstract members.

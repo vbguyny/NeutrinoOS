@@ -1,10 +1,10 @@
-// ProtonOS FAT Filesystem Driver - Structures
+// NeutrinoOS FAT Filesystem Driver - Structures
 // BPB and FAT-specific data structures
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Drivers.Storage.Fat;
+namespace NeutrinoOS.Drivers.Storage.Fat;
 
 /// <summary>
 /// FAT filesystem variant.

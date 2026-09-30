@@ -1,16 +1,16 @@
-// ProtonOS VirtioNet Entry Point
+// NeutrinoOS VirtioNet Entry Point
 // Static entry point for JIT compilation
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.Drivers.Virtio;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.Drivers.Virtio;
 
-namespace ProtonOS.Drivers.Network.VirtioNet;
+namespace NeutrinoOS.Drivers.Network.VirtioNet;
 
 /// <summary>
 /// Static entry point for VirtioNet driver, designed for JIT compilation.

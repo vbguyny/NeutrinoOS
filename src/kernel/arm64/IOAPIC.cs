@@ -1,10 +1,10 @@
-// ProtonOS kernel - I/O APIC Driver
+// NeutrinoOS kernel - I/O APIC Driver
 // Manages interrupt routing from external devices to CPUs.
 
-using ProtonOS.Platform;
-using ProtonOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// I/O APIC register offsets (accessed via IOREGSEL/IOWIN)

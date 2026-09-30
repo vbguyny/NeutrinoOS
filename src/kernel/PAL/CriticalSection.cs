@@ -1,13 +1,13 @@
-// ProtonOS kernel - PAL Critical Sections
+// NeutrinoOS kernel - PAL Critical Sections
 // Win32-style critical section implementation for PAL compatibility.
 // Lightweight mutex with spin-first behavior before blocking.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Critical Section - lightweight mutex with spin-wait optimization.

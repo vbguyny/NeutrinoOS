@@ -1,10 +1,10 @@
-// ProtonOS kernel - DDK Debug Exports
+// NeutrinoOS kernel - DDK Debug Exports
 // Provides debug output for JIT-compiled drivers.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// DDK exports for debug output.

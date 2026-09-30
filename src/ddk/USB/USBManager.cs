@@ -1,11 +1,11 @@
-// ProtonOS DDK - USB Device Manager
+// NeutrinoOS DDK - USB Device Manager
 // Handles USB device enumeration, driver binding, and lifecycle.
 
 using System;
 using System.Collections.Generic;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.USB;
+namespace NeutrinoOS.DDK.USB;
 
 /// <summary>
 /// Manages USB devices across all host controllers.

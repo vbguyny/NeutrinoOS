@@ -1,4 +1,4 @@
-// ProtonOS korlib - IDictionary<TKey, TValue> interface
+// NeutrinoOS korlib - IDictionary<TKey, TValue> interface
 
 namespace System.Collections.Generic;
 

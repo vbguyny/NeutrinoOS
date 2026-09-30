@@ -10,8 +10,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Storage.ExFat;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Storage.ExFat;
 
 namespace NeutrinoOS.Utility.FsckExFat;
 
@@ -21,7 +21,7 @@ public static class Program
     /// <summary>Entry point; returns 1 when unrepaired problems remain.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
 
         bool repair = false;

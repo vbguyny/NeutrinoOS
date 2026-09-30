@@ -31,13 +31,13 @@
 // process-isolated execution.
 
 using System;
-using ProtonOS.IO;
-using ProtonOS.Memory;
-using ProtonOS.Process;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.IO;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Process;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Loads and runs a .NET assembly by path (see file header).
@@ -368,7 +368,7 @@ public static unsafe class AssemblyRunner
             return false;
 
         uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            asmId, "ProtonOS.Drivers.Storage.Ahci", "AhciEntry");
+            asmId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
         if (typeToken == 0)
             return false;
 

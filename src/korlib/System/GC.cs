@@ -1,4 +1,4 @@
-// ProtonOS korlib - GC
+// NeutrinoOS korlib - GC
 // Garbage collection control and information.
 // Minimal implementation for bare-metal environment.
 
@@ -13,7 +13,7 @@ namespace System
         /// Requests that the common language runtime not call the finalizer for the specified object.
         /// </summary>
         /// <remarks>
-        /// In the ProtonOS bare-metal environment, finalizers are not automatically called,
+        /// In the NeutrinoOS bare-metal environment, finalizers are not automatically called,
         /// so this method is a no-op.
         /// </remarks>
         public static void SuppressFinalize(object obj)

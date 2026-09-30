@@ -2,11 +2,11 @@
 // These allow JIT-compiled drivers to load additional assemblies
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS.Exports.DDK;
+namespace NeutrinoOS.Exports.DDK;
 
 /// <summary>
 /// Kernel exports for dynamic assembly loading.

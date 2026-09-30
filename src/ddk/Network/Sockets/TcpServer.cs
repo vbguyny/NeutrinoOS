@@ -1,4 +1,4 @@
-// ProtonOS DDK - TCP server helper (Phase 6)
+// NeutrinoOS DDK - TCP server helper (Phase 6)
 //
 // Convenience wrapper for network services (sshd, webhost): binds a
 // listening port, drives the caller-pumped stack from a single Tick()
@@ -8,9 +8,9 @@
 // idle window while the shell waits for input).
 
 using System;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Network.Stack;
 
-namespace ProtonOS.DDK.Network.Sockets;
+namespace NeutrinoOS.DDK.Network.Sockets;
 
 /// <summary>TCP listening server helper (see file header).</summary>
 public unsafe class TcpServer

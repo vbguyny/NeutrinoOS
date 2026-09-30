@@ -1,10 +1,10 @@
-// ProtonOS kernel - ACPI table parsing
+// NeutrinoOS kernel - ACPI table parsing
 // Uses RSDP address from BootInfo (captured by bootloader) to locate hardware like HPET.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 // ============================================================================
 // ACPI Table Structures

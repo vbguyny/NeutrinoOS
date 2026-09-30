@@ -1,10 +1,10 @@
-// ProtonOS DDK - ARP Protocol (Address Resolution Protocol)
+// NeutrinoOS DDK - ARP Protocol (Address Resolution Protocol)
 // Resolves IPv4 addresses to MAC addresses
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// ARP operation codes.

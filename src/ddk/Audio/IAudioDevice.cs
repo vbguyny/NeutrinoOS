@@ -1,9 +1,9 @@
-// ProtonOS DDK - Audio Device Interface
+// NeutrinoOS DDK - Audio Device Interface
 
 using System;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Audio;
+namespace NeutrinoOS.DDK.Audio;
 
 /// <summary>
 /// Audio sample format.

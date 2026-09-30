@@ -8,10 +8,10 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>The Phase 5 shell REPL (see file header).</summary>
 public static unsafe class ShellMain
@@ -52,7 +52,7 @@ public static unsafe class ShellMain
         for (int i = 0; i < BannerRows.Length; i++)
             Console.WriteLine(BannerRows[i]);
         Console.WriteLine();
-        Console.WriteLine(ProtonOS.Exports.DDK.SystemInfoExports.VersionBanner);
+        Console.WriteLine(NeutrinoOS.Exports.DDK.SystemInfoExports.VersionBanner);
 
         Console.WriteLine("Type 'help' for available commands.");
 
@@ -124,20 +124,20 @@ public static unsafe class ShellMain
 
         // Phase 8: PCIe hot-plug poll (throttled internally to ~200 ms);
         // loads/unloads drivers when devices are added/removed on a slot.
-        ProtonOS.Drivers.PcieHotplug.Poll();
+        NeutrinoOS.Drivers.PcieHotplug.Poll();
 
         // Phase 9: USB poll - event ring drain (hot-plug), HID interrupt
         // endpoints and CDC-ACM receive drains.
-        if (ProtonOS.Usb.UsbStack.ControllerPresent)
+        if (NeutrinoOS.Usb.UsbStack.ControllerPresent)
         {
-            ProtonOS.Usb.UsbStack.Poll();
-            ProtonOS.Usb.UsbHid.Poll();
-            ProtonOS.Usb.UsbSerial.Poll();
+            NeutrinoOS.Usb.UsbStack.Poll();
+            NeutrinoOS.Usb.UsbHid.Poll();
+            NeutrinoOS.Usb.UsbSerial.Poll();
         }
 
         // Phase 10: auto-mount removable exFAT volumes (USB sticks) at
         // /mnt/usb/<device>; unmounts them when the disk goes away.
-        ProtonOS.Platform.AutoMountBridge.Poll();
+        NeutrinoOS.Platform.AutoMountBridge.Poll();
 
         if (!JobManager.HasQueuedJobs)
             return;

@@ -1,4 +1,4 @@
-// ProtonOS kernel - x64 Stack Root Enumeration
+// NeutrinoOS kernel - x64 Stack Root Enumeration
 // Walks the stack and enumerates all live GC references using GCInfo.
 //
 // For each stack frame:
@@ -13,12 +13,12 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
-using ProtonOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Arch;
+namespace NeutrinoOS.Arch;
 
 /// <summary>
 /// Enumerates GC roots from the stack using GCInfo.

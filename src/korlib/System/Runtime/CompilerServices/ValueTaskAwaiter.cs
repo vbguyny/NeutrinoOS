@@ -1,4 +1,4 @@
-// ProtonOS korlib - ValueTaskAwaiter
+// NeutrinoOS korlib - ValueTaskAwaiter
 // Provides an object that waits for the completion of a ValueTask.
 
 using System.Threading.Tasks;

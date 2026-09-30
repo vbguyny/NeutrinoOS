@@ -9,7 +9,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>Options for <see cref="ExFatFormatter.Format"/>.</summary>
 public class ExFatFormatOptions

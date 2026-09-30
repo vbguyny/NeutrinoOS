@@ -3,10 +3,10 @@
 # the handler context, then quit. Normal vector-4 traps auto-continue.
 set pagination off
 set confirm off
-# ProtonOS helper flow: proton-connect opens the single gdbstub connection,
+# NeutrinoOS helper flow: neutrino-connect opens the single gdbstub connection,
 # waits for the kernel to write the debug marker, then loads symbols with
 # the right relocation offset.
-proton-connect
+neutrino-connect
 
 break *0x8098231
 commands

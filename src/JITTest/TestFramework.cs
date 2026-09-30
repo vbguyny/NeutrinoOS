@@ -1,7 +1,7 @@
-// JITTest - Comprehensive IL Opcode Test Framework for ProtonOS
+// JITTest - Comprehensive IL Opcode Test Framework for NeutrinoOS
 // Framework infrastructure for ~2,800+ tests covering all 219 IL opcodes
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
 namespace JITTest;
 

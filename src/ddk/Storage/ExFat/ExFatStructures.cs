@@ -8,7 +8,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Storage.ExFat;
+namespace NeutrinoOS.DDK.Storage.ExFat;
 
 /// <summary>exFAT constant field values (spec chapter 3-7).</summary>
 public static class ExFatConst

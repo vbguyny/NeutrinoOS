@@ -1,4 +1,4 @@
-// ProtonOS Kernel - built-in UART 16550 driver (first driver on the new
+// NeutrinoOS Kernel - built-in UART 16550 driver (first driver on the new
 // framework).
 //
 // Binds to the legacy platform COM1 device (I/O 0x3F8, IRQ4) in the device
@@ -8,9 +8,9 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers.Builtin;
+namespace NeutrinoOS.Drivers.Builtin;
 
 /// <summary>16550-compatible serial port driver (COM1).</summary>
 public sealed class Uart16550Driver : IDriver

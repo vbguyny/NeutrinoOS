@@ -1,4 +1,4 @@
-// ProtonOS Kernel - driver framework device tree.
+// NeutrinoOS Kernel - driver framework device tree.
 //
 // The kernel-side device tree implements the NeutrinoOS.Drivers.IDeviceTree
 // ABI (src/lib/NeutrinoOS.Driver.Abstractions) and is populated at boot by
@@ -8,7 +8,7 @@
 using System;
 using NeutrinoOS.Drivers;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>
 /// Kernel device tree. Fixed-capacity (MaxDevices) for simplicity; the

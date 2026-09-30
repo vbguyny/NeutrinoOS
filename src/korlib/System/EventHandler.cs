@@ -1,4 +1,4 @@
-// ProtonOS korlib - Event handling delegates and types
+// NeutrinoOS korlib - Event handling delegates and types
 
 namespace System
 {

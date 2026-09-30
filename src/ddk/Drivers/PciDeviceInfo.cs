@@ -1,9 +1,9 @@
-// ProtonOS DDK - PCI Device Information
+// NeutrinoOS DDK - PCI Device Information
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Drivers;
+namespace NeutrinoOS.DDK.Drivers;
 
 /// <summary>
 /// PCI device location (bus/device/function).

@@ -1,6 +1,6 @@
 // NeutrinoOS Phase 4 test app 6 - Networking (HttpClient)
 //
-// Uses the ProtonOS.Net HttpClient with the VirtioNet frame delegates:
+// Uses the NeutrinoOS.Net HttpClient with the VirtioNet frame delegates:
 // fetches a URL from the QEMU user-mode host (10.0.2.2:8080) and prints
 // the response length.
 //
@@ -13,8 +13,8 @@
 // to exercise the live fetch.
 
 using System;
-using ProtonOS.Drivers.Network.VirtioNet;
-using ProtonOS.Net.Http;
+using NeutrinoOS.Drivers.Network.VirtioNet;
+using NeutrinoOS.Net.Http;
 
 namespace Phase4.NetApp;
 

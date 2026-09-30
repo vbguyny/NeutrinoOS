@@ -1,8 +1,8 @@
-// ProtonOS DDK - Driver Attributes for Registration and Matching
+// NeutrinoOS DDK - Driver Attributes for Registration and Matching
 
 using System;
 
-namespace ProtonOS.DDK.Drivers;
+namespace NeutrinoOS.DDK.Drivers;
 
 /// <summary>
 /// Base attribute for driver metadata.

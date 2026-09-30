@@ -1,4 +1,4 @@
-// ProtonOS DDK - DHCPv6 client (RFC 8415 subset) - Phase 9 Task 2
+// NeutrinoOS DDK - DHCPv6 client (RFC 8415 subset) - Phase 9 Task 2
 //
 // SOLICIT / ADVERTISE / REQUEST / REPLY exchange over UDPv6 with
 // DUID-LL client identifiers. The client runs the exchange through the
@@ -6,9 +6,9 @@
 // the leased address, server and DNS servers.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>DHCPv6 message types (RFC 8415 section 7.3).</summary>
 public static class Dhcp6MessageType

@@ -1,12 +1,12 @@
-// ProtonOS AHCI Driver - Controller Implementation
+// NeutrinoOS AHCI Driver - Controller Implementation
 // Manages the AHCI Host Bus Adapter
 
 using System;
-using ProtonOS.DDK.Drivers;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Drivers;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Storage.Ahci;
+namespace NeutrinoOS.Drivers.Storage.Ahci;
 
 /// <summary>
 /// AHCI Host Bus Adapter controller.

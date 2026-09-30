@@ -1,13 +1,13 @@
-// ProtonOS kernel - Kernel threading primitives
+// NeutrinoOS kernel - Kernel threading primitives
 // Low-level threading structures for the kernel scheduler.
 // Named with "Kernel" prefix to avoid collision with System.Threading types.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Threading;
+namespace NeutrinoOS.Threading;
 
 /// <summary>
 /// Kernel thread states

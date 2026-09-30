@@ -1,4 +1,4 @@
-// ProtonOS DDK - CSPRNG (Phase 6)
+// NeutrinoOS DDK - CSPRNG (Phase 6)
 //
 // ChaCha20-based deterministic random bit generator with entropy
 // mixing. The kernel provides a raw entropy source through the
@@ -12,7 +12,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>ChaCha20-based CSPRNG (see file header).</summary>
 /// <remarks>
@@ -178,7 +178,7 @@ public static class Csprng
         {
             fixed (byte* p = buffer)
             {
-                return ProtonOS.DDK.Kernel.Entropy.GetEntropy(p, length);
+                return NeutrinoOS.DDK.Kernel.Entropy.GetEntropy(p, length);
             }
         }
         catch

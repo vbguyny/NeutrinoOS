@@ -1,4 +1,4 @@
-// ProtonOS korlib - CancellationToken
+// NeutrinoOS korlib - CancellationToken
 // Propagates notification that operations should be canceled.
 
 namespace System.Threading

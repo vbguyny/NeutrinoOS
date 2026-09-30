@@ -6,9 +6,9 @@
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Platform;
+namespace NeutrinoOS.Platform;
 
 /// <summary>
 /// Kernel-side implementations of the System.Console kernel exports.

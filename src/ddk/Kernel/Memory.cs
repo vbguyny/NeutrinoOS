@@ -1,10 +1,10 @@
-// ProtonOS DDK - Memory Kernel Wrappers
+// NeutrinoOS DDK - Memory Kernel Wrappers
 // DllImport wrappers for kernel memory allocation and mapping exports.
 
 using System;
 using System.Runtime.InteropServices;
 
-namespace ProtonOS.DDK.Kernel;
+namespace NeutrinoOS.DDK.Kernel;
 
 /// <summary>
 /// Memory statistics structure.

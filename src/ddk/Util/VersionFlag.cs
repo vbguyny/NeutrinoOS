@@ -5,9 +5,9 @@
 // --version/-V it prints the string and returns true, so the utility
 // returns 0 immediately.
 
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Util;
+namespace NeutrinoOS.DDK.Util;
 
 /// <summary>Shared --version handling for utilities.</summary>
 public static class VersionFlag

@@ -6,8 +6,8 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Storage;
-using ProtonOS.DDK.Storage.ExFat;
+using NeutrinoOS.DDK.Storage;
+using NeutrinoOS.DDK.Storage.ExFat;
 
 namespace NeutrinoOS.Utility.ExFatLabel;
 
@@ -17,7 +17,7 @@ public static class Program
     /// <summary>Entry point; returns 1 on failure.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         if (args.Length == 0 || args.Length > 2 || args[0] == "--help" || args[0] == "-h")
         {
@@ -34,14 +34,14 @@ public static class Program
         var dev = new KernelBlockDevice(info);
         if (args.Length == 1)
         {
-            string? label = ProtonOS.DDK.Storage.ExFat.ExFatLabel.Get(dev);
+            string? label = NeutrinoOS.DDK.Storage.ExFat.ExFatLabel.Get(dev);
             if (label == null)
                 return Util.Fail("exfatlabel", info.Name + ": not an exFAT volume");
             Console.WriteLine(label);
             return 0;
         }
 
-        int rc = ProtonOS.DDK.Storage.ExFat.ExFatLabel.Set(dev, args[1]);
+        int rc = NeutrinoOS.DDK.Storage.ExFat.ExFatLabel.Set(dev, args[1]);
         if (rc != 0)
             return Util.Fail("exfatlabel", "failed (rc=" + rc.ToString() + ")");
         Console.Write("label of ");

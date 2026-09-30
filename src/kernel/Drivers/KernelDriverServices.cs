@@ -1,4 +1,4 @@
-// ProtonOS Kernel - IDriverServices implementation for driver hosts.
+// NeutrinoOS Kernel - IDriverServices implementation for driver hosts.
 //
 // Drivers reach all kernel authority through this object: MMIO mapping, DMA,
 // interrupts, device nodes and logging. In the current in-kernel host model
@@ -7,11 +7,11 @@
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Memory;
-using ProtonOS.Platform;
-using ProtonOS.Arch;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Kernel implementation of the driver services ABI.</summary>
 public sealed unsafe class KernelDriverServices : IDriverServices
@@ -151,9 +151,9 @@ public sealed unsafe class KernelDriverServices : IDriverServices
         if (_irqInstalled[irq] == 0)
         {
             // Legacy IRQ n is delivered on vector 32 + n (remapped PIC/IOAPIC).
-            // Fully qualify: inside ProtonOS.Drivers, plain "Arch" binds to
-            // the ProtonOS.Arch namespace, not the ProtonOS.Arch.Arch class.
-            ProtonOS.Arch.Arch.RegisterHandler(32 + irq, &IrqThunk);
+            // Fully qualify: inside NeutrinoOS.Drivers, plain "Arch" binds to
+            // the NeutrinoOS.Arch namespace, not the NeutrinoOS.Arch.Arch class.
+            NeutrinoOS.Arch.Arch.RegisterHandler(32 + irq, &IrqThunk);
             _irqInstalled[irq] = 1;
         }
         return true;

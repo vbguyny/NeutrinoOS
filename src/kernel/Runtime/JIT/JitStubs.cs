@@ -1,13 +1,13 @@
-// ProtonOS JIT - JIT Stubs
+// NeutrinoOS JIT - JIT Stubs
 // Provides stub functions called before method calls to ensure lazy compilation.
 // This allows methods to be compiled on-demand just before they are called.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Arch;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// JIT stub functions for lazy method compilation.
@@ -266,7 +266,7 @@ public static unsafe class JitStubs
         // MethodTable layout: [ComponentSize (2)] [Flags (2)] [BaseSize (4)] [RelatedType (8)]
         //                     [NumVtableSlots (2)] [NumInterfaces (2)] [HashCode (4)] [VTable...]
         // MethodTable.HeaderSize = 24 bytes
-        nint* vtable = (nint*)(methodTable + ProtonOS.Runtime.MethodTable.HeaderSize);
+        nint* vtable = (nint*)(methodTable + NeutrinoOS.Runtime.MethodTable.HeaderSize);
 
         nint currentSlotCode = vtable[vtableSlot];
 

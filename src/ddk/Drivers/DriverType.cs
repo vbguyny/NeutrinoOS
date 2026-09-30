@@ -1,6 +1,6 @@
-// ProtonOS DDK - Driver Type Enumeration
+// NeutrinoOS DDK - Driver Type Enumeration
 
-namespace ProtonOS.DDK.Drivers;
+namespace NeutrinoOS.DDK.Drivers;
 
 /// <summary>
 /// Types of drivers supported by the DDK.

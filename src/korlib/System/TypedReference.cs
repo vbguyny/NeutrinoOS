@@ -1,4 +1,4 @@
-// ProtonOS korlib - TypedReference support for varargs
+// NeutrinoOS korlib - TypedReference support for varargs
 // Layout must match JIT's mkrefany/refanyval/refanytype implementation
 
 using System.Runtime.InteropServices;

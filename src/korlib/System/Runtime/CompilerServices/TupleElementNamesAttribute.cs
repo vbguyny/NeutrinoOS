@@ -1,4 +1,4 @@
-// ProtonOS korlib - TupleElementNamesAttribute for named tuple support
+// NeutrinoOS korlib - TupleElementNamesAttribute for named tuple support
 
 namespace System.Runtime.CompilerServices;
 

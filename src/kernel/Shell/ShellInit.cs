@@ -6,9 +6,9 @@
 
 using System;
 using System.IO;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Shell initialization: defaults, profiles, prompt (see file header).</summary>
 public static class ShellInit
@@ -57,7 +57,7 @@ public static class ShellInit
         SetDefault("USER", "root");
         ShellState.SetVar("PWD", Directory.GetCurrentDirectory());
 
-        ShellState.ShellPid = (int)ProtonOS.Threading.Scheduler.GetCurrentThreadId();
+        ShellState.ShellPid = (int)NeutrinoOS.Threading.Scheduler.GetCurrentThreadId();
 
         // Phase 5: command/file tab completion (deferred; see
         // LineDiscipline and ShellCompletion).

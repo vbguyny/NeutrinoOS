@@ -2,15 +2,15 @@
 // EfiEntry (native.asm) saves UEFI params, then calls korlib's EfiMain, which calls Main()
 
 using System.Runtime.InteropServices;
-using ProtonOS.Arch;
-using ProtonOS.PAL;
-using ProtonOS.Memory;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Runtime;
-using ProtonOS.Runtime.JIT;
+using NeutrinoOS.Arch;
+using NeutrinoOS.PAL;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Runtime;
+using NeutrinoOS.Runtime.JIT;
 
-namespace ProtonOS;
+namespace NeutrinoOS;
 
 public static unsafe class Kernel
 {
@@ -41,9 +41,9 @@ public static unsafe class Kernel
     private static byte* _korlibBytes;
     private static ulong _korlibSize;
 
-    // ProtonOS.Net library (application-level networking)
-    private static byte* _protonOsNetBytes;
-    private static ulong _protonOsNetSize;
+    // NeutrinoOS.Net library (application-level networking)
+    private static byte* _neutrinoOsNetBytes;
+    private static ulong _neutrinoOsNetSize;
 
     // AppTest assembly (application-level tests)
     private static byte* _appTestBytes;
@@ -70,7 +70,7 @@ public static unsafe class Kernel
     private static uint _testSupportId;
     private static uint _ddkId;
 
-    /// <summary>The loaded ProtonOS.DDK assembly id (Phase 6 services).</summary>
+    /// <summary>The loaded NeutrinoOS.DDK assembly id (Phase 6 services).</summary>
     internal static uint DdkAssemblyId => _ddkId;
     private static uint _virtioDriverId;
     private static uint _virtioBlkDriverId;
@@ -84,7 +84,7 @@ public static unsafe class Kernel
     private static uint _nvmeDriverId;
     private static uint _virtioNetDriverId;
     private static uint _korlibId;
-    private static uint _protonOsNetId;
+    private static uint _neutrinoOsNetId;
 
     /// <summary>
     /// Assembly ID of the AHCI driver, used by Platform.AssemblyRunner to
@@ -348,7 +348,7 @@ public static unsafe class Kernel
             _testSupportId = AssemblyLoader.Load(_testSupportBytes, _testSupportSize);
         }
 
-        // Register ProtonOS.DDK.dll
+        // Register NeutrinoOS.DDK.dll
         if (_ddkBytes != null)
         {
             _ddkId = AssemblyLoader.Load(_ddkBytes, _ddkSize);
@@ -390,10 +390,10 @@ public static unsafe class Kernel
             _virtioNetDriverId = AssemblyLoader.Load(_virtioNetDriverBytes, _virtioNetDriverSize);
         }
 
-        // Register ProtonOS.Net library (depends on DDK)
-        if (_protonOsNetBytes != null)
+        // Register NeutrinoOS.Net library (depends on DDK)
+        if (_neutrinoOsNetBytes != null)
         {
-            _protonOsNetId = AssemblyLoader.Load(_protonOsNetBytes, _protonOsNetSize);
+            _neutrinoOsNetId = AssemblyLoader.Load(_neutrinoOsNetBytes, _neutrinoOsNetSize);
         }
 
         // Register the test assembly with AssemblyLoader (depends on TestSupport and DDK)
@@ -402,7 +402,7 @@ public static unsafe class Kernel
             _testAssemblyId = AssemblyLoader.Load(_testAssemblyBytes, _testAssemblySize);
         }
 
-        // Register AppTest assembly (depends on DDK and ProtonOS.Net)
+        // Register AppTest assembly (depends on DDK and NeutrinoOS.Net)
         if (_appTestBytes != null)
         {
             _appTestId = AssemblyLoader.Load(_appTestBytes, _appTestSize);
@@ -469,7 +469,7 @@ public static unsafe class Kernel
 
         // Driver framework: build the device tree (PCI/VirtIO/platform)
         // and run the ABI-gated driver match pass.
-        ProtonOS.Drivers.DriverFramework.Initialize();
+        NeutrinoOS.Drivers.DriverFramework.Initialize();
         BootLog.Status("Driver framework initialized");
 
         // Bind drivers to detected PCI devices
@@ -480,7 +480,7 @@ public static unsafe class Kernel
         // manifest -> assembly -> Create() factory -> thunk adapter ->
         // DriverManager). The loader reads the boot volume through the
         // AHCI bridge, which is available once BindDrivers bound AHCI.
-        ProtonOS.Drivers.DriverFramework.LoadPackagedDrivers();
+        NeutrinoOS.Drivers.DriverFramework.LoadPackagedDrivers();
 
         // Run the FullTest assembly to exercise JIT functionality
         // (skipped when the skip-boot-tests marker file is present on the
@@ -581,23 +581,23 @@ public static unsafe class Kernel
         BootLog.Status("Starting interactive shell");
 #if ARCH_ARM64
         DebugConsole.Write("[arm64] ticks=");
-        DebugConsole.WriteDecimal(ProtonOS.Arch.GenericTimer.Ticks);
+        DebugConsole.WriteDecimal(NeutrinoOS.Arch.GenericTimer.Ticks);
         DebugConsole.Write(" daif=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadFlags());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.CPU.ReadFlags());
         DebugConsole.Write(" gicd=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadDistCtlr());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.GicV2.ReadDistCtlr());
         DebugConsole.Write(" gicc=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadCpuCtlr());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.GicV2.ReadCpuCtlr());
         DebugConsole.Write(" pmr=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadPmr());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.GicV2.ReadPmr());
         DebugConsole.Write(" en0=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadEnabled0());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.GicV2.ReadEnabled0());
         DebugConsole.Write(" en1=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.GicV2.ReadEnabled1());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.GicV2.ReadEnabled1());
         DebugConsole.Write(" cntpctl=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadCntpCtl());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.CPU.ReadCntpCtl());
         DebugConsole.Write(" vbar=0x");
-        DebugConsole.WriteHex(ProtonOS.Arch.CPU.ReadVbar());
+        DebugConsole.WriteHex(NeutrinoOS.Arch.CPU.ReadVbar());
         DebugConsole.WriteLine();
 #endif
         ConsoleSession.Run();
@@ -612,23 +612,23 @@ public static unsafe class Kernel
         // Load TestSupport.dll (dependency for test assembly)
         _testSupportBytes = BootInfoAccess.FindFile("TestSupport.dll", out _testSupportSize);
 
-        // Load ProtonOS.DDK.dll (Driver Development Kit)
-        _ddkBytes = BootInfoAccess.FindFile("ProtonOS.DDK.dll", out _ddkSize);
+        // Load NeutrinoOS.DDK.dll (Driver Development Kit)
+        _ddkBytes = BootInfoAccess.FindFile("NeutrinoOS.DDK.dll", out _ddkSize);
 
         // Load driver assemblies
-        _virtioDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Virtio.dll", out _virtioDriverSize);
-        _virtioBlkDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.VirtioBlk.dll", out _virtioBlkDriverSize);
-        _fatDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Fat.dll", out _fatDriverSize);
-        _ext2DriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Ext2.dll", out _ext2DriverSize);
-        _ahciDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Ahci.dll", out _ahciDriverSize);
-        _nvmeDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.Nvme.dll", out _nvmeDriverSize);
-        _virtioNetDriverBytes = BootInfoAccess.FindFile("ProtonOS.Drivers.VirtioNet.dll", out _virtioNetDriverSize);
+        _virtioDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.Virtio.dll", out _virtioDriverSize);
+        _virtioBlkDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.VirtioBlk.dll", out _virtioBlkDriverSize);
+        _fatDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.Fat.dll", out _fatDriverSize);
+        _ext2DriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.Ext2.dll", out _ext2DriverSize);
+        _ahciDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.Ahci.dll", out _ahciDriverSize);
+        _nvmeDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.Nvme.dll", out _nvmeDriverSize);
+        _virtioNetDriverBytes = BootInfoAccess.FindFile("NeutrinoOS.Drivers.VirtioNet.dll", out _virtioNetDriverSize);
 
         // Load korlib.dll (IL assembly for JIT generic instantiation)
         _korlibBytes = BootInfoAccess.FindFile("korlib.dll", out _korlibSize);
 
-        // Load ProtonOS.Net.dll (application-level networking library)
-        _protonOsNetBytes = BootInfoAccess.FindFile("ProtonOS.Net.dll", out _protonOsNetSize);
+        // Load NeutrinoOS.Net.dll (application-level networking library)
+        _neutrinoOsNetBytes = BootInfoAccess.FindFile("NeutrinoOS.Net.dll", out _neutrinoOsNetSize);
 
         // Load FullTest.dll
         _testAssemblyBytes = BootInfoAccess.FindFile("FullTest.dll", out _testAssemblySize);
@@ -1340,125 +1340,125 @@ public static unsafe class Kernel
         int registered = 0;
 
         // Register Memory API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "AllocatePage",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "AllocatePage",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.MemoryExports.AllocatePage);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "AllocatePages",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "AllocatePages",
             (void*)(delegate* unmanaged<ulong, ulong>)&Exports.DDK.MemoryExports.AllocatePages);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "FreePage",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "FreePage",
             (void*)(delegate* unmanaged<ulong, void>)&Exports.DDK.MemoryExports.FreePage);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "FreePages",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "FreePages",
             (void*)(delegate* unmanaged<ulong, ulong, void>)&Exports.DDK.MemoryExports.FreePages);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "PhysToVirt",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "PhysToVirt",
             (void*)(delegate* unmanaged<ulong, ulong>)&Exports.DDK.MemoryExports.PhysToVirt);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "VirtToPhys",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "VirtToPhys",
             (void*)(delegate* unmanaged<ulong, ulong>)&Exports.DDK.MemoryExports.VirtToPhys);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "MapMMIO",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "MapMMIO",
             (void*)(delegate* unmanaged<ulong, ulong, ulong>)&Exports.DDK.MemoryExports.MapMMIO);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "UnmapMMIO",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "UnmapMMIO",
             (void*)(delegate* unmanaged<ulong, ulong, void>)&Exports.DDK.MemoryExports.UnmapMMIO);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "GetTotalMemory",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "GetTotalMemory",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.MemoryExports.GetTotalMemory);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "GetFreeMemory",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "GetFreeMemory",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.MemoryExports.GetFreeMemory);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Memory", "GetPageSize",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Memory", "GetPageSize",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.MemoryExports.GetPageSize);
 
         // Register Debug API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWrite",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWrite",
             (void*)(delegate* unmanaged<char*, int, void>)&Exports.DDK.DebugExports.DebugWrite);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteLine",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteLine",
             (void*)(delegate* unmanaged<char*, int, void>)&Exports.DDK.DebugExports.DebugWriteLine);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteHex64",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteHex64",
             (void*)(delegate* unmanaged<ulong, void>)&Exports.DDK.DebugExports.DebugWriteHex64);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteHex32",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteHex32",
             (void*)(delegate* unmanaged<uint, void>)&Exports.DDK.DebugExports.DebugWriteHex32);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteHex16",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteHex16",
             (void*)(delegate* unmanaged<ushort, void>)&Exports.DDK.DebugExports.DebugWriteHex16);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteHex8",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteHex8",
             (void*)(delegate* unmanaged<byte, void>)&Exports.DDK.DebugExports.DebugWriteHex8);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteDecimal",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteDecimal",
             (void*)(delegate* unmanaged<int, void>)&Exports.DDK.DebugExports.DebugWriteDecimal);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteDecimalU",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteDecimalU",
             (void*)(delegate* unmanaged<uint, void>)&Exports.DDK.DebugExports.DebugWriteDecimalU);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Debug", "Kernel_DebugWriteDecimal64",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Debug", "Kernel_DebugWriteDecimal64",
             (void*)(delegate* unmanaged<ulong, void>)&Exports.DDK.DebugExports.DebugWriteDecimal64);
 
         // Register PortIO API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "InByte",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "InByte",
             (void*)(delegate* unmanaged<ushort, byte>)&Exports.DDK.PortIOExports.InByte);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "OutByte",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "OutByte",
             (void*)(delegate* unmanaged<ushort, byte, void>)&Exports.DDK.PortIOExports.OutByte);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "InWord",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "InWord",
             (void*)(delegate* unmanaged<ushort, ushort>)&Exports.DDK.PortIOExports.InWord);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "OutWord",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "OutWord",
             (void*)(delegate* unmanaged<ushort, ushort, void>)&Exports.DDK.PortIOExports.OutWord);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "InDword",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "InDword",
             (void*)(delegate* unmanaged<ushort, uint>)&Exports.DDK.PortIOExports.InDword);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PortIO", "OutDword",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PortIO", "OutDword",
             (void*)(delegate* unmanaged<ushort, uint, void>)&Exports.DDK.PortIOExports.OutDword);
 
         // Register CPU API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetCpuCount",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetCpuCount",
             (void*)(delegate* unmanaged<int>)&Exports.DDK.CPUExports.GetCpuCount);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetCurrentCpu",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetCurrentCpu",
             (void*)(delegate* unmanaged<int>)&Exports.DDK.CPUExports.GetCurrentCpu);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetCpuInfo",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetCpuInfo",
             (void*)(delegate* unmanaged<int, Platform.CpuInfo*, bool>)&Exports.DDK.CPUExports.GetCpuInfo);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "SetThreadAffinity",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "SetThreadAffinity",
             (void*)(delegate* unmanaged<ulong, ulong>)&Exports.DDK.CPUExports.SetThreadAffinity);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetThreadAffinity",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetThreadAffinity",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.CPUExports.GetThreadAffinity);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "IsCpuOnline",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "IsCpuOnline",
             (void*)(delegate* unmanaged<int, bool>)&Exports.DDK.CPUExports.IsCpuOnline);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetBspIndex",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetBspIndex",
             (void*)(delegate* unmanaged<int>)&Exports.DDK.CPUExports.GetBspIndex);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "CPU", "GetSystemAffinityMask",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "CPU", "GetSystemAffinityMask",
             (void*)(delegate* unmanaged<ulong>)&Exports.DDK.CPUExports.GetSystemAffinityMask);
 
         // Register PCI API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "ReadConfig32",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "ReadConfig32",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, uint>)&Exports.DDK.PCIExports.ReadConfig32);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "ReadConfig16",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "ReadConfig16",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, ushort>)&Exports.DDK.PCIExports.ReadConfig16);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "ReadConfig8",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "ReadConfig8",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, byte>)&Exports.DDK.PCIExports.ReadConfig8);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "WriteConfig32",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "WriteConfig32",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, uint, void>)&Exports.DDK.PCIExports.WriteConfig32);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "WriteConfig16",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "WriteConfig16",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, ushort, void>)&Exports.DDK.PCIExports.WriteConfig16);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "WriteConfig8",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "WriteConfig8",
             (void*)(delegate* unmanaged<byte, byte, byte, byte, byte, void>)&Exports.DDK.PCIExports.WriteConfig8);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "GetBar",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "GetBar",
             (void*)(delegate* unmanaged<byte, byte, byte, int, uint>)&Exports.DDK.PCIExports.GetBar);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "GetBarSize",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "GetBarSize",
             (void*)(delegate* unmanaged<byte, byte, byte, int, uint>)&Exports.DDK.PCIExports.GetBarSize);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "EnableMemorySpace",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "EnableMemorySpace",
             (void*)(delegate* unmanaged<byte, byte, byte, void>)&Exports.DDK.PCIExports.EnableMemorySpace);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "PCI", "EnableBusMaster",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "PCI", "EnableBusMaster",
             (void*)(delegate* unmanaged<byte, byte, byte, void>)&Exports.DDK.PCIExports.EnableBusMaster);
 
         // Register Thread API
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "CreateThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "CreateThread",
             (void*)(delegate* unmanaged<delegate* unmanaged<void*, uint>, void*, nuint, uint, uint*, Threading.Thread*>)&Exports.DDK.ThreadExports.CreateThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "ExitThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "ExitThread",
             (void*)(delegate* unmanaged<uint, void>)&Exports.DDK.ThreadExports.ExitThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "GetCurrentThreadId",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "GetCurrentThreadId",
             (void*)(delegate* unmanaged<uint>)&Exports.DDK.ThreadExports.GetCurrentThreadId);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "GetCurrentThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "GetCurrentThread",
             (void*)(delegate* unmanaged<Threading.Thread*>)&Exports.DDK.ThreadExports.GetCurrentThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "Sleep",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "Sleep",
             (void*)(delegate* unmanaged<uint, void>)&Exports.DDK.ThreadExports.Sleep);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "Yield",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "Yield",
             (void*)(delegate* unmanaged<void>)&Exports.DDK.ThreadExports.Yield);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "GetExitCodeThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "GetExitCodeThread",
             (void*)(delegate* unmanaged<Threading.Thread*, uint*, bool>)&Exports.DDK.ThreadExports.GetExitCodeThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "GetThreadState",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "GetThreadState",
             (void*)(delegate* unmanaged<Threading.Thread*, int>)&Exports.DDK.ThreadExports.GetThreadState);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "SuspendThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "SuspendThread",
             (void*)(delegate* unmanaged<Threading.Thread*, int>)&Exports.DDK.ThreadExports.SuspendThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "ResumeThread",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "ResumeThread",
             (void*)(delegate* unmanaged<Threading.Thread*, int>)&Exports.DDK.ThreadExports.ResumeThread);
-        registered += RegisterDDKMethod(korlib, "ProtonOS.Kernel", "Thread", "GetThreadCount",
+        registered += RegisterDDKMethod(korlib, "NeutrinoOS.Kernel", "Thread", "GetThreadCount",
             (void*)(delegate* unmanaged<int>)&Exports.DDK.ThreadExports.GetThreadCount);
 
         if (registered > 0)
@@ -1630,10 +1630,10 @@ public static unsafe class Kernel
         DebugConsole.WriteLine(string.Format("[DDK] Assembly ID: {0}", _ddkId));
 
         // Find DDKInit type
-        uint ddkInitToken = AssemblyLoader.FindTypeDefByFullName(_ddkId, "ProtonOS.DDK", "DDKInit");
+        uint ddkInitToken = AssemblyLoader.FindTypeDefByFullName(_ddkId, "NeutrinoOS.DDK", "DDKInit");
         if (ddkInitToken == 0)
         {
-            DebugConsole.WriteLine("[DDK] ERROR: Could not find ProtonOS.DDK.DDKInit type");
+            DebugConsole.WriteLine("[DDK] ERROR: Could not find NeutrinoOS.DDK.DDKInit type");
             return;
         }
 
@@ -1695,7 +1695,7 @@ public static unsafe class Kernel
 
         // Find VirtioBlkEntry type
         uint virtioBlkEntryToken = AssemblyLoader.FindTypeDefByFullName(
-            _virtioBlkDriverId, "ProtonOS.Drivers.Storage.VirtioBlk", "VirtioBlkEntry");
+            _virtioBlkDriverId, "NeutrinoOS.Drivers.Storage.VirtioBlk", "VirtioBlkEntry");
 
         if (virtioBlkEntryToken == 0)
         {
@@ -1815,7 +1815,7 @@ public static unsafe class Kernel
 
         // Find AhciEntry type
         uint ahciEntryToken = AssemblyLoader.FindTypeDefByFullName(
-            _ahciDriverId, "ProtonOS.Drivers.Storage.Ahci", "AhciEntry");
+            _ahciDriverId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
 
         if (ahciEntryToken == 0)
         {
@@ -1931,7 +1931,7 @@ public static unsafe class Kernel
         }
 
         uint nvmeEntryToken = AssemblyLoader.FindTypeDefByFullName(
-            _nvmeDriverId, "ProtonOS.Drivers.Storage.Nvme", "NvmeEntry");
+            _nvmeDriverId, "NeutrinoOS.Drivers.Storage.Nvme", "NvmeEntry");
         if (nvmeEntryToken == 0)
         {
             DebugConsole.WriteLine("[Drivers] ERROR: Could not find NvmeEntry type");
@@ -2013,7 +2013,7 @@ public static unsafe class Kernel
 
         // Find VirtioNetEntry type
         uint virtioNetEntryToken = AssemblyLoader.FindTypeDefByFullName(
-            _virtioNetDriverId, "ProtonOS.Drivers.Network.VirtioNet", "VirtioNetEntry");
+            _virtioNetDriverId, "NeutrinoOS.Drivers.Network.VirtioNet", "VirtioNetEntry");
 
         if (virtioNetEntryToken == 0)
         {
@@ -2303,7 +2303,7 @@ public static unsafe class Kernel
 
         // Try to compile Environment.get_NewLine from korlib.dll
         // This is a simple method that just returns a string constant
-        void* code = ProtonOS.Runtime.JIT.Tier0JIT.CompileKorlibMethod("System", "Environment", "get_NewLine");
+        void* code = NeutrinoOS.Runtime.JIT.Tier0JIT.CompileKorlibMethod("System", "Environment", "get_NewLine");
         if (code != null)
         {
             DebugConsole.Write("[AOT→JIT] SUCCESS: Compiled Environment.get_NewLine at 0x");

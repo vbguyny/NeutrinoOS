@@ -1,4 +1,4 @@
-// ProtonOS DDK - ChaCha20 stream cipher (Phase 6)
+// NeutrinoOS DDK - ChaCha20 stream cipher (Phase 6)
 //
 // Managed C# ChaCha20 (RFC 8439 section 2.4): 256-bit key, 96-bit
 // nonce, 32-bit block counter. Used by the TLS 1.3 AEAD
@@ -10,7 +10,7 @@
 
 using System;
 
-namespace ProtonOS.DDK.Crypto;
+namespace NeutrinoOS.DDK.Crypto;
 
 /// <summary>Managed ChaCha20 stream cipher (see file header).</summary>
 public sealed class ChaCha20

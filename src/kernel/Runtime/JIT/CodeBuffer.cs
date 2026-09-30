@@ -1,9 +1,9 @@
-// ProtonOS JIT - Code Buffer
+// NeutrinoOS JIT - Code Buffer
 // Manages executable memory for JIT-compiled code
 
-using ProtonOS.Memory;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// Buffer for emitting machine code during JIT compilation.

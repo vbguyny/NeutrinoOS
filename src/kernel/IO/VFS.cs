@@ -1,11 +1,11 @@
-// ProtonOS kernel - Virtual File System
+// NeutrinoOS kernel - Virtual File System
 // Manages mount points and routes file operations to filesystem drivers.
 
 using System;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.IO;
+namespace NeutrinoOS.IO;
 
 /// <summary>
 /// Filesystem operations function pointers (registered by drivers)

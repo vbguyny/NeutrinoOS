@@ -1,14 +1,14 @@
-// ProtonOS kernel - SYSCALL/SYSRET Infrastructure
+// NeutrinoOS kernel - SYSCALL/SYSRET Infrastructure
 // Sets up MSRs for fast system call entry and handles the SYSCALL instruction.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Platform;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
-using ProtonOS.Process;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Process;
 
-namespace ProtonOS.Syscall;
+namespace NeutrinoOS.Syscall;
 
 /// <summary>
 /// MSR addresses for SYSCALL/SYSRET configuration

@@ -1,11 +1,11 @@
-// ProtonOS Virtio Driver - Virtqueue Implementation
+// NeutrinoOS Virtio Driver - Virtqueue Implementation
 // Split virtqueue (classic) implementation per VirtIO 1.2 spec
 
 using System;
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Platform;
+using NeutrinoOS.DDK.Platform;
 
-namespace ProtonOS.Drivers.Virtio;
+namespace NeutrinoOS.Drivers.Virtio;
 
 /// <summary>
 /// Virtqueue descriptor flags.

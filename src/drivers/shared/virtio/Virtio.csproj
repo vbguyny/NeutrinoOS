@@ -3,8 +3,8 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>ProtonOS.Drivers.Virtio</AssemblyName>
-    <RootNamespace>ProtonOS.Drivers.Virtio</RootNamespace>
+    <AssemblyName>NeutrinoOS.Drivers.Virtio</AssemblyName>
+    <RootNamespace>NeutrinoOS.Drivers.Virtio</RootNamespace>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>

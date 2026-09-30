@@ -1,4 +1,4 @@
-// ProtonOS Kernel - minimal JSON reader for driver-package metadata.
+// NeutrinoOS Kernel - minimal JSON reader for driver-package metadata.
 //
 // The shared NeutrinoOS.Packaging parser cannot be compiled into the bflat
 // AOT kernel: its writer inspects values with `is bool`, which forces
@@ -14,7 +14,7 @@
 
 using System;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>
 /// One parsed JSON object: insertion-ordered keys with string, object or

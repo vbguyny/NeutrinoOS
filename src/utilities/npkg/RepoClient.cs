@@ -20,11 +20,11 @@ using System.IO;
 using System.Text;
 using NeutrinoOS.Packaging;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Crypto;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Crypto;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
 
 namespace NeutrinoOS.Utility.Npkg;
 

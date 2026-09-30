@@ -1,11 +1,11 @@
-// ProtonOS JIT - IL Compiler
+// NeutrinoOS JIT - IL Compiler
 // Compiles IL bytecode to x64 machine code using naive stack-based approach.
 
-using ProtonOS.Platform;
-using ProtonOS.Arch;
-using ProtonOS.Memory;
+using NeutrinoOS.Platform;
+using NeutrinoOS.Arch;
+using NeutrinoOS.Memory;
 
-namespace ProtonOS.Runtime.JIT;
+namespace NeutrinoOS.Runtime.JIT;
 
 /// <summary>
 /// IL opcode values (ECMA-335 Partition III)
@@ -7786,7 +7786,7 @@ public unsafe struct ILCompiler
             // Virtual dispatch: load function pointer from vtable
             // RCX contains 'this' at this point
             // Skip verbose vtable dispatch logging unless debugging specific method
-            int vtableOffset = ProtonOS.Runtime.MethodTable.HeaderSize + (method.VtableSlot * 8);
+            int vtableOffset = NeutrinoOS.Runtime.MethodTable.HeaderSize + (method.VtableSlot * 8);
 
             // Call EnsureVtableSlotCompiled(objPtr, vtableSlot) to ensure the method is compiled
             // This stub returns the method address to call, which handles out-of-bounds vtable slots
@@ -12388,7 +12388,7 @@ public unsafe struct ILCompiler
             X64Emitter.MovRM(ref _code, VReg.R0, VReg.R0, 0);  // RAX = *obj = MethodTable*
 
             // 2. Load vtable slot at offset HeaderSize + slot*8
-            int vtableOffset = ProtonOS.Runtime.MethodTable.HeaderSize + (vtableSlot * 8);
+            int vtableOffset = NeutrinoOS.Runtime.MethodTable.HeaderSize + (vtableSlot * 8);
             DebugConsole.Write(" offset=");
             DebugConsole.WriteDecimal((uint)vtableOffset);
             DebugConsole.WriteLine();

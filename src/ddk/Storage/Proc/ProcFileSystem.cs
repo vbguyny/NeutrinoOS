@@ -1,11 +1,11 @@
-// ProtonOS DDK - Proc Filesystem Implementation
+// NeutrinoOS DDK - Proc Filesystem Implementation
 // Virtual filesystem that exposes kernel and system information.
 
 using System;
 using System.Collections.Generic;
-using ProtonOS.DDK.Drivers;
+using NeutrinoOS.DDK.Drivers;
 
-namespace ProtonOS.DDK.Storage.Proc;
+namespace NeutrinoOS.DDK.Storage.Proc;
 
 /// <summary>
 /// Virtual /proc filesystem that exposes kernel and system information.

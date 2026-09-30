@@ -1,10 +1,10 @@
-// ProtonOS DDK - DHCP Protocol Implementation
+// NeutrinoOS DDK - DHCP Protocol Implementation
 // DHCP packet building and parsing for automatic network configuration.
 
 using System;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Network.Stack;
+namespace NeutrinoOS.DDK.Network.Stack;
 
 /// <summary>
 /// DHCP response data parsed from OFFER or ACK packets.

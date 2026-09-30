@@ -1,4 +1,4 @@
-// ProtonOS korlib - OperationCanceledException
+// NeutrinoOS korlib - OperationCanceledException
 // The exception that is thrown in a thread upon cancellation of an operation.
 
 namespace System

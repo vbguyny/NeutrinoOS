@@ -1,10 +1,10 @@
-// ProtonOS DDK - Syscall Bridge for Filesystem Operations
+// NeutrinoOS DDK - Syscall Bridge for Filesystem Operations
 // Provides function pointers that kernel syscalls can call into DDK VFS.
 
 using System.Runtime.InteropServices;
-using ProtonOS.DDK.Kernel;
+using NeutrinoOS.DDK.Kernel;
 
-namespace ProtonOS.DDK.Storage;
+namespace NeutrinoOS.DDK.Storage;
 
 /// <summary>
 /// Bridges kernel syscalls to DDK VFS filesystem operations.

@@ -1,4 +1,4 @@
-// ProtonOS korlib - Runtime Reflection Types
+// NeutrinoOS korlib - Runtime Reflection Types
 // Concrete implementations of reflection types that bridge to kernel reflection APIs.
 
 using System.Runtime;
@@ -202,7 +202,7 @@ namespace System.Reflection
 
         /// <summary>
         /// Gets the assembly ID where this method is defined.
-        /// ProtonOS-specific extension for reflection invoke support.
+        /// NeutrinoOS-specific extension for reflection invoke support.
         /// </summary>
         internal uint AssemblyId => _assemblyId;
 
@@ -542,7 +542,7 @@ namespace System.Reflection
 
         /// <summary>
         /// Gets the assembly ID where this constructor is defined.
-        /// ProtonOS-specific extension for reflection invoke support.
+        /// NeutrinoOS-specific extension for reflection invoke support.
         /// </summary>
         internal uint AssemblyId => _assemblyId;
 

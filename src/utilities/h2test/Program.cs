@@ -13,11 +13,11 @@
 
 using System;
 using NeutrinoOS.Utils;
-using ProtonOS.DDK.Kernel;
-using ProtonOS.DDK.Network;
-using ProtonOS.DDK.Network.Sockets;
-using ProtonOS.DDK.Network.Stack;
-using ProtonOS.DDK.Services;
+using NeutrinoOS.DDK.Kernel;
+using NeutrinoOS.DDK.Network;
+using NeutrinoOS.DDK.Network.Sockets;
+using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Services;
 
 namespace NeutrinoOS.Utility.H2Test;
 
@@ -30,7 +30,7 @@ public static unsafe class Program
     /// <summary>Entry point.</summary>
     public static int Main(string[] args)
     {
-        if (ProtonOS.DDK.Util.VersionFlag.Handle(args))
+        if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
         if (args.Length > 1)
             return Util.Fail("h2test", "usage: h2test");

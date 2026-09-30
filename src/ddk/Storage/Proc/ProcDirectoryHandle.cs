@@ -1,10 +1,10 @@
-// ProtonOS DDK - Proc Filesystem Directory Handle
+// NeutrinoOS DDK - Proc Filesystem Directory Handle
 // Enumerates registered proc entries in a directory.
 
 using System;
 using System.Collections.Generic;
 
-namespace ProtonOS.DDK.Storage.Proc;
+namespace NeutrinoOS.DDK.Storage.Proc;
 
 /// <summary>
 /// Directory handle for proc filesystem directories.

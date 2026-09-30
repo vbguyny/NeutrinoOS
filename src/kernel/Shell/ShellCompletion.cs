@@ -21,9 +21,9 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Shell;
+namespace NeutrinoOS.Shell;
 
 /// <summary>Tab completion for commands and paths (see file header).</summary>
 public static class ShellCompletion
@@ -140,11 +140,11 @@ public static class ShellCompletion
             {
                 // /dev/<name>: the block device registry (hda, nvme0,
                 // sda...) - synthetic names with no real directory entry.
-                int deviceCount = ProtonOS.Storage.BlockDeviceRegistry.Count();
+                int deviceCount = NeutrinoOS.Storage.BlockDeviceRegistry.Count();
                 for (int i = 0; i < deviceCount; i++)
                 {
-                    var dev = ProtonOS.Storage.BlockDeviceRegistry.Get(
-                        ProtonOS.Storage.BlockDeviceRegistry.HandleAt(i));
+                    var dev = NeutrinoOS.Storage.BlockDeviceRegistry.Get(
+                        NeutrinoOS.Storage.BlockDeviceRegistry.HandleAt(i));
                     if (dev != null && StartsWithIgnoreCase(dev.Name, namePart))
                         AddUnique(candidates, dirPart + dev.Name);
                 }

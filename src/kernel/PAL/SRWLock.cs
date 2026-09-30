@@ -1,13 +1,13 @@
-// ProtonOS kernel - PAL Slim Reader/Writer Lock
+// NeutrinoOS kernel - PAL Slim Reader/Writer Lock
 // Win32-style SRW lock implementation for PAL compatibility.
 // Allows multiple concurrent readers OR a single exclusive writer.
 
 using System.Runtime.InteropServices;
-using ProtonOS.Threading;
-using ProtonOS.Memory;
-using ProtonOS.Arch;
+using NeutrinoOS.Threading;
+using NeutrinoOS.Memory;
+using NeutrinoOS.Arch;
 
-namespace ProtonOS.PAL;
+namespace NeutrinoOS.PAL;
 
 /// <summary>
 /// PAL Slim Reader/Writer Lock - allows multiple readers or single writer.

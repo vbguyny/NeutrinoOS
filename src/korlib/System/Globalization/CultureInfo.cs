@@ -1,4 +1,4 @@
-// ProtonOS korlib - CultureInfo stub
+// NeutrinoOS korlib - CultureInfo stub
 // Minimal stub for culture info - required by reflection APIs.
 
 namespace System.Globalization

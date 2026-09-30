@@ -1,15 +1,15 @@
-// ProtonOS Kernel - PCI bus enumerator for the driver framework.
+// NeutrinoOS Kernel - PCI bus enumerator for the driver framework.
 //
-// Walks the PCI bus (already scanned by ProtonOS.Platform.PCI) and populates
+// Walks the PCI bus (already scanned by NeutrinoOS.Platform.PCI) and populates
 // the kernel device tree with device nodes: identity, location, class and
 // resources (I/O port ranges, MMIO windows, IRQ line). BARs are sized by the
 // standard write-all-ones/restore probe.
 
 using System;
 using NeutrinoOS.Drivers;
-using ProtonOS.Platform;
+using NeutrinoOS.Platform;
 
-namespace ProtonOS.Drivers;
+namespace NeutrinoOS.Drivers;
 
 /// <summary>Enumerates PCI devices into the kernel device tree.</summary>
 public static unsafe class PciBusEnumerator
