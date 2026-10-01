@@ -33,7 +33,8 @@ public static class ShellInit
     /// <summary>
     /// Phase 6 boot parameters (key=value per line): net.ip=dhcp|static,
     /// net.static.ip/gateway/dns/mask, sshd.autostart=yes|no,
-    /// webhost.autostart=yes|no. See docs/PHASE6-ACCEPTANCE.md.
+    /// webhost.autostart=yes|no, startup.app=&lt;command line&gt; (managed by
+    /// the startup utility). See docs/PHASE6-ACCEPTANCE.md.
     /// </summary>
     public const string BootParamsFile = "/etc/boot.params";
 
@@ -77,6 +78,7 @@ public static class ShellInit
     ///   net.ip=static          applies net.static.* via ifconfig
     ///   sshd.autostart=yes     starts the SSH server
     ///   webhost.autostart=yes  starts the web host
+    ///   startup.app=&lt;cmd&gt;     runs &lt;cmd&gt; at startup (startup utility)
     /// Unknown keys are ignored.
     /// </summary>
     private static void ApplyBootParameters()
@@ -126,6 +128,14 @@ public static class ShellInit
                 {
                     if (value == "yes")
                         ShellExecutor.ExecuteLine("webhost");
+                }
+                else if (key == "startup.app")
+                {
+                    if (value.Length > 0)
+                    {
+                        Console.WriteLine("[boot] startup app: " + value);
+                        ShellExecutor.ExecuteLine(value);
+                    }
                 }
             }
         }
