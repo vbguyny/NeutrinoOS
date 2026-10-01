@@ -1527,32 +1527,41 @@ public unsafe partial class FatFileSystem : IFileSystem
 
         byte attr = isDirectory ? (byte)FatAttr.Directory : (byte)FatAttr.Archive;
 
-        // Names that fit 8.3 keep the classic single-entry path.
+        // A name that fits 8.3 keeps the classic single-entry path only when
+        // it is already in canonical uppercase form (e.g. "README.TXT").
+        // Any other spelling - lowercase, extra dots, characters the 8.3
+        // conversion would alter - goes through the LFN path so the real
+        // name survives, exactly like Windows (creating "readme.md" stores
+        // LFN "readme.md" + alias README.MD, not the bare uppercase 8.3
+        // name).
         if (Fits83(name))
         {
-            // Create 8.3 filename
-            if (!Create83Name(name, out entry))
-                return false;
-
-            // Set attributes
-            entry.Attr = attr;
-
-            // TODO: Set timestamps when RTC is available
-
-            // Find free entry in directory
-            if (dirCluster == 0 && _fatType != FatType.Fat32)
+            FatDirEntry shortEntry;
+            if (Create83Name(name, out shortEntry) && IsCanonical83(name, shortEntry))
             {
-                // FAT12/16 root directory (fixed size)
-                return CreateEntryInRootDir(ref entry, out entryIndex);
-            }
-            else
-            {
-                // Normal directory (cluster chain)
-                return CreateEntryInDirectory(dirCluster, ref entry, out entryIndex);
+                entry = shortEntry;
+
+                // Set attributes
+                entry.Attr = attr;
+
+                // TODO: Set timestamps when RTC is available
+
+                // Find free entry in directory
+                if (dirCluster == 0 && _fatType != FatType.Fat32)
+                {
+                    // FAT12/16 root directory (fixed size)
+                    return CreateEntryInRootDir(ref entry, out entryIndex);
+                }
+                else
+                {
+                    // Normal directory (cluster chain)
+                    return CreateEntryInDirectory(dirCluster, ref entry, out entryIndex);
+                }
             }
         }
 
-        // Long name: 8.3 alias + LFN entries carrying the real name.
+        // Long name (or non-canonical short name): 8.3 alias + LFN entries
+        // carrying the real name.
         if (name.Length > 255)
             name = name.Substring(0, 255);
         int lfnCount = (name.Length + 12) / 13;
@@ -1860,6 +1869,42 @@ public unsafe partial class FatFileSystem : IFileSystem
         string baseName = dotPos >= 0 ? name.Substring(0, dotPos) : name;
         string ext = dotPos >= 0 && dotPos < name.Length - 1 ? name.Substring(dotPos + 1) : "";
         return baseName.Length > 0 && baseName.Length <= 8 && ext.Length <= 3;
+    }
+
+    /// <summary>
+    /// True when <paramref name="name"/> already equals the canonical
+    /// spelling of its 8.3 entry (all uppercase, no character that the
+    /// 8.3 conversion would alter). Such names need no LFN entry.
+    /// </summary>
+    private static bool IsCanonical83(string name, FatDirEntry entry)
+    {
+        int baseLen = 0;
+        while (baseLen < 8 && entry.Name[baseLen] != (byte)' ')
+            baseLen++;
+        int extLen = 3;
+        while (extLen > 0 && entry.Name[8 + extLen - 1] == (byte)' ')
+            extLen--;
+
+        int expected = baseLen + (extLen > 0 ? extLen + 1 : 0);
+        if (name.Length != expected)
+            return false;
+
+        for (int i = 0; i < baseLen; i++)
+        {
+            if (name[i] != (char)entry.Name[i])
+                return false;
+        }
+        if (extLen > 0)
+        {
+            if (name[baseLen] != '.')
+                return false;
+            for (int i = 0; i < extLen; i++)
+            {
+                if (name[baseLen + 1 + i] != (char)entry.Name[8 + i])
+                    return false;
+            }
+        }
+        return true;
     }
 
     /// <summary>Computes the LFN checksum over a raw 11-byte 8.3 name field.</summary>

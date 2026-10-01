@@ -229,11 +229,29 @@ public unsafe partial class FatFileSystem
     }
 
     /// <summary>
-    /// Picks the first unused "BASE~N.EXT" alias for a long name.
-    /// Returns false when no alias can be produced.
+    /// Picks the first unused alias for a long name. A canonical tilde-free
+    /// alias is preferred when the name itself fits 8.3 (a mixed-case short
+    /// name like "readme.md" becomes alias README.MD + its LFN, matching
+    /// Windows); "BASE~N.EXT" aliases are reserved for names whose 8.3 form
+    /// cannot represent them.
     /// </summary>
     private static bool BuildUniqueAlias(string name, string[] existing, int existingCount, byte[] aliasArr)
     {
+        if (Fits83(name))
+        {
+            FatDirEntry canonical;
+            if (Create83Name(name, out canonical))
+            {
+                for (int b = 0; b < 11; b++)
+                    aliasArr[b] = canonical.Name[b];
+                bool used = false;
+                for (int i = 0; i < existingCount && !used; i++)
+                    used = AliasMatches(existing[i], aliasArr);
+                if (!used)
+                    return true;
+            }
+        }
+
         for (int k = 1; k < 1000; k++)
         {
             if (!BuildShortAlias(name, k, aliasArr))
