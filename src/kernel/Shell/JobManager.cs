@@ -12,6 +12,10 @@
 //     (LineDiscipline.IdleHook), so a `sleep 2 &` job runs during the
 //     next prompt wait without blocking command entry.
 //   - `jobs` lists the job table with state and exit code.
+//   - `fg [%job|pid]` runs a queued job to completion on the spot; a job
+//     that already ran during an idle window is reported with its exit
+//     code instead. Either way the job is reaped (removed from the table)
+//     so its slot frees up again.
 //   - `kill <pid>` cancels a queued job or requests cancellation of the
 //     running job (cooperative: the job's exit code is reported as 130;
 //     a job already inside JIT code cannot be interrupted - documented
@@ -245,31 +249,126 @@ public static class JobManager
             if (_jobs[i].State != ShellJobState.Queued)
                 continue;
 
-            _jobs[i].State = ShellJobState.Running;
-            bool killRequested = _jobs[i].KillRequested;
-
-            int rc = 130;
-            if (!killRequested)
-            {
-                rc = NeutrinoOS.Platform.AssemblyRunner.Run(_jobs[i].ExePath, _jobs[i].Args);
-                if (rc < 0)
-                    rc = ShellExecutor.ExitNotExecutable;
-            }
-            if (_jobs[i].KillRequested)
-                rc = 130;
-
-            _jobs[i].State = _jobs[i].KillRequested ? ShellJobState.Killed : ShellJobState.Done;
-            _jobs[i].ExitCode = rc;
-
-            Console.Write("[jobs] [");
-            Console.Write(_jobs[i].Id);
-            Console.Write("] ");
-            Console.Write(_jobs[i].State == ShellJobState.Killed ? "killed" : "done");
-            Console.Write(" (exit ");
-            Console.Write(rc);
-            Console.WriteLine(")");
+            RunQueuedJob(i);
             return;     // one job per idle window
         }
+    }
+
+    /// <summary>
+    /// Executes one queued job on the caller's thread and records the
+    /// result (shared by the idle pump and the fg built-in).
+    /// </summary>
+    private static void RunQueuedJob(int slot)
+    {
+        _jobs[slot].State = ShellJobState.Running;
+        bool killRequested = _jobs[slot].KillRequested;
+
+        int rc = 130;
+        if (!killRequested)
+        {
+            rc = NeutrinoOS.Platform.AssemblyRunner.Run(_jobs[slot].ExePath, _jobs[slot].Args);
+            if (rc < 0)
+                rc = ShellExecutor.ExitNotExecutable;
+        }
+        if (_jobs[slot].KillRequested)
+            rc = 130;
+
+        _jobs[slot].State = _jobs[slot].KillRequested ? ShellJobState.Killed : ShellJobState.Done;
+        _jobs[slot].ExitCode = rc;
+
+        Console.Write("[jobs] [");
+        Console.Write(_jobs[slot].Id);
+        Console.Write("] ");
+        Console.Write(_jobs[slot].State == ShellJobState.Killed ? "killed" : "done");
+        Console.Write(" (exit ");
+        Console.Write(rc);
+        Console.WriteLine(")");
+    }
+
+    /// <summary>Maps a job id or printed pid to its table slot; -1 when unknown.</summary>
+    private static int FindSlot(int idOrPid)
+    {
+        for (int i = 0; i < _jobCount; i++)
+        {
+            if (_jobs[i].Id == idOrPid || _jobs[i].Pid == idOrPid)
+                return i;
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Id of the job the fg built-in acts on when no selector is given:
+    /// the most recent still-queued job, else the most recent job overall
+    /// (which already ran during an idle window). -1 when the table is
+    /// empty.
+    /// </summary>
+    public static int CurrentJobId()
+    {
+        int current = -1;
+        for (int i = 0; i < _jobCount; i++)
+        {
+            if (_jobs[i].State == ShellJobState.Queued)
+                current = _jobs[i].Id;
+        }
+        if (current >= 0)
+            return current;
+        if (_jobCount > 0)
+            return _jobs[_jobCount - 1].Id;
+        return -1;
+    }
+
+    /// <summary>
+    /// Runs the given job to completion in the foreground (fg built-in):
+    /// a queued job executes now; one that already ran during an idle
+    /// window is reported with its recorded exit code. The job is then
+    /// reaped (removed), freeing its slot. Returns the job's exit code,
+    /// or -1 when the id/pid is unknown.
+    /// </summary>
+    public static int BringToForeground(int idOrPid)
+    {
+        int slot = FindSlot(idOrPid);
+        if (slot < 0)
+            return -1;
+
+        if (_jobs[slot].State == ShellJobState.Queued)
+        {
+            RunQueuedJob(slot);
+        }
+        else
+        {
+            Console.Write("[jobs] [");
+            Console.Write(_jobs[slot].Id);
+            Console.Write("] already ");
+            Console.Write(_jobs[slot].State == ShellJobState.Killed ? "killed" : "done");
+            Console.Write(" (exit ");
+            Console.Write(_jobs[slot].ExitCode);
+            Console.WriteLine(")");
+        }
+
+        int rc = _jobs[slot].ExitCode;
+        ReapJob(slot);
+        return rc;
+    }
+
+    /// <summary>
+    /// Removes a job from the table (compacting the array). Field-by-field
+    /// copies: whole-struct copies of a struct containing GC references
+    /// need the RhpByRefAssignRef helper (not linked in the kernel).
+    /// </summary>
+    private static void ReapJob(int slot)
+    {
+        for (int j = slot; j < _jobCount - 1; j++)
+        {
+            _jobs[j].Id = _jobs[j + 1].Id;
+            _jobs[j].Pid = _jobs[j + 1].Pid;
+            _jobs[j].Command = _jobs[j + 1].Command;
+            _jobs[j].State = _jobs[j + 1].State;
+            _jobs[j].ExitCode = _jobs[j + 1].ExitCode;
+            _jobs[j].KillRequested = _jobs[j + 1].KillRequested;
+            _jobs[j].ExePath = _jobs[j + 1].ExePath;
+            _jobs[j].Args = _jobs[j + 1].Args;
+        }
+        _jobCount--;
     }
 
     /// <summary>Prints the job table (jobs built-in).</summary>

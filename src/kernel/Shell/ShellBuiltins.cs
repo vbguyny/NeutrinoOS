@@ -53,8 +53,8 @@ public static class ShellBuiltins
             case "unalias": return true && RunUnalias(args, out exitCode);
             case "source": return true && RunSource(args, out exitCode);
             case "jobs": return true && RunJobs(args, out exitCode);
-            case "fg": return true && RunFgBg(args, "fg", out exitCode);
-            case "bg": return true && RunFgBg(args, "bg", out exitCode);
+            case "fg": return true && RunFg(args, out exitCode);
+            case "bg": return true && RunBg(out exitCode);
             case "help": return true && RunHelp(args, out exitCode);
             case "run": return true && RunAssembly(args, out exitCode);
             case "true": return true && Succeed(out exitCode);
@@ -424,11 +424,59 @@ public static class ShellBuiltins
         return true;
     }
 
-    private static bool RunFgBg(string[] args, string which, out int exitCode)
+    private static bool RunFg(string[] args, out int exitCode)
     {
         exitCode = 0;
-        Console.Error.WriteLine("neutrinoos: " + which + ": job control into the foreground is not supported");
-        Console.Error.WriteLine("  (background jobs run cooperatively while the shell waits for input)");
+
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: fg [%job|pid]");
+            Console.WriteLine("  Run a background job to completion in the foreground, or");
+            Console.WriteLine("  report its exit code when it already ran while the shell");
+            Console.WriteLine("  waited for input; the job is reaped either way.");
+            return true;
+        }
+
+        int id;
+        if (args.Length > 1)
+        {
+            string sel = args[1];
+            if (sel.Length > 0 && sel[0] == '%')
+                sel = sel.Substring(1);
+            if (!TryParseInt(sel, out id))
+            {
+                Console.Error.WriteLine("neutrinoos: fg: " + args[1] + ": not a job id or pid (see jobs)");
+                exitCode = 1;
+                return true;
+            }
+        }
+        else
+        {
+            id = JobManager.CurrentJobId();
+            if (id < 0)
+            {
+                Console.Error.WriteLine("neutrinoos: fg: no current job");
+                exitCode = 1;
+                return true;
+            }
+        }
+
+        int rc = JobManager.BringToForeground(id);
+        if (rc < 0)
+        {
+            Console.Error.WriteLine("neutrinoos: fg: no such job (see jobs)");
+            exitCode = 1;
+            return true;
+        }
+        exitCode = rc;
+        return true;
+    }
+
+    private static bool RunBg(out int exitCode)
+    {
+        exitCode = 0;
+        Console.Error.WriteLine("neutrinoos: bg: no suspended jobs to resume");
+        Console.Error.WriteLine("  (NeutrinoOS jobs run cooperatively while the shell waits for input)");
         exitCode = 1;
         return true;
     }
@@ -488,8 +536,8 @@ public static class ShellBuiltins
             case "unalias": return "usage: unalias name - remove an alias";
             case "source": return "usage: source file - execute commands from a file";
             case "jobs": return "usage: jobs - list background jobs";
-            case "fg": return "fg - not supported (background jobs run cooperatively)";
-            case "bg": return "bg - not supported (background jobs run cooperatively)";
+            case "fg": return "usage: fg [%job|pid] - run a background job to completion in the foreground, then reap it";
+            case "bg": return "bg - no suspended jobs to resume (jobs run cooperatively while the shell waits for input)";
             case "help": return "usage: help [command] - show help";
             case "run": return "usage: run <path.dll> [args...] - run a .NET assembly";
             case "true": return "usage: true - exit with status 0";
