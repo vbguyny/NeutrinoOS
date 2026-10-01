@@ -54,7 +54,7 @@ public static class ShellBuiltins
             case "source": return true && RunSource(args, out exitCode);
             case "jobs": return true && RunJobs(args, out exitCode);
             case "fg": return true && RunFg(args, out exitCode);
-            case "bg": return true && RunBg(out exitCode);
+            case "bg": return true && RunBg(args, out exitCode);
             case "help": return true && RunHelp(args, out exitCode);
             case "run": return true && RunAssembly(args, out exitCode);
             case "true": return true && Succeed(out exitCode);
@@ -472,9 +472,19 @@ public static class ShellBuiltins
         return true;
     }
 
-    private static bool RunBg(out int exitCode)
+    private static bool RunBg(string[] args, out int exitCode)
     {
         exitCode = 0;
+
+        if (args.Length > 1 && (args[1] == "--help" || args[1] == "-h"))
+        {
+            Console.WriteLine("usage: bg [%job|pid]");
+            Console.WriteLine("  NeutrinoOS jobs run cooperatively while the shell waits for");
+            Console.WriteLine("  input and cannot be suspended, so there are no stopped jobs");
+            Console.WriteLine("  to resume; use jobs/fg/kill to list, foreground or cancel them.");
+            return true;
+        }
+
         Console.Error.WriteLine("neutrinoos: bg: no suspended jobs to resume");
         Console.Error.WriteLine("  (NeutrinoOS jobs run cooperatively while the shell waits for input)");
         exitCode = 1;
