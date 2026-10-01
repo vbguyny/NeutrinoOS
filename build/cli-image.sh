@@ -35,11 +35,11 @@ mdel -i "$DST" ::/console-vga-off ::/skip-boot-tests ::/console-active-vga || tr
 mcopy -o -i "$DST" /tmp/skip-boot-tests ::/skip-boot-tests
 mcopy -o -i "$DST" /tmp/console-active-vga ::/console-active-vga
 
-# --- Copy the Phase 4 test apps so the VM can run them -----------------------
+# --- Copy the test apps (Phase 4 + p10hello) so the VM can run them ----------
 # Built by build/p4-apps-build.sh into /root/phase4apps. Missing apps only
 # warn: the image still boots for manual boot-log inspection.
 if [ -d /root/phase4apps ]; then
-  for f in p4hello p4fileio p4linq p4async p4cs14 p4inter p4multi p4net; do
+  for f in p4hello p4fileio p4linq p4async p4cs14 p4inter p4multi p4net p10hello; do
     if [ -f "/root/phase4apps/$f.dll" ]; then
       mcopy -o -i "$DST" "/root/phase4apps/$f.dll" "::/apps/$f.dll"
     else
