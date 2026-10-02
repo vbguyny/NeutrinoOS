@@ -68,7 +68,7 @@ public static class Program
     private static void Walk(string dir, string pattern)
     {
         string[] entries = Directory.GetFileSystemEntries(dir);
-        Util.Sort(entries);
+        Util.SortIgnoreCase(entries);
 
         for (int i = 0; i < entries.Length; i++)
         {

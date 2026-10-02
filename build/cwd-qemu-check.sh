@@ -7,6 +7,9 @@
 #   - pwd                 -> /etc
 #   - cat profile         -> file content (relative path read)
 #   - ls ..               -> `apps` (parent-relative path)
+#   - cd /apps; ls        -> alphabetical, case-insensitive order:
+#       root:  apps < EFI < etc   (opposite of case-sensitive ordinal)
+#       /apps: hello.dll < p10hello.dll < p4async.dll
 #   - cd /apps; find -name p10*   -> p10hello (find defaults to the cwd)
 #   - run p10hello.dll    -> 'Hello, Again!' (relative `run`)
 #   - no 'no such directory' errors
@@ -56,6 +59,7 @@ send 'pwd'
 send 'cat profile'
 send 'ls ..'
 send 'cd /apps'
+send 'ls'
 send 'find -name p10*'
 send 'run p10hello.dll'
 send 'Again'
@@ -87,6 +91,30 @@ check "cat profile reads a relative path (profiles from cwd)" 'export TERM=vt100
 check "ls .. lists the parent (/ -> apps)" '^apps$'
 check "find defaults to the cwd (p10hello under /apps)" 'p10hello'
 check "run with a relative path (p10hello.dll)" 'Hello, Again!'
+
+# Alphabetical ordering (see header): line numbers must ascend.
+line_of() { grep -nE "$1" "$CLEAN" | head -1 | cut -d: -f1; }
+L_APPS=$(line_of '^apps$')
+L_EFI=$(line_of '^EFI$')
+L_ETC=$(line_of '^etc$')
+if [ -n "$L_APPS" ] && [ -n "$L_EFI" ] && [ -n "$L_ETC" ] &&
+   [ "$L_APPS" -lt "$L_EFI" ] && [ "$L_EFI" -lt "$L_ETC" ]; then
+    echo "  [PASS] ls is case-insensitive alphabetical (apps < EFI < etc)"
+else
+    echo "  [FAIL] ls root order (apps=$L_APPS EFI=$L_EFI etc=$L_ETC)"
+    fail=$((fail + 1))
+fi
+L_HELLO=$(line_of '^hello\.dll$')
+L_P10=$(line_of '^p10hello\.dll$')
+L_P4A=$(line_of '^p4async\.dll$')
+if [ -n "$L_HELLO" ] && [ -n "$L_P10" ] && [ -n "$L_P4A" ] &&
+   [ "$L_HELLO" -lt "$L_P10" ] && [ "$L_P10" -lt "$L_P4A" ]; then
+    echo "  [PASS] ls /apps is alphabetical (hello.dll < p10hello.dll < p4async.dll)"
+else
+    echo "  [FAIL] ls /apps order (hello=$L_HELLO p10hello=$L_P10 p4async=$L_P4A)"
+    fail=$((fail + 1))
+fi
+
 if grep -q 'no such directory' "$CLEAN"; then
     echo "  [FAIL] 'no such directory' errors present:"
     grep -n 'no such directory' "$CLEAN" | head -5

@@ -5,9 +5,11 @@
 //   -a   include . and .. entries
 //
 // NeutrinoOS notes: entries are listed one per line (no column
-// packing), sorted ordinally; "type" is 'd' for directories, "-"
-// otherwise; file sizes come from File.GetFileSize (the boot FAT
-// volume has no timestamps, so ls -l does not show dates).
+// packing), sorted alphabetically (case-insensitive - FAT mixes
+// uppercase 8.3 names with preserved case); "type" is 'd' for
+// directories, "-" otherwise; file sizes come from
+// File.GetFileSize (the boot FAT volume has no timestamps, so ls -l
+// does not show dates).
 
 using System;
 using System.IO;
@@ -84,7 +86,7 @@ public static class Program
                 continue;
             }
 
-            Util.Sort(entries);
+            Util.SortIgnoreCase(entries);
 
             if (showAll)
             {

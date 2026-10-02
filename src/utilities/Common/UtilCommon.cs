@@ -7,7 +7,8 @@
 //
 // korlib constraints (NeutrinoOS's IL BCL subset) shape these helpers:
 //   - string.Split is not implemented: Util.Split provides it.
-//   - Array.Sort is not implemented: Util.Sort provides an ordinal sort.
+//   - Array.Sort is not implemented: Util.Sort / Util.SortIgnoreCase
+//     provide ordinal and case-insensitive-alphabetical sorts.
 //   - int.Parse is not implemented: Util.TryParseInt parses manually.
 
 using System;
@@ -132,9 +133,53 @@ public static class Util
         return a.Length < b.Length ? -1 : 1;
     }
 
-    /// <summary>Case-insensitive ordinal comparison.</summary>
+    /// <summary>Case-insensitive ordinal comparison (ASCII folding, no allocations).</summary>
     public static int CompareIgnoreCase(string a, string b)
-        => Compare(a.ToLower(), b.ToLower());
+    {
+        int n = a.Length < b.Length ? a.Length : b.Length;
+        for (int i = 0; i < n; i++)
+        {
+            char ca = a[i];
+            char cb = b[i];
+            if (ca >= 'a' && ca <= 'z') ca = (char)(ca - 32);
+            if (cb >= 'a' && cb <= 'z') cb = (char)(cb - 32);
+            if (ca != cb)
+                return ca < cb ? -1 : 1;
+        }
+        if (a.Length == b.Length)
+            return 0;
+        return a.Length < b.Length ? -1 : 1;
+    }
+
+    /// <summary>
+    /// In-place insertion sort for directory listings: alphabetical,
+    /// case-insensitive (FAT mixes uppercase 8.3 names with preserved
+    /// case), with a case-sensitive tiebreak so equally spelled names
+    /// stay deterministic (uppercase first). Array.Sort is not in korlib.
+    /// </summary>
+    public static void SortIgnoreCase(string[] items)
+    {
+        for (int i = 1; i < items.Length; i++)
+        {
+            string key = items[i];
+            int j = i - 1;
+            while (j >= 0 && CompareListing(items[j], key) > 0)
+            {
+                items[j + 1] = items[j];
+                j--;
+            }
+            items[j + 1] = key;
+        }
+    }
+
+    /// <summary>Comparison behind SortIgnoreCase: fold case, then raw tiebreak.</summary>
+    private static int CompareListing(string a, string b)
+    {
+        int c = CompareIgnoreCase(a, b);
+        if (c != 0)
+            return c;
+        return Compare(a, b);
+    }
 
     /// <summary>In-place insertion sort (ordinal) - Array.Sort is not in korlib.</summary>
     public static void Sort(string[] items)
