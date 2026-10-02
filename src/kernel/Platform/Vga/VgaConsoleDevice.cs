@@ -30,6 +30,14 @@ public sealed class VgaConsoleDevice : IConsoleDevice
     private readonly char[] _promptTail = new char[PromptTailCapacity];
     private int _promptTailLength;
 
+    // Minimal ANSI state for the raw echo path: the line discipline
+    // echoes ESC[K (erase row) and ESC[{n}A (cursor up) for wrapped-line
+    // redraws (see LineDiscipline.RedrawBegin). Deliberately separate from
+    // the Write() parser state so interrupt-context echo never corrupts
+    // output-path parsing.
+    private int _echoEscState;      // 0 = ground, 1 = saw ESC, 2 = inside CSI
+    private int _echoCsiParam;
+
     private int _foreground = -1;
     private int _background = -1;
 
@@ -180,14 +188,49 @@ public sealed class VgaConsoleDevice : IConsoleDevice
     }
 
     /// <summary>
-    /// Raw byte echo entry used by the line discipline (no ANSI parsing).
-    /// Called from interrupt context, so it must not block; VGA writes are
-    /// plain framebuffer memory stores. Echo bytes are NOT tracked in the
-    /// prompt tail: the tail holds the shell's written output (the prompt)
-    /// only, and redraws account for echoed text via the edit buffer.
+    /// Raw byte echo entry used by the line discipline. Printable bytes,
+    /// CR/LF/BS and the two CSI sequences used by wrapped-line redraws
+    /// (ESC[K = erase row, ESC[{n}A = cursor up) are applied; other escape
+    /// sequences are swallowed. Called from interrupt context, so it must
+    /// not block; VGA writes are plain framebuffer memory stores. Echo
+    /// bytes are NOT tracked in the prompt tail: the tail holds the
+    /// shell's written output (the prompt) only, and redraws account for
+    /// echoed text via the edit buffer.
     /// </summary>
     public void EchoRawByte(byte b)
     {
+        switch (_echoEscState)
+        {
+            case 1:     // after ESC
+                if (b == (byte)'[')
+                {
+                    _echoEscState = 2;
+                    _echoCsiParam = 0;
+                    return;
+                }
+                _echoEscState = 0;
+                break;      // lone ESC: drop it, process b normally
+
+            case 2:     // inside CSI: digits, then the final byte
+                if (b >= (byte)'0' && b <= (byte)'9')
+                {
+                    _echoCsiParam = _echoCsiParam * 10 + (b - (byte)'0');
+                    return;
+                }
+                _echoEscState = 0;
+                if (b == (byte)'A')
+                    VgaTextDriver.MoveRelative(0, -(_echoCsiParam < 1 ? 1 : _echoCsiParam));
+                else if (b == (byte)'K')
+                    VgaTextDriver.ClearToEndOfLine();
+                return;
+        }
+
+        if (b == 0x1B)
+        {
+            _echoEscState = 1;
+            return;
+        }
+
         VgaTextDriver.WriteRawByte(b);
     }
 

@@ -919,8 +919,13 @@ public static unsafe class LineDiscipline
         {
             if (newLen == -2)
             {
-                // Candidate list was printed; redraw prompt + current line.
-                RedrawBegin();
+                // Candidate list was printed; the cursor sits at the start
+                // of a fresh row below it. Print the prompt + current line
+                // there - nothing to erase, and no upward walk: the rows
+                // above hold the candidate list, not the edited line.
+                CalcPromptTailLength(out char[] prompt, out int promptLen);
+                for (int i = 0; i < promptLen; i++)
+                    EchoAsciiChar(prompt[i]);
                 for (int i = 0; i < _editLength; i++)
                     EchoAsciiChar(_edit[i]);
             }
@@ -947,18 +952,54 @@ public static unsafe class LineDiscipline
     /// <summary>
     /// Erases the current line (prompt + text) and re-prints the prompt.
     /// The caller then echoes the replacement text.
+    ///
+    /// Redraw invariant: the cursor sits at the end of the displayed line,
+    /// which starts at column 0 and may wrap over several rows. The erase
+    /// moves to the start of the cursor's row, erases it, and walks up one
+    /// row at a time - ESC[K erases from the cursor to the end of the row
+    /// on both the serial terminals and the VGA text console (which uses
+    /// the same delayed-wrap model).
     /// </summary>
     private static void RedrawBegin()
     {
         CalcPromptTailLength(out char[] prompt, out int promptLen);
 
         int oldLen = promptLen + _editLength;
+        int wrappedRows = oldLen > 0 ? (oldLen - 1) / ConsoleWidth() : 0;
+
         EchoAscii(0x0D);
-        for (int i = 0; i < oldLen; i++)
-            EchoAscii((byte)' ');
-        EchoAscii(0x0D);
+        EchoEraseRow();
+        for (int i = 0; i < wrappedRows; i++)
+        {
+            EchoAscii(0x1B);
+            EchoAscii((byte)'[');
+            EchoAscii((byte)'1');
+            EchoAscii((byte)'A');
+            EchoEraseRow();
+        }
+
         for (int i = 0; i < promptLen; i++)
             EchoAsciiChar(prompt[i]);
+    }
+
+    /// <summary>Emits ESC[K (erase from the cursor to the end of its row).</summary>
+    private static void EchoEraseRow()
+    {
+        EchoAscii(0x1B);
+        EchoAscii((byte)'[');
+        EchoAscii((byte)'K');
+    }
+
+    /// <summary>
+    /// Console width for the wrapped-redraw math: the active input
+    /// device's (both consoles are 80 columns wide today).
+    /// </summary>
+    private static int ConsoleWidth()
+    {
+        var device = ConsoleAbstractionLayer.Devices.ActiveInput;
+        if (device != null && device.WindowWidth > 0)
+            return device.WindowWidth;
+        return 80;
     }
 
     private static readonly char[] _promptScratch = new char[64];

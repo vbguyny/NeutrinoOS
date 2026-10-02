@@ -62,6 +62,14 @@ public static unsafe class VgaTextDriver
     private static bool _mode80x50;
     private static bool _blinkEnabled = true;
 
+    /// <summary>
+    /// Delayed-wrap state (standard terminal behavior): after writing the
+    /// last column the cursor rests there, and the next printable
+    /// character advances the line first. Keeps VGA wrapping identical to
+    /// serial terminals and to the line discipline's wrapped-redraw math.
+    /// </summary>
+    private static bool _wrapPending;
+
     /// <summary>Raw text framebuffer pointer (identity-mapped physical 0xB8000).</summary>
     private static byte* Buffer => (byte*)TextBufferPhysicalAddress;
 
@@ -113,6 +121,7 @@ public static unsafe class VgaTextDriver
         _columns = 80;
         _attribute = DefaultAttribute;
         _blinkEnabled = true;
+        _wrapPending = false;
         LoadFonts();
         Clear();
         Uart16550.Write("[VGA-c]");
@@ -457,6 +466,7 @@ public static unsafe class VgaTextDriver
         if (y >= _rows) y = _rows - 1;
         _cursorX = x;
         _cursorY = y;
+        _wrapPending = false;
         UpdateHardwareCursor();
     }
 
@@ -491,7 +501,9 @@ public static unsafe class VgaTextDriver
     /// <summary>
     /// Writes one raw byte at the cursor: 0x0D = CR, 0x0A = LF,
     /// 0x08 = backspace, everything else is a printable CP437 cell.
-    /// Wraps at the right edge and scrolls at the bottom.
+    /// Wraps delayed (standard terminal behavior: the cursor rests on the
+    /// last column; the next printable character advances the line first)
+    /// and scrolls at the bottom.
     /// </summary>
     public static void WriteRawByte(byte b) => WriteRawByteCore(b, true);
 
@@ -517,12 +529,14 @@ public static unsafe class VgaTextDriver
                 else
                 {
                     _cursorX = 0;
+                    _wrapPending = false;
                 }
                 return;
             case 0x0A:
                 AdvanceLine();
                 return;
             case 0x08:
+                _wrapPending = false;
                 if (_cursorX > 0)
                 {
                     if (updateCursor)
@@ -536,18 +550,27 @@ public static unsafe class VgaTextDriver
                 }
                 return;
             default:
+                // Delayed wrap: a pending wrap advances the line before the
+                // next printable character is stored (the cursor sat on
+                // the last column, not on the next row).
+                if (_wrapPending)
+                {
+                    _wrapPending = false;
+                    _cursorX = 0;
+                    AdvanceLine();
+                }
+
                 PutChar(_cursorX, _cursorY, b, _attribute);
                 _cursorX++;
                 if (_cursorX >= _columns)
                 {
-                    _cursorX = 0;
-                    AdvanceLine();
+                    // Last column: rest there; advance only when the next
+                    // printable character arrives.
+                    _cursorX = _columns - 1;
+                    _wrapPending = true;
                 }
-                else
-                {
-                    if (updateCursor)
-                        UpdateHardwareCursor();
-                }
+                if (updateCursor)
+                    UpdateHardwareCursor();
                 return;
         }
     }
@@ -555,6 +578,7 @@ public static unsafe class VgaTextDriver
     private static void AdvanceLine()
     {
         _cursorX = 0;
+        _wrapPending = false;
         if (_cursorY + 1 >= _rows)
         {
             ScrollUp();
