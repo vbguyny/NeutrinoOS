@@ -151,6 +151,13 @@ public sealed class ConsoleMultiplexer
             DeviceAt(i)!.Clear();
     }
 
+    /// <summary>Resets the tracked prompt tail on all registered devices.</summary>
+    public void ResetPromptTails()
+    {
+        for (int i = 0; i < _deviceCount; i++)
+            DeviceAt(i)!.ResetPromptTail();
+    }
+
     /// <summary>Sets the cursor position on all registered devices.</summary>
     public void SetCursorPosition(int left, int top)
     {

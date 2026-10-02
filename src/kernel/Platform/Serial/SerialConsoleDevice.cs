@@ -134,6 +134,12 @@ public sealed class SerialConsoleDevice : IConsoleDevice
         return count;
     }
 
+    /// <summary>Discards the tracked prompt tail (see IConsoleDevice).</summary>
+    public void ResetPromptTail()
+    {
+        _promptTailLength = 0;
+    }
+
     // ==================== Input ====================
 
     /// <summary>Whether a decoded key press is waiting.</summary>

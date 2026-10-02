@@ -182,12 +182,13 @@ public sealed class VgaConsoleDevice : IConsoleDevice
     /// <summary>
     /// Raw byte echo entry used by the line discipline (no ANSI parsing).
     /// Called from interrupt context, so it must not block; VGA writes are
-    /// plain framebuffer memory stores.
+    /// plain framebuffer memory stores. Echo bytes are NOT tracked in the
+    /// prompt tail: the tail holds the shell's written output (the prompt)
+    /// only, and redraws account for echoed text via the edit buffer.
     /// </summary>
     public void EchoRawByte(byte b)
     {
         VgaTextDriver.WriteRawByte(b);
-        TrackChar((char)b);
     }
 
     /// <summary>
@@ -234,6 +235,12 @@ public sealed class VgaConsoleDevice : IConsoleDevice
         for (int i = 0; i < count; i++)
             destination[i] = _promptTail[i];
         return count;
+    }
+
+    /// <summary>Discards the tracked prompt tail (see IConsoleDevice).</summary>
+    public void ResetPromptTail()
+    {
+        _promptTailLength = 0;
     }
 
     // ==================== ANSI CSI parsing ====================

@@ -74,4 +74,12 @@ public interface IConsoleDevice
     /// destination for line-redraw purposes. Returns the number of chars.
     /// </summary>
     int GetPromptTail(Span<char> destination);
+
+    /// <summary>
+    /// Discards the tracked prompt tail. The line discipline calls this
+    /// when a line completes: everything written from then on (the next
+    /// command's output and prompt) rebuilds the tail, so a redraw of the
+    /// next line never reprints text from a previous line.
+    /// </summary>
+    void ResetPromptTail();
 }

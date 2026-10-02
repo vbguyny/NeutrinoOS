@@ -650,6 +650,12 @@ public static unsafe class LineDiscipline
         _editLength = 0;
         _historyPos = -1;
         _historySavedLength = 0;
+
+        // The line is complete: drop the tracked prompt tail on every
+        // console. Everything written from here on (the command's output
+        // and the next prompt) rebuilds the tail; a redraw of the next
+        // line must never reprint text from the line that just ended.
+        ConsoleAbstractionLayer.Devices.ResetPromptTails();
     }
 
     private static bool TryDequeueLineInto(Span<char> destination, out int length, out byte type)
