@@ -733,4 +733,494 @@ public static unsafe class VirtioBlkEntry
             result = local;
         }
     }
+
+    // ==================== Boot-volume (FAT) helpers ====================
+    // The kernel's boot-file bridge (Platform.FileExports) and
+    // Platform.AssemblyRunner JIT-resolve a storage driver entry exposing
+    // this exact method set; Platform.BootStorage picks the driver whose
+    // device carries the FAT boot volume. On QEMU virtio boots the AHCI
+    // driver has no device, so these provide the FAT boot-volume path for
+    // System.IO (cd/ls/cat/...), utilities and `run` - same shapes and
+    // error codes as AhciEntry.
+
+    // GC-anchored state across the mount allocations: the path string and
+    // the filesystem/handle objects are kept in static roots because the
+    // Tier-0 JIT's GC info can miss locals created inside JIT-compiled
+    // frames (see AhciEntry for the full incident).
+    private static string? _pinnedBootPath;
+    private static FatFileSystem? _pinnedFat;
+    private static IFileHandle? _pinnedFile;
+    private static IDirectoryHandle? _pinnedDir;
+
+    /// <summary>
+    /// 1 when the bound virtio-blk device carries a FAT filesystem (the
+    /// boot volume), else 0. Probed once by Platform.BootStorage when it
+    /// chooses between AHCI and virtio-blk.
+    /// </summary>
+    public static int HasBootVolume()
+    {
+        if (_device == null)
+            return 0;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        bool ok = fat.Probe(_device);
+        fat.Shutdown();
+        return ok ? 1 : 0;
+    }
+
+    /// <summary>
+    /// Get the size of a file on the boot (FAT) volume, or a negative
+    /// error code. Used by the kernel's AssemblyRunner to size the read
+    /// buffer for `run &lt;path&gt;` before calling ReadBootFile.
+    ///
+    /// The path is a UTF-16 buffer of pathLen chars (not necessarily
+    /// NUL-terminated). The managed String is created here (JIT-compiled
+    /// code) so the GC keeps it alive - the kernel must not pass managed
+    /// objects across this boundary.
+    ///
+    /// NOTE: the string is built with the explicit 3-arg char*
+    /// constructor on purpose: the kernel's JIT bridges System.String's
+    /// char* ctor to a fixed 3-parameter factory, so the 1-arg
+    /// `new string(char*)` overload would receive garbage for
+    /// startIndex/length.
+    /// </summary>
+    public static int GetBootFileSize(char* pathBuf, int pathLen)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+        _pinnedFile = file;
+
+        int length = (int)file.Length;
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return length;
+    }
+
+    /// <summary>
+    /// Reads the boot (FAT) volume's geometry and free space for the df
+    /// utility. Writes total/free bytes through the pointer outputs and
+    /// the volume label (UTF-16, truncated) into the caller's buffer;
+    /// returns the label length, or a negative error code.
+    /// </summary>
+    public static int GetBootVolumeStats(char* labelBuf, int labelCapacity,
+                                         ulong* totalBytes, ulong* freeBytes)
+    {
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        *totalBytes = fat.TotalBytes;
+        *freeBytes = fat.FreeBytes;
+
+        string label = fat.VolumeLabel ?? "";
+        int len = label.Length;
+        if (len > labelCapacity)
+            len = labelCapacity;
+        for (int i = 0; i < len; i++)
+            labelBuf[i] = label[i];
+
+        fat.Unmount();
+        fat.Shutdown();
+        return len;
+    }
+
+    /// <summary>
+    /// Read a file from the boot (FAT) volume into a caller-provided
+    /// buffer. Returns the number of bytes read, or a negative error
+    /// code. The path is a UTF-16 buffer of pathLen chars (see
+    /// GetBootFileSize).
+    /// </summary>
+    public static int ReadBootFile(char* pathBuf, int pathLen, byte* buffer, int capacity)
+    {
+        if (pathBuf == null || pathLen <= 0 || buffer == null || capacity <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+        _pinnedFile = file;
+
+        int length = (int)file.Length;
+        if (length > capacity)
+        {
+            file.Dispose();
+            fat.Unmount();
+            fat.Shutdown();
+            return -4;
+        }
+
+        int bytesRead = file.Read(buffer, length);
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return bytesRead;
+    }
+
+    /// <summary>
+    /// Write (or append) a buffer to a file on the boot (FAT) volume,
+    /// creating the file when missing. Returns the number of bytes
+    /// written, or a negative error code. Used by the kernel's System.IO
+    /// bridge (FileBootWrite export). The path is a UTF-16 buffer of
+    /// pathLen chars (see GetBootFileSize).
+    /// </summary>
+    public static int WriteBootFile(char* pathBuf, int pathLen, byte* data, int count, int append)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+        if (data == null && count > 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path,
+            append != 0 ? FileMode.Append : FileMode.Create,
+            FileAccess.Write, out file);
+        if (openResult != FileResult.Success && append != 0)
+        {
+            // AppendAllText semantics: create the file when it is missing.
+            openResult = fat.OpenFile(path, FileMode.Create, FileAccess.Write, out file);
+        }
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+
+        _pinnedFile = file;
+
+        int written = count > 0 ? file.Write(data, count) : 0;
+        file.Flush();
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+
+        if (written != count)
+            return -4;
+        return written;
+    }
+
+    /// <summary>
+    /// Delete a file from the boot (FAT) volume. Returns 0 on success,
+    /// -1 when the file does not exist, other negative values on error.
+    /// </summary>
+    public static int DeleteBootFile(char* pathBuf, int pathLen)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        var result = fat.DeleteFile(path);
+        fat.Unmount();
+        fat.Shutdown();
+
+        if (result == FileResult.Success)
+            return 0;
+        if (result == FileResult.NotFound)
+            return -1;
+        return -2;
+    }
+
+    /// <summary>
+    /// Create a directory on the boot (FAT) volume. Returns 0 on success
+    /// (including when it already exists), negative values on error.
+    /// </summary>
+    public static int CreateBootDir(char* pathBuf, int pathLen)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        var result = fat.CreateDirectory(path);
+        fat.Unmount();
+        fat.Shutdown();
+
+        if (result == FileResult.Success || result == FileResult.AlreadyExists)
+            return 0;
+        return -2;
+    }
+
+    /// <summary>
+    /// Delete an empty directory from the boot (FAT) volume. Returns 0
+    /// on success, -1 when missing, other negative values on error
+    /// (including a non-empty directory).
+    /// </summary>
+    public static int DeleteBootDir(char* pathBuf, int pathLen)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        var result = fat.DeleteDirectory(path);
+        fat.Unmount();
+        fat.Shutdown();
+
+        if (result == FileResult.Success)
+            return 0;
+        if (result == FileResult.NotFound)
+            return -1;
+        return -2;
+    }
+
+    /// <summary>
+    /// Check whether a path exists on the boot (FAT) volume. Returns 1
+    /// when it exists with the requested kind (wantDirectory: 0 = file,
+    /// 1 = directory), 0 otherwise; negative values when the volume is
+    /// unavailable. Used by the System.IO bridges (File.Exists /
+    /// Directory.Exists).
+    /// </summary>
+    public static int BootPathExists(char* pathBuf, int pathLen, int wantDirectory)
+    {
+        if (pathBuf == null || pathLen <= 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -1;
+        }
+
+        int exists = 0;
+        if (wantDirectory != 0)
+        {
+            IDirectoryHandle? dir;
+            if (fat.OpenDirectory(path, out dir) == FileResult.Success && dir != null)
+            {
+                exists = 1;
+                _pinnedDir = dir;
+                dir.Dispose();
+                _pinnedDir = null;
+            }
+        }
+        else
+        {
+            IFileHandle? file;
+            if (fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file) == FileResult.Success && file != null)
+            {
+                exists = 1;
+                _pinnedFile = file;
+                file.Dispose();
+                _pinnedFile = null;
+            }
+        }
+
+        fat.Unmount();
+        fat.Shutdown();
+        return exists;
+    }
+
+    /// <summary>
+    /// Enumerate a boot (FAT) directory entry by index ("." and ".."
+    /// skipped; the FAT driver's directory reader already skips long-name
+    /// and volume-label entries, so names arrive in 8.3 short form).
+    /// Returns the entry-name length in chars (clipped copy into nameBuf,
+    /// nameCapacity chars) and writes 1/0 to isDir; -1 at the end of the
+    /// listing, other negative values on error.
+    /// </summary>
+    public static int ListBootDirEntry(char* pathBuf, int pathLen, int index, char* nameBuf, int nameCapacity, int* isDir)
+    {
+        if (pathBuf == null || pathLen <= 0 || nameBuf == null || nameCapacity <= 0 || isDir == null)
+            return -2;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -2;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IDirectoryHandle? dir;
+        var openResult = fat.OpenDirectory(path, out dir);
+        if (openResult != FileResult.Success || dir == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -2;
+        }
+        _pinnedDir = dir;
+
+        int result = -2;
+        int i = 0;
+        for (;;)
+        {
+            FileInfo? info = dir.ReadNext();
+            if (info == null)
+            {
+                result = -1; // end of listing
+                break;
+            }
+
+            if (i == index)
+            {
+                string name = info.Name;
+                int length = name.Length;
+                int copy = length > nameCapacity ? nameCapacity : length;
+                for (int c = 0; c < copy; c++)
+                    nameBuf[c] = name[c];
+                *isDir = info.IsDirectory ? 1 : 0;
+                result = length;
+                break;
+            }
+            i++;
+        }
+
+        dir.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return result;
+    }
 }

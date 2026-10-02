@@ -5,12 +5,12 @@
 // (FileBootRead, FileBootWrite, ..., DirBootEntry) are bound to by the
 // korlib token registry (Kernel.BuildFileTokenRegistry).
 //
-// The actual I/O runs in the JIT-loaded AHCI/FAT driver: each export
-// calls the driver's AhciEntry helper of the same shape through a
-// function pointer that is JIT-compiled once (lazily, on first use -
-// after the driver has been bound) and cached in a static field. This
-// mirrors how Platform.AssemblyRunner reads `run` images from the boot
-// volume.
+// The actual I/O runs in the JIT-loaded boot-volume driver (AHCI/FAT or
+// virtio-blk/FAT, selected by Platform.BootStorage): each export calls
+// the selected entry's helper of the same shape through a function
+// pointer that is JIT-compiled once (lazily, on first use - after the
+// driver has been bound) and cached in a static field. This mirrors how
+// Platform.AssemblyRunner reads `run` images from the boot volume.
 //
 // Call convention: the exports are called from JIT-compiled frames with
 // the platform ABI; arguments are raw pointers (char* UTF-16 paths,
@@ -161,8 +161,9 @@ public static unsafe class FileExports
     }
 
     /// <summary>
-    /// Find and JIT-compile the AHCI driver file helpers (once per boot;
-    /// requires the driver to be bound first). Reentrancy: compiling the
+    /// Find and JIT-compile the boot-volume driver file helpers (once per
+    /// boot; requires a driver with a FAT volume to be bound first - see
+    /// Platform.BootStorage). Reentrancy: compiling the
     /// driver helpers can itself trigger assembly resolution, which the
     /// /lib on-demand loader routes back through this class - the guard
     /// makes that inner call fail fast instead of recursing.
@@ -189,13 +190,9 @@ public static unsafe class FileExports
         if (_fnGetBootFileSize != null && _fnListBootDirEntry != null && _fnGetBootVolumeStats != null)
             return true;
 
-        uint asmId = Kernel.AhciDriverAssemblyId;
-        if (asmId == AssemblyLoader.InvalidAssemblyId)
-            return false;
-
-        uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            asmId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
-        if (typeToken == 0)
+        // Boot-volume driver selection: AHCI (boot disk on SATA) or
+        // virtio-blk (QEMU virtio boots) - see Platform.BootStorage.
+        if (!BootStorage.TryResolve(out uint asmId, out uint typeToken))
             return false;
 
         if (_fnGetBootFileSize == null)

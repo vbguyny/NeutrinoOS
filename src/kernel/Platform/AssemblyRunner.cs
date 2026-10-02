@@ -355,21 +355,16 @@ public static unsafe class AssemblyRunner
     }
 
     /// <summary>
-    /// Find and JIT-compile the AHCI driver's boot-volume read helpers
-    /// (once per boot).
+    /// Find and JIT-compile the boot-volume driver's read helpers (AHCI
+    /// or virtio-blk, selected by Platform.BootStorage; once per boot).
     /// </summary>
     private static bool EnsureBootVolumeHelpers()
     {
         if (_fnGetBootFileSize != null && _fnReadBootFile != null)
             return true;
 
-        uint asmId = Kernel.AhciDriverAssemblyId;
-        if (asmId == AssemblyLoader.InvalidAssemblyId)
-            return false;
-
-        uint typeToken = AssemblyLoader.FindTypeDefByFullName(
-            asmId, "NeutrinoOS.Drivers.Storage.Ahci", "AhciEntry");
-        if (typeToken == 0)
+        // Boot-volume driver selection (AHCI or virtio-blk); see BootStorage.
+        if (!BootStorage.TryResolve(out uint asmId, out uint typeToken))
             return false;
 
         uint sizeToken = AssemblyLoader.FindMethodDefByName(asmId, typeToken, "GetBootFileSize");

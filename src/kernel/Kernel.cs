@@ -87,10 +87,18 @@ public static unsafe class Kernel
     private static uint _neutrinoOsNetId;
 
     /// <summary>
-    /// Assembly ID of the AHCI driver, used by Platform.AssemblyRunner to
-    /// read files (e.g. /apps/*.dll) from the boot volume at runtime.
+    /// Assembly ID of the AHCI driver. Platform.BootStorage probes it
+    /// (first) when selecting the boot-volume driver; System.IO and `run`
+    /// read files through the selected driver.
     /// </summary>
     public static uint AhciDriverAssemblyId => _ahciDriverId;
+
+    /// <summary>
+    /// Assembly ID of the virtio-blk driver. Platform.BootStorage probes
+    /// it (after AHCI), so QEMU virtio-blk boots expose System.IO and
+    /// `run` file access as well.
+    /// </summary>
+    public static uint VirtioBlkDriverAssemblyId => _virtioBlkDriverId;
 
     /// <summary>
     /// Assembly ID of TestSupport, used by Platform.AssemblyRunner for

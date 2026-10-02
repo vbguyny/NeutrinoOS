@@ -315,6 +315,25 @@ public static unsafe class AhciEntry
     }
 
     /// <summary>
+    /// 1 when this driver carries a FAT volume usable as the boot volume
+    /// (used by Platform.BootStorage to choose between AHCI and
+    /// virtio-blk). Unlike GetBootFatDevice this never falls back to a
+    /// non-FAT last device, so an exFAT data disk does not count.
+    /// </summary>
+    public static int HasBootVolume()
+    {
+        var device = GetBootFatDevice();
+        if (device == null)
+            return 0;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        bool ok = fat.Probe(device);
+        fat.Shutdown();
+        return ok ? 1 : 0;
+    }
+
+    /// <summary>
     /// Test reading from the first AHCI device.
     /// </summary>
     public static int TestRead()
