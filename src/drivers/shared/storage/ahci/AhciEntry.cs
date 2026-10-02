@@ -359,13 +359,37 @@ public static unsafe class AhciEntry
     }
 
     /// <summary>
-    /// Test writing to the first AHCI device.
+    /// Test writing to a scratch AHCI device. Returns 1 on success or
+    /// when skipped (single-disk system), 0 on failure.
     /// </summary>
     public static int TestWrite()
     {
-        var device = GetFirstDevice();
+        // Never write the drive that carries the FAT boot volume: sector
+        // 10000 is only "safe" while the filesystem stays below it. The
+        // deploy image grew past ~5 MB, so the old boot-disk write began
+        // corrupting whatever file owned that cluster - it silently
+        // overwrote a sector of NeutrinoOS.DDK.dll on every boot of a
+        // single-disk system, which broke the JIT's import-name reads
+        // (PInvoke not found / Unknown opcode 0x28 / [run] errors).
+        var bootDevice = GetBootFatDevice();
+        AhciDriver? device = null;
+        for (int i = _deviceCount - 1; i >= 0; i--)
+        {
+            var d = _devices[i];
+            if (d == null || d == bootDevice)
+                continue;
+            // The test writes sector 10000; a smaller device (e.g. a stub
+            // or CD port) cannot hold the target sector.
+            if (d.BlockCount <= 10000)
+                continue;
+            device = d;
+            break;
+        }
         if (device == null)
-            return 0;
+        {
+            Debug.WriteLine("[AhciIO] TestWrite skipped: no scratch device (single-disk system)");
+            return 1;
+        }
 
         // Allocate buffer
         uint blockSize = device.BlockSize;
@@ -380,8 +404,8 @@ public static unsafe class AhciEntry
         for (uint i = 0; i < blockSize; i++)
             buffer[i] = (byte)(i & 0xFF);
 
-        // Write to sector 10000 (in data area, safe location)
-        // Note: FAT32 on 64MB disk has first data sector at ~2050
+        // Write to sector 10000 of the scratch device (well past the
+        // small scratch filesystem's metadata)
         int result = device.Write(10000, 1, buffer);
         if (result <= 0)
         {

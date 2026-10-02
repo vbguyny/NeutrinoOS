@@ -3014,9 +3014,23 @@ public static unsafe class Kernel
         DebugConsole.WriteLine(string.Format("[VirtioIO] TestWrite at 0x{0}",
             ((ulong)testWriteResult.CodeAddress).ToString("X", null)));
 
-        // Call TestWrite
-        var testWriteFunc = (delegate* unmanaged<int>)testWriteResult.CodeAddress;
-        int writeResult = testWriteFunc();
+        // Call TestWrite - unless this virtio-blk device carries the boot
+        // volume: sector 1000 lies inside the FAT data area of the
+        // CLI/deploy image, so the write would corrupt live file data
+        // (e.g. the BOOTX64.EFI clusters). The write test only makes
+        // sense on a scratch (test) disk.
+        int writeResult;
+        if (Platform.BootStorage.TryResolve(out uint bootStorageAsmId, out _) &&
+            bootStorageAsmId == _virtioBlkDriverId)
+        {
+            DebugConsole.WriteLine("[VirtioIO] TestWrite skipped: virtio-blk carries the boot volume");
+            writeResult = 1;
+        }
+        else
+        {
+            var testWriteFunc = (delegate* unmanaged<int>)testWriteResult.CodeAddress;
+            writeResult = testWriteFunc();
+        }
 
         if (writeResult == 1)
         {
