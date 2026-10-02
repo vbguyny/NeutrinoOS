@@ -6,10 +6,11 @@
 #   1. the boot banner and the `neutrinoos>` prompt appear on VGA,
 #   2. keystrokes typed on the PS/2 keyboard are echoed on VGA,
 #   3. a submitted line is executed and the result is visible on VGA,
-#   4. a screendump can be captured (kept under build/x64/).
+#   4. a screendump can be captured (kept under the WSL build tree).
 #
-# This mirrors the automated acceptance runner (build/wsl-vga-test.py) but
-# is driven from Windows PowerShell as required by the Phase 3 spec.
+# The image and all artifacts live in the WSL build tree (/root/neutrino,
+# produced by build/wsl-rebuild.sh); the repo tree is only used to locate
+# the rebuild script when -SkipBuild is not passed.
 #
 # Usage:
 #   powershell -File scripts\test-vga.ps1                 # full check
@@ -21,6 +22,7 @@
 param(
     [string]$Distro = "Ubuntu-24.04",
     [string]$WslRepo = "/mnt/d/Projects/Code/NeutrinoOS",
+    [string]$WslBuild = "/root/neutrino",
     [int]$MonitorPort = 5599,
     [int]$BootTimeoutSec = 45,
     [switch]$SkipBuild,
@@ -38,26 +40,7 @@ function Invoke-WslBash {
 
 function Start-NeutrinoQemu {
     $display = if ($WithWindow) { "gtk" } else { "none" }
-    $script = @"
-cd $WslRepo
-pkill -9 qemu-system-x86_64 2>/dev/null || true
-sleep 1
-rm -f /tmp/tv-serial.log build/x64/vga-screen.ppm
-test -f build/x64/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS_4M.fd build/x64/OVMF_VARS.fd
-echo 1 > /tmp/skip-boot-tests
-mdel -i build/x64/neutrinoos.img ::/skip-boot-tests ::/console-vga-off 2>/dev/null || true
-mcopy -o -i build/x64/neutrinoos.img /tmp/skip-boot-tests ::/skip-boot-tests
-nohup qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp 1 \
-  -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-  -drive if=pflash,format=raw,file=build/x64/OVMF_VARS.fd \
-  -drive file=build/x64/neutrinoos.img,format=raw,if=virtio \
-  -vga std -display $display \
-  -serial file:/tmp/tv-serial.log \
-  -monitor tcp:127.0.0.1:$MonitorPort,server,nowait \
-  -no-reboot -no-shutdown >/tmp/tv-qemu.out 2>&1 &
-echo started
-"@
-    Invoke-WslBash $script.Replace("`r", "")
+    Invoke-WslBash "bash $WslRepo/build/test-vga-boot.sh $MonitorPort $display $WslBuild"
 }
 
 # ---------------- monitor client ----------------
@@ -181,10 +164,10 @@ try {
     [void]$monitor.Send("sendkey ret")
     Check "PS/2 keystrokes are echoed and executed on VGA" (Wait-VgaFor $monitor "echo hi" 15)
 
-    [void]$monitor.Send("screendump $WslRepo/build/x64/vga-screen.ppm")
+    [void]$monitor.Send("screendump $WslBuild/build/x64/vga-screen.ppm")
     Start-Sleep -Seconds 1
-    $dumpOk = (Invoke-WslBash "test -s $WslRepo/build/x64/vga-screen.ppm && echo yes || echo no") -match "yes"
-    Check "screendump captured (build/x64/vga-screen.ppm)" $dumpOk
+    $dumpOk = (Invoke-WslBash "test -s $WslBuild/build/x64/vga-screen.ppm && echo yes || echo no") -match "yes"
+    Check "screendump captured (build/x64/vga-screen.ppm in the WSL tree)" $dumpOk
 
     Write-Host ""
     if ($failures.Count -eq 0) {
@@ -199,7 +182,7 @@ finally {
         $monitor.Close()
     }
     if (-not $KeepRunning) {
-        try { Invoke-WslBash "pkill -9 qemu-system-x86_64 2>/dev/null || true" } catch { }
+        try { Invoke-WslBash "pkill -9 -f qemu-system 2>/dev/null || true" } catch { }
     }
 }
 
