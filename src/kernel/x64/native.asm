@@ -1710,10 +1710,28 @@ ap_trampoline_32:
     mov al, '8'
     out dx, al
 
-    ; Enable long mode in IA32_EFER MSR (bit 8 = LME)
+    ; Enable long mode in IA32_EFER MSR (bit 8 = LME) and NXE (bit 11)
+    ; when the CPU supports NX. The kernel's W^X page tables mark all
+    ; non-image RAM NoExecute (PTE bit 63); with EFER.NXE=0 that bit is
+    ; *reserved* and the very first data access raises #PF (the AP dies
+    ; on its first stack push: #PF -> double fault -> triple fault,
+    ; shutting the VM down). The BSP enables NXE in
+    ; CPUFeatures.EnableNX(); mirror that decision here.
+    mov eax, 0x80000000
+    cpuid
+    xor ebx, ebx                    ; extra EFER bits (none)
+    cmp eax, 0x80000001
+    jb .nx_mask_done
+    mov eax, 0x80000001
+    cpuid
+    test edx, (1 << 20)             ; CPUID.80000001H:EDX.NX
+    jz .nx_mask_done
+    mov ebx, (1 << 11)              ; NXE (No-Execute Enable)
+.nx_mask_done:
     mov ecx, 0xC0000080     ; IA32_EFER MSR
     rdmsr
     or eax, (1 << 8)        ; LME (Long Mode Enable)
+    or eax, ebx             ; NXE when supported
     wrmsr
 
     ; DEBUG: Output '9' to show LME set
