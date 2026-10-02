@@ -2,8 +2,9 @@
 //
 // Implements the System.IO kernel bridge: the [UnmanagedCallersOnly]
 // exports that korlib's System.IO.File / System.IO.Directory primitives
-// (FileBootRead, FileBootWrite, ..., DirBootEntry) are bound to by the
-// korlib token registry (Kernel.BuildFileTokenRegistry).
+// (FileBootRead, FileBootWrite, ..., DirBootEntry, DirBootGetCwd/
+// DirBootSetCwd) are bound to by the korlib token registry
+// (Kernel.BuildFileTokenRegistry).
 //
 // The actual I/O runs in the JIT-loaded boot-volume driver (AHCI/FAT or
 // virtio-blk/FAT, selected by Platform.BootStorage): each export calls
@@ -451,6 +452,44 @@ public static unsafe class FileExports
     }
 
     // ==================== System.IO.Directory exports ====================
+
+    // Current directory shared by the kernel shell and JIT-compiled
+    // utilities (korlib's Directory.Get/SetCurrentDirectory bridge to
+    // these exports, so `cd` is visible to ls/cat/... and vice versa).
+    // Lazily defaults to "/" - no field initializer (a string initializer
+    // would add a static constructor).
+    private static string? _cwd;
+
+    /// <summary>
+    /// Copies the shared current directory into the caller's buffer and
+    /// returns the number of chars copied ("/" before any cd).
+    /// </summary>
+    [UnmanagedCallersOnly(EntryPoint = "DirBootGetCwd")]
+    public static int DirBootGetCwd(char* buffer, int capacity)
+    {
+        if (buffer == null || capacity <= 0)
+            return -1;
+        string cwd = _cwd ?? "/";
+        int len = cwd.Length;
+        if (len > capacity)
+            len = capacity;
+        for (int i = 0; i < len; i++)
+            buffer[i] = cwd[i];
+        return len;
+    }
+
+    /// <summary>
+    /// Stores the shared current directory. Called by korlib's
+    /// Directory.SetCurrentDirectory after it validated the target.
+    /// </summary>
+    [UnmanagedCallersOnly(EntryPoint = "DirBootSetCwd")]
+    public static int DirBootSetCwd(char* path, int pathLen)
+    {
+        if (path == null || pathLen <= 0)
+            return -1;
+        _cwd = new string(path, 0, pathLen);
+        return 0;
+    }
 
     /// <summary>Returns 1 when the boot-volume directory exists, else 0 (negative: no driver).</summary>
     [UnmanagedCallersOnly(EntryPoint = "DirBootExists")]

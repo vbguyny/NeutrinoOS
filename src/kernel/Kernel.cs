@@ -1590,6 +1590,10 @@ public static unsafe class Kernel
             (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootDelete);
         registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootEntry",
             (void*)(delegate* unmanaged<char*, int, int, char*, int, int*, int>)&Platform.FileExports.DirBootEntry);
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootGetCwd",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootGetCwd);
+        registered += RegisterDDKMethod(korlib, "System.IO", "Directory", "DirBootSetCwd",
+            (void*)(delegate* unmanaged<char*, int, int>)&Platform.FileExports.DirBootSetCwd);
 
         DebugConsole.Write("[Kernel] Registered ");
         DebugConsole.WriteDecimal(registered);
@@ -1782,6 +1786,20 @@ public static unsafe class Kernel
                 if (bindSuccess)
                 {
                     DebugConsole.WriteLine("[Drivers]   Bind successful");
+
+                    // Disable PCI INTx (command register bit 10). The
+                    // virtio-blk driver polls its queues and never reads
+                    // the device ISR to deassert the interrupt line, so a
+                    // level-triggered INTx from an I/O completion keeps
+                    // re-firing as an "Unhandled interrupt" and starves
+                    // the UART/timer (crushed the console bulk-RX test).
+                    // Same fix as BindVirtioNetDriver (Phase 5).
+                    ushort pciCmd = Platform.PCI.ReadConfig16(
+                        device->Bus, device->Device, device->Function, 0x04);
+                    Platform.PCI.WriteConfig16(
+                        device->Bus, device->Device, device->Function, 0x04,
+                        (ushort)(pciCmd | 0x0400));
+
                     boundCount++;
                 }
                 else

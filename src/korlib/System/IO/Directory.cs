@@ -34,7 +34,7 @@ public static class Directory
 #if KORLIB_IL
     // IL metadata stubs; the AOT kernel provides the implementations
     // (kernel exports DirBootExists/DirBootCreate/DirBootDelete/
-    // DirBootEntry, bound by token registry).
+    // DirBootEntry/DirBootGetCwd/DirBootSetCwd, bound by token registry).
     private static unsafe int DirBootExists(char* path, int pathLen)
         => throw new PlatformNotSupportedException();
     private static unsafe int DirBootCreate(char* path, int pathLen)
@@ -43,6 +43,10 @@ public static class Directory
         => throw new PlatformNotSupportedException();
     private static unsafe int DirBootEntry(char* path, int pathLen, int index,
         char* nameBuf, int nameCapacity, int* isDir)
+        => throw new PlatformNotSupportedException();
+    private static unsafe int DirBootGetCwd(char* buffer, int capacity)
+        => throw new PlatformNotSupportedException();
+    private static unsafe int DirBootSetCwd(char* path, int pathLen)
         => throw new PlatformNotSupportedException();
 #else
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
@@ -57,6 +61,12 @@ public static class Directory
     [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
     private static extern unsafe int DirBootEntry(char* path, int pathLen, int index,
         char* nameBuf, int nameCapacity, int* isDir);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern unsafe int DirBootGetCwd(char* buffer, int capacity);
+
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern unsafe int DirBootSetCwd(char* path, int pathLen);
 #endif
 
     // ==================== Internal helpers ====================
@@ -205,19 +215,28 @@ public static class Directory
 
     // ==================== Current directory ====================
 
-    // Phase 5: the shell's cd built-in drives this value; korlib's file
-    // APIs resolve relative paths against it (see Path.GetFullPath).
-    // NOTE: no field initializer here on purpose - a string field
-    // initializer synthesizes a static constructor that trips the bflat
-    // TypePreinit pass (NullReferenceException in TrySetField); the root
-    // default is applied lazily instead.
-    private static string? _cwd;
+    // The value lives in the KERNEL (Platform.FileExports) and is reached
+    // through the DirBootGetCwd/DirBootSetCwd bridge above, so the shell
+    // (kernel-side, AOT korlib) and JIT-compiled utilities share ONE
+    // current directory: `cd` is visible to ls/cat/... and a utility that
+    // sets the cwd moves the shell. A per-world static field would
+    // silently diverge - the AOT and IL copies of korlib each own their
+    // own statics.
 
     /// <summary>
     /// Returns the current directory. Defaults to "/" and is changed by
     /// the shell's cd built-in (or Directory.SetCurrentDirectory).
     /// </summary>
-    public static string GetCurrentDirectory() => _cwd ?? "/";
+    public static unsafe string GetCurrentDirectory()
+    {
+        char[] buffer = new char[512];
+        int length;
+        fixed (char* p = buffer)
+            length = DirBootGetCwd(p, buffer.Length);
+        if (length <= 0)
+            return "/";
+        return new string(buffer, 0, length);
+    }
 
     /// <summary>
     /// Sets the current directory. The path must name an existing
@@ -225,13 +244,14 @@ public static class Directory
     /// current directory). NeutrinoOS Phase 5: this now accepts any
     /// existing directory, matching the shell's cd behavior.
     /// </summary>
-    public static void SetCurrentDirectory(string path)
+    public static unsafe void SetCurrentDirectory(string path)
     {
         if (path == null)
             throw new ArgumentNullException("path");
         string normalized = NormalizeDirPath(path);
         if (!IsRoot(normalized) && !BootDirExists(normalized))
             throw new DirectoryNotFoundException("Could not find directory '" + path + "'");
-        _cwd = normalized;
+        fixed (char* p = normalized)
+            DirBootSetCwd(p, normalized.Length);
     }
 }

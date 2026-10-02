@@ -1,7 +1,8 @@
 // NeutrinoOS Phase 5 utility: find - search for files
 //
 // usage: find [path] [-name pattern]
-//   Recursively lists entries under path (default "/"). With
+//   Recursively lists entries under path (default: the current
+//   directory). With
 //   -name pattern, only entries whose base name matches the pattern
 //   are printed. The pattern supports '*' and '?' wildcards.
 //
@@ -22,7 +23,9 @@ public static class Program
     {
         if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
-        string path = "/";
+        // Default to the current directory, like `ls` with no arguments
+        // (an explicit path argument overrides).
+        string path = Directory.GetCurrentDirectory();
         string pattern = null;
 
         int i = 0;
@@ -39,7 +42,7 @@ public static class Program
             {
                 return Util.Help(
                     "usage: find [path] [-name pattern]",
-                    "  Recursively list entries under path (default /).",
+                    "  Recursively list entries under path (default: current directory).",
                     "  pattern supports '*' and '?' wildcards.");
             }
             if (a == "-name")
