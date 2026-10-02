@@ -501,7 +501,7 @@ run-qemu-arm64: image
 		-display none -serial stdio -no-reboot -no-shutdown
 
 # Phase 2: boot with the serial console attached to the terminal.
-# Interactive shell (neutrinoos>) with echo, editing, history, colors.
+# Interactive shell (root-/>) with echo, editing, history, colors.
 # Quit QEMU with Ctrl+A X.
 run-qemu-serial: image
 	@test -f $(OVMF_VARS) || cp $(OVMF_VARS_SRC) $(OVMF_VARS)

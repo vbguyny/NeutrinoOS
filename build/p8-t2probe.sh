@@ -25,7 +25,7 @@ cp -f /usr/share/OVMF/OVMF_VARS_4M.fd build/x64/OVMF_VARS-ahci.fd
 
 waited=0
 while [ "$waited" -lt 150 ]; do
-  if grep -aq 'neutrinoos> ' "$LOG" 2>/dev/null; then break; fi
+  if grep -aq 'root-/> ' "$LOG" 2>/dev/null; then break; fi
   sleep 2
   waited=$((waited + 2))
 done

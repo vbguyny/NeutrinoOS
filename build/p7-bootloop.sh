@@ -26,7 +26,7 @@ for i in $(seq 1 $N); do
   result="timeout"
   for t in $(seq 1 70); do
     if strings /root/bootloop.log 2>/dev/null | grep -q 'SYSTEM HALTED'; then result="halt"; break; fi
-    if strings /root/bootloop.log 2>/dev/null | grep -q 'neutrinoos> '; then result="pass"; break; fi
+    if strings /root/bootloop.log 2>/dev/null | grep -q 'root-/> '; then result="pass"; break; fi
     sleep 1
   done
 

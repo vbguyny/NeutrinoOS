@@ -82,10 +82,10 @@ scripts\start-repo-server.ps1            # http://<host-ip>:8080
 On the device (QEMU user networking: host = `10.0.2.2`):
 
 ```text
-neutrinoos> npkg repo add local http://10.0.2.2:8080
-neutrinoos> npkg update
-neutrinoos> npkg install MyApp
-neutrinoos> MyApp
+root-/> npkg repo add local http://10.0.2.2:8080
+root-/> npkg update
+root-/> npkg install MyApp
+root-/> MyApp
 ```
 
 ### 3b. Direct copy (development images)
@@ -95,7 +95,7 @@ mcopy -o -i build/x64/neutrinoos.img bin/Release/net10.0/MyApp.dll ::/apps/MyApp
 ```
 
 ```text
-neutrinoos> run /apps/MyApp.dll
+root-/> run /apps/MyApp.dll
 ```
 
 (`run` also accepts `.npkg` files copied onto the image, and apps in

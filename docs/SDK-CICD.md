@@ -37,7 +37,7 @@ package and `repo-index --key` the repository, so every artifact is
 verifiable by fingerprint:
 
 ```text
-neutrinoos> npkg verify MyApp.npkg            # signer: ab12cd34...
+root-/> npkg verify MyApp.npkg            # signer: ab12cd34...
 ```
 
 ## Publishing the repository from CI
@@ -48,8 +48,8 @@ directory behind any static web server (or run `npkg-repo-server` on a
 host) and point devices at it:
 
 ```text
-neutrinoos> npkg repo add ci https://packages.example.com/repo
-neutrinoos> npkg update
+root-/> npkg repo add ci https://packages.example.com/repo
+root-/> npkg update
 ```
 
 Hardening notes for a public repository:

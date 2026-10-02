@@ -49,7 +49,7 @@ echo "[$(date +%T)] launching QEMU..."
 
 BOOT_START=$(date +%s)
 for i in $(seq 1 150); do
-  if strings /root/p7bench.log 2>/dev/null | grep -q 'neutrinoos> '; then
+  if strings /root/p7bench.log 2>/dev/null | grep -q 'root-/> '; then
     echo "prompt at $(( $(date +%s) - BOOT_START ))s"
     break
   fi
@@ -77,7 +77,7 @@ send "cat /dev/random | wc -c" 6
 
 sleep 1
 echo "===== captured command output ====="
-strings /root/p7bench.log | awk '/neutrinoos> dhcp/{f=1} f' | grep -avE '^\[JIT\] Compile|^\[AsmLoader\]|^\[AotMemberRef\]|^\[LazyJIT\]|^\[KorlibMethodDef\]|^\[NetExec\]' | head -220
+strings /root/p7bench.log | awk '/root-/> dhcp/{f=1} f' | grep -avE '^\[JIT\] Compile|^\[AsmLoader\]|^\[AotMemberRef\]|^\[LazyJIT\]|^\[KorlibMethodDef\]|^\[NetExec\]' | head -220
 
 echo "===== benchmark result lines ====="
 strings /root/p7bench.log | grep -aE '\[bench\]' | tail -12

@@ -19,5 +19,5 @@ echo "=== tail:"
 strings /root/smp2.log | tail -15
 echo "=== markers:"
 strings /root/smp2.log | grep -cE '\[SEC\]'
-strings /root/smp2.log | grep -a 'neutrinoos> ' | head -1
+strings /root/smp2.log | grep -a 'root-/> ' | head -1
 strings /root/smp2.log | grep -acE 'X64 Exception|SYSTEM HALTED'

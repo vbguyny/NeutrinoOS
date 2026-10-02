@@ -16,15 +16,19 @@ pkill -9 -f qemu-system 2>/dev/null || true
 sleep 1
 rm -f build/x64/tv-serial.log build/x64/vga-screen.ppm
 test -f build/x64/neutrinoos.img || { echo "image missing: build/x64/neutrinoos.img"; exit 1; }
-test -f build/x64/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS_4M.fd build/x64/OVMF_VARS.fd
+# Fresh VARS copy every run: a stale NVRAM (e.g. from an earlier virtio-era
+# boot) makes OVMF skip the disk and fall through to PXE. The other harnesses
+# (history-vga-boot.sh, p10-qemu-test.sh) also copy per run.
+cp -f /usr/share/OVMF/OVMF_VARS_4M.fd build/x64/OVMF_VARS-vga.fd
 echo 1 > build/x64/tv-skip-boot-tests
 mdel -i build/x64/neutrinoos.img ::/skip-boot-tests ::/console-vga-off ::/run-console-test 2>/dev/null || true
 mcopy -o -i build/x64/neutrinoos.img build/x64/tv-skip-boot-tests ::/skip-boot-tests
 
 setsid qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp 1 \
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
-  -drive if=pflash,format=raw,file=build/x64/OVMF_VARS.fd \
-  -drive file=build/x64/neutrinoos.img,format=raw,if=virtio \
+  -drive if=pflash,format=raw,file=build/x64/OVMF_VARS-vga.fd \
+  -drive id=vgadisk,if=none,format=raw,file=build/x64/neutrinoos.img \
+  -device ide-hd,drive=vgadisk,bus=ide.0 \
   -vga std -display "$DISPLAY_MODE" \
   -serial file:build/x64/tv-serial.log \
   -monitor tcp:127.0.0.1:"$PORT",server,nowait \

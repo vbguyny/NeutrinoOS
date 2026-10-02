@@ -91,7 +91,7 @@ QPID=$!
 cat "$POWER_SER.out" > "$POWER_LOG" &
 CATPID=$!
 
-wait_for_file "$POWER_LOG" "neutrinoos> " 240
+wait_for_file "$POWER_LOG" "root-/> " 240
 result "boot (shell prompt)" $?
 wait_for_file "$POWER_LOG" "\[power\] ACPI: " 10
 result "ACPI power management detected at first use" $?
@@ -127,7 +127,7 @@ QPID=$!
 cat "$REBOOT_SER.out" > "$REBOOT_LOG" &
 CATPID=$!
 
-wait_for_file "$REBOOT_LOG" "neutrinoos> " 240
+wait_for_file "$REBOOT_LOG" "root-/> " 240
 result "reboot test boot (shell prompt)" $?
 
 printf 'reboot\r' > "$REBOOT_SER.in"
@@ -165,7 +165,7 @@ QPID=$!
 cat "$SLEEP_SER.out" > "$SLEEP_LOG" &
 CATPID=$!
 
-wait_for_file "$SLEEP_LOG" "neutrinoos> " 240
+wait_for_file "$SLEEP_LOG" "root-/> " 240
 result "sleep test boot (shell prompt)" $?
 
 # 4. cpupower first (before the suspend changes the run state).

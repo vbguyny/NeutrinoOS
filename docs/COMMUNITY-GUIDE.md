@@ -50,9 +50,9 @@ Include the repository URL and your **public key fingerprint** in your
 project README so users can pin it:
 
 ```text
-neutrinoos> npkg repo add myrepo http://my-host:8080 --fingerprint <hex64>
-neutrinoos> npkg update
-neutrinoos> npkg install MyApp
+root-/> npkg repo add myrepo http://my-host:8080 --fingerprint <hex64>
+root-/> npkg update
+root-/> npkg install MyApp
 ```
 
 ### 4. Community repository

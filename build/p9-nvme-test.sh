@@ -41,7 +41,7 @@ mkfifo /root/p9nvme.in
 
 ok=0
 for i in $(seq 1 100); do
-  if strings /root/p9nvme.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "prompt at ${i}s"; ok=1; break; fi
+  if strings /root/p9nvme.log 2>/dev/null | grep -q 'root-/> '; then echo "prompt at ${i}s"; ok=1; break; fi
   sleep 1
 done
 if [ "$ok" != 1 ]; then echo "NO PROMPT"; tail -20 /root/p9nvme.log; pkill -9 -f 'p9nvme-qem[u]'; exit 1; fi

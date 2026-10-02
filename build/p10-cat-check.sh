@@ -22,7 +22,7 @@ mkfifo /root/qin-cat
 
 echo "waiting for shell..."
 for i in $(seq 1 120); do
-  if strings "$LOG" 2>/dev/null | grep -q 'neutrinoos> '; then echo "prompt at ${i}s"; break; fi
+  if strings "$LOG" 2>/dev/null | grep -q 'root-/> '; then echo "prompt at ${i}s"; break; fi
   sleep 1
 done
 sleep 2

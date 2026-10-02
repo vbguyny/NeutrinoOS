@@ -27,7 +27,7 @@ mkfifo /root/qin
 
 echo "waiting for shell..."
 for i in $(seq 1 90); do
-  if strings /root/p6crypto.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "prompt at ${i}s"; break; fi
+  if strings /root/p6crypto.log 2>/dev/null | grep -q 'root-/> '; then echo "prompt at ${i}s"; break; fi
   sleep 1
 done
 sleep 2
@@ -39,7 +39,7 @@ for i in $(seq 1 60); do
 done
 
 # Everything after the cryptotest invocation line is the utility's output.
-strings /root/p6crypto.log | awk '/neutrinoos> cryptotest/{f=1} f' > /root/p6crypto-seg.log
+strings /root/p6crypto.log | awk '/root-/> cryptotest/{f=1} f' > /root/p6crypto-seg.log
 echo "=== cryptotest output:"
 cat /root/p6crypto-seg.log | tail -45
 

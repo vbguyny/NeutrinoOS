@@ -60,7 +60,7 @@ step() {
 }
 
 echo "=== npkg device acceptance ==="
-if ! wait_for "neutrinoos> " 150; then
+if ! wait_for "root-/> " 150; then
   echo "FAIL: boot (no shell prompt within 150s)"
   FAIL=$((FAIL + 1))
 else

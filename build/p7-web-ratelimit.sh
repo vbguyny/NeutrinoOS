@@ -59,7 +59,7 @@ echo "[$(date +%T)] launching QEMU..."
 
 echo "[$(date +%T)] waiting for shell..."
 for i in $(seq 1 90); do
-  if strings /root/p7web.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "[$(date +%T)] prompt at ${i}s"; break; fi
+  if strings /root/p7web.log 2>/dev/null | grep -q 'root-/> '; then echo "[$(date +%T)] prompt at ${i}s"; break; fi
   sleep 1
 done
 sleep 2

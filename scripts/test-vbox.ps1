@@ -63,7 +63,7 @@ $lastReport = Get-Date
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
     $text = Read-SerialLog $serial
-    if ($text -match "neutrinoos> ") { $result = "SHELL"; break }
+    if ($text -match "root-/> ") { $result = "SHELL"; break }
     if ($text -match "SYSTEM HALTED") { $result = "HALTED"; break }
     if ($text -match "X64 Exception Type") { $result = "FIRMWARE-CRASH"; break }
     if (((Get-Date) - $lastReport).TotalSeconds -ge 30) {

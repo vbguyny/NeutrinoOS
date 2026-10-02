@@ -45,16 +45,16 @@ gc jitstats gcstats boottime perf netstat -s sshd webhost passwd useradd
 Examples:
 
 ```
-neutrinoos> uname -a
-neutrinoos> dhcp
-neutrinoos> ifconfig
-neutrinoos> ping 10.0.2.2
-neutrinoos> wget http://example.com/      # or: curl -k https://...
-neutrinoos> sshd                          # start the SSH server
-neutrinoos> webhost                       # start the web host
-neutrinoos> gcstats                       # GC health
-neutrinoos> jitstats                      # JIT compiler stats
-neutrinoos> boottime                      # boot timeline
+root-/> uname -a
+root-/> dhcp
+root-/> ifconfig
+root-/> ping 10.0.2.2
+root-/> wget http://example.com/      # or: curl -k https://...
+root-/> sshd                          # start the SSH server
+root-/> webhost                       # start the web host
+root-/> gcstats                       # GC health
+root-/> jitstats                      # JIT compiler stats
+root-/> boottime                      # boot timeline
 ```
 
 ## 3. Storage
@@ -68,11 +68,11 @@ neutrinoos> boottime                      # boot timeline
 ## 4. Networking quick start
 
 ```
-neutrinoos> dhcp                 # obtain a lease (QEMU/VBox NAT)
-neutrinoos> ifconfig             # show addresses
-neutrinoos> ping 10.0.2.2        # gateway in QEMU user-net
-neutrinoos> dns example.com      # resolve
-neutrinoos> curl -k https://10.0.2.2/...   # TLS 1.3 client
+root-/> dhcp                 # obtain a lease (QEMU/VBox NAT)
+root-/> ifconfig             # show addresses
+root-/> ping 10.0.2.2        # gateway in QEMU user-net
+root-/> dns example.com      # resolve
+root-/> curl -k https://10.0.2.2/...   # TLS 1.3 client
 ```
 
 A minimal packet filter exists (`/etc/firewall.conf`); it is **allow-all
@@ -109,9 +109,9 @@ Service configuration:
 ## 7. Version and identity
 
 ```
-neutrinoos> cat /etc/neutrinoos-release
+root-/> cat /etc/neutrinoos-release
 NAME="NeutrinoOS"  VERSION="1.0.0"  ...
-neutrinoos> uname -a              # NeutrinoOS 1.0.0 x86_64
+root-/> uname -a              # NeutrinoOS 1.0.0 x86_64
 ```
 
 ## 8. Troubleshooting

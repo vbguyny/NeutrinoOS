@@ -26,7 +26,7 @@ cat /tmp/p9d.ser.out > "$LOG" &
 CATPID=$!
 
 for i in $(seq 1 240); do
-  grep -aq 'neutrinoos> ' "$LOG" 2>/dev/null && break
+  grep -aq 'root-/> ' "$LOG" 2>/dev/null && break
   sleep 1
 done
 sleep 2

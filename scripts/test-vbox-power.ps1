@@ -1,6 +1,6 @@
 param(
     [int]$TimeoutSec = 180,
-    [string]$SerialWait = "neutrinoos>"
+    [string]$SerialWait = "root-/>"
 )
 # NeutrinoOS VirtualBox power acceptance (Phase 9 Task 6):
 #

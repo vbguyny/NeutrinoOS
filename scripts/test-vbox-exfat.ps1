@@ -148,7 +148,7 @@ function SendLine([string]$line) {
 }
 
 Write-Host "`nwaiting for shell prompt..."
-$bootOk = WaitFor "neutrinoos> " $TimeoutSec
+$bootOk = WaitFor "root-/> " $TimeoutSec
 if (-not $bootOk) {
     Write-Host "shell prompt not reached" -ForegroundColor Red
     Set-Content -Path $transcriptPath -Value $sb.ToString()

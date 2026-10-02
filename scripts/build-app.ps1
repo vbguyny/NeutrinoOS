@@ -55,4 +55,4 @@ foreach ($dll in $dlls) {
 }
 Write-Host ""
 Write-Host "[build-app] Run in the NeutrinoOS shell:"
-Write-Host "    neutrinoos> run /apps/$AppName.dll"
+Write-Host "    root-/> run /apps/$AppName.dll"

@@ -46,7 +46,7 @@ mkfifo /root/qin
 
 echo "waiting for shell..."
 for i in $(seq 1 120); do
-  if strings /root/q5demo.log 2>/dev/null | grep -q 'neutrinoos> '; then break; fi
+  if strings /root/q5demo.log 2>/dev/null | grep -q 'root-/> '; then break; fi
   sleep 1
 done
 sleep 1

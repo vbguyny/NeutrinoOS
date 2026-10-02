@@ -96,7 +96,7 @@ $text = ""
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 700
     $text = Read-Serial $serial
-    if ($text -match "neutrinoos> ") { $prompt = $true; break }
+    if ($text -match "root-/> ") { $prompt = $true; break }
     if ($text -match "SYSTEM HALTED|X64 Exception Type") { break }
     if (((Get-Date) - $lastLog).TotalSeconds -ge 20) {
         $lastLog = Get-Date

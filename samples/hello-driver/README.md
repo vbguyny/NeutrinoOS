@@ -22,8 +22,8 @@ npkg-host pack --manifest manifest.json --payload-dir bin/Release/net10.0 --out 
 On the device:
 
 ```text
-neutrinoos> npkg install hello-led.npkg
-neutrinoos> ls /drivers
+root-/> npkg install hello-led.npkg
+root-/> ls /drivers
 ```
 
 See `docs/PHASE8-DRIVER.md` for the driver lifecycle and

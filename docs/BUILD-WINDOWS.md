@@ -181,7 +181,7 @@ NeutrinoOS v0.1 (x86-64 UEFI)
 [CONSOLE] Serial console initialized (ttyS0 @ 115200 8N1)
 ...
 [SHELL] NeutrinoOS console ready.
-neutrinoos>
+root-/>
 ```
 
 Type characters: the kernel echoes them back over the serial console. Enter
@@ -241,7 +241,7 @@ powershell -ExecutionPolicy Bypass -File scripts\test-vbox.ps1 -TimeoutSec 240
 ```
 
 **Result (VirtualBox 7.1.8): PASS** - banner, `[SHELL] NeutrinoOS console
-ready.` and the `neutrinoos>` prompt appear in the serial log (headless
+ready.` and the `root-/>` prompt appear in the serial log (headless
 boot, `build/vbox-serial.log`). Notes:
 
 - Use **2 vCPUs** (`-cpus 2`; the script does this): VirtualBox's EFI

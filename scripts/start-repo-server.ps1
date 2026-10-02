@@ -14,8 +14,8 @@
 
     On the device:
 
-        neutrinoos> npkg repo add local http://<host-ip>:8080
-        neutrinoos> npkg install <package>
+        root-/> npkg repo add local http://<host-ip>:8080
+        root-/> npkg install <package>
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\start-repo-server.ps1

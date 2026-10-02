@@ -2,7 +2,7 @@
 //
 // Prompts for a name and echoes it back as "Hello, <name>!". Deployed to
 // /apps of the CLI image:
-//   neutrinoos> run /apps/p10hello.dll
+//   root-/> run /apps/p10hello.dll
 //   Enter your name: Ada
 //   Hello, Ada!
 //

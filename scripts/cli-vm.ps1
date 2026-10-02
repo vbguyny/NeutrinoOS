@@ -114,7 +114,7 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Milliseconds 500
     if (Test-Path $serial) {
         $t = Get-Content $serial -Raw -ErrorAction SilentlyContinue
-        if ($t -match "neutrinoos>") { $ready = $true; break }
+        if ($t -match "root-/>") { $ready = $true; break }
     }
 }
 if ($ready) {

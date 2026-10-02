@@ -27,10 +27,10 @@ cd /root/repo && python3 -m http.server 8080     # or npkg-repo-server
 
 ```text
 # guest console (run.sh)
-neutrinoos> npkg repo add local http://10.0.2.2:8080
-neutrinoos> npkg update
-neutrinoos> npkg install MyApp
-neutrinoos> MyApp
+root-/> npkg repo add local http://10.0.2.2:8080
+root-/> npkg update
+root-/> npkg install MyApp
+root-/> MyApp
 ```
 
 `10.0.2.2` is the QEMU user-net gateway (the host) — always available.
@@ -39,7 +39,7 @@ Offline alternative (mcopy into the image, then `run`):
 
 ```bash
 mcopy -o -i build/x64/neutrinoos.img MyApp.npkg ::/apps/MyApp.npkg
-neutrinoos> run /apps/MyApp.npkg
+root-/> run /apps/MyApp.npkg
 ```
 
 ## 2. QEMU (Windows 11)

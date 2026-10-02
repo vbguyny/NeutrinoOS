@@ -35,7 +35,7 @@ while ((Get-Date) -lt $deadline) {
             $sr = New-Object System.IO.StreamReader($fs)
             $text = $sr.ReadToEnd(); $sr.Close(); $fs.Close()
         } catch { $text = "" }
-        if ($text -match "neutrinoos> ") { $result = "SHELL"; break }
+        if ($text -match "root-/> ") { $result = "SHELL"; break }
         if ($text -match "X64 Exception Type") { $result = "FIRMWARE-CRASH"; break }
         if ($text -match "SYSTEM HALTED") { $result = "OS-HALTED"; break }
     }

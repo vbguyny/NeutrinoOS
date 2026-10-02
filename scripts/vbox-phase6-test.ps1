@@ -76,7 +76,7 @@ Write-Host "Recreating VM '$VmName' with NAT forwards (cli-vm.ps1 -Net -NoStart)
 Write-Host "Starting headless..."
 & $vb startvm $VmName --type headless | Out-Null
 
-$promptOk = Wait-Marker 'neutrinoos> ' $BootTimeoutSec "boot: shell prompt"
+$promptOk = Wait-Marker 'root-/> ' $BootTimeoutSec "boot: shell prompt"
 $dhcpOk   = Wait-Marker 'eth0 configured: 10\.0\.2\.15' 90 "net: DHCP via VBox NAT (10.0.2.15)"
 $sshdOk   = Wait-Marker '\[sshd\] listening on port 22' 60 "sshd listening"
 $webOk    = Wait-Marker '\[web\] listening on port 80' 60 "webhost listening (80 + 443)"

@@ -15,7 +15,7 @@ Like a neutrino, the system is meant to be elusive and unobtrusive: it exists to
   - No UEFI Graphics Output Protocol (GOP) usage anywhere in the boot path.
   - No framebuffer or graphics initialization. The only console is serial (COM1, 0x3F8, 115200 8N1); the VGA **text-mode** console (character cells at 0xB8000, no graphics modes) was added in Phase 3.
   - All bootloader and kernel log output appears on the serial console.
-  - The system reaches an interactive `neutrinoos>` prompt that echoes typed characters.
+  - The system reaches an interactive `root-/>` prompt that echoes typed characters.
   - Build targets: `make kernel`, `make bootloader`, `make image` (produces `build/x64/neutrinoos.img`), `make run-qemu`, `make run-vbox`.
 - Console-only is a hard constraint: GUI APIs (`System.Windows.Forms`, WPF, Avalonia) are excluded from the project's scope.
 
@@ -232,7 +232,7 @@ NeutrinoOS v0.1 (x86-64 UEFI)
 [CONSOLE] Serial console initialized (ttyS0 @ 115200 8N1)
 ...
 [SHELL] NeutrinoOS console ready.
-neutrinoos>
+root-/>
 ```
 
 Characters typed into the terminal are echoed back by the kernel. See

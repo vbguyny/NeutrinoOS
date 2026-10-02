@@ -1,7 +1,7 @@
 # NeutrinoOS Phase 2 - console acceptance test (Windows 11 + WSL2)
 #
 # Boots the built image in QEMU (via WSL2), drives the interactive
-# console_io_test.dll and the neutrinoos> shell with scripted keystrokes,
+# console_io_test.dll and the root-/> shell with scripted keystrokes,
 # and verifies every Phase 2 console criterion against the captured
 # serial log (build/x64/serial-conio.log inside WSL).
 #

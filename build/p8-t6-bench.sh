@@ -6,7 +6,7 @@
 #   - npkg install tests.bench-root (10 dependencies) on the npkg test
 #     image: wall time from command send to "installed tests.bench-root".
 #     Run build/p8-npkg-tests-build.sh + build/p8-npkg-deploy.sh first.
-#   - x64 boot: QEMU launch -> "neutrinoos> " on the standard image.
+#   - x64 boot: QEMU launch -> "root-/> " on the standard image.
 #   - arm64 boot: same method on the standard arm64 image (boot both from
 #     plain `make image` products so the comparison is like-for-like).
 #   - Hot-plug driver load/unload times are reported by
@@ -55,7 +55,7 @@ mkfifo "$FIFO"
     -drive id=bootdisk,if=none,format=raw,file="$X64_IMG" \
     -device ide-hd,drive=bootdisk,bus=ide.0 \
     -display none -serial stdio -no-reboot -no-shutdown > "$X64_SER" 2>&1 ) &
-if wait_for "$X64_SER" "neutrinoos> " 300; then
+if wait_for "$X64_SER" "root-/> " 300; then
   t1=$(date +%s.%N)
   X64MS=$(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.0f", (b-a)*1000 }')
   echo "[bench] x64 boot to shell: ${X64MS} ms"
@@ -78,7 +78,7 @@ if [ -f "$ARM64_IMG" ]; then
     -device virtio-blk-pci,drive=hd0,bootindex=1 \
     -nic none \
     -display none -serial file:"$A64_SER" -monitor none -no-reboot -no-shutdown > /dev/null 2>&1 &
-  if wait_for "$A64_SER" "neutrinoos> " 300; then
+  if wait_for "$A64_SER" "root-/> " 300; then
     t1=$(date +%s.%N)
     A64MS=$(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.0f", (b-a)*1000 }')
     echo "[bench] arm64 boot to shell: ${A64MS} ms"
@@ -102,7 +102,7 @@ if [ -f "$NPKG_IMG" ] && grep -aq "tests.bench-root" /root/p8repo/repository.jso
       -drive id=bootdisk,if=none,format=raw,file="$NPKG_IMG" \
       -device ide-hd,drive=bootdisk,bus=ide.0 \
       -display none -serial stdio -no-reboot -no-shutdown > "$X64_SER" 2>&1 ) &
-  if wait_for "$X64_SER" "neutrinoos> " 300; then
+  if wait_for "$X64_SER" "root-/> " 300; then
     tboot=$(date +%s.%N)
     # The deploy rebuilds the image from the base image, so the test
     # repository is not configured yet: add it like the acceptance suite.

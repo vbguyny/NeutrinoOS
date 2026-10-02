@@ -37,7 +37,7 @@ mkfifo /root/qin
   -display none -serial stdio -no-reboot -no-shutdown > /root/p6fw.log 2>&1 ) &
 
 for i in $(seq 1 90); do
-  if strings /root/p6fw.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "prompt at ${i}s"; break; fi
+  if strings /root/p6fw.log 2>/dev/null | grep -q 'root-/> '; then echo "prompt at ${i}s"; break; fi
   sleep 1
 done
 sleep 3

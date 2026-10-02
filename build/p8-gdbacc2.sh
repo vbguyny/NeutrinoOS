@@ -49,7 +49,7 @@ step() {
 }
 
 echo "[accg2] waiting for prompt"
-if ! wait_for "neutrinoos> " 150; then echo "[accg2] BOOT FAILED"; tail -20 "$LOG"; exit 1; fi
+if ! wait_for "root-/> " 150; then echo "[accg2] BOOT FAILED"; tail -20 "$LOG"; exit 1; fi
 echo "[accg2] booted"
 
 cat > "$GDBCMDS" <<'EOF'

@@ -76,7 +76,7 @@ TICKS=$(grep -a -o 'ticks=[0-9]*' "$SER" | head -1 | cut -d= -f2)
 [ -n "$TICKS" ] && [ "$TICKS" -gt 0 ] 2>/dev/null
 result "generic timer ticking at shell start (ticks=${TICKS:-none})" $?
 
-grep -aq 'neutrinoos>' "$SER" && ! grep -aq 'SYNC EXCEPTION' "$SER" && ! grep -aq 'RAWV' "$SER"
+grep -aq 'root-/>' "$SER" && ! grep -aq 'SYNC EXCEPTION' "$SER" && ! grep -aq 'RAWV' "$SER"
 result "shell prompt reached, no sync exceptions / raw faults" $?
 
 # ----------------------------------------------------------- 5-6. interactive
@@ -98,7 +98,7 @@ cat /tmp/ser.out > /tmp/ser.log &
 CATPID=$!
 
 for i in $(seq 1 120); do
-  if grep -aq 'neutrinoos>' /tmp/ser.log 2>/dev/null; then break; fi
+  if grep -aq 'root-/>' /tmp/ser.log 2>/dev/null; then break; fi
   sleep 0.5
 done
 sleep 2

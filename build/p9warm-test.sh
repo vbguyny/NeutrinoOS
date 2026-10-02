@@ -29,10 +29,10 @@ echo "qemu=$QPID cat=$CATPID launched" >> "$STATUS"
 
 for i in $(seq 1 240); do
   kill -0 "$QPID" 2>/dev/null || break
-  grep -aq 'neutrinoos> ' "$LOG" 2>/dev/null && break
+  grep -aq 'root-/> ' "$LOG" 2>/dev/null && break
   sleep 1
 done
-echo "first-boot prompt: $(grep -ac 'neutrinoos> ' "$LOG" 2>/dev/null)" >> "$STATUS"
+echo "first-boot prompt: $(grep -ac 'root-/> ' "$LOG" 2>/dev/null)" >> "$STATUS"
 if ! kill -0 "$QPID" 2>/dev/null; then
   echo "qemu died before reset; aborting" >> "$STATUS"
   echo "banners: 0" >> "$STATUS"

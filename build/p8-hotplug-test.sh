@@ -60,7 +60,7 @@ timeout -s KILL "$QEMU_SECS" qemu-system-x86_64 -machine q35 -m 2G -cpu max -smp
 QPID=$!
 
 # ---- 1. boot + detector init -------------------------------------------
-wait_for "neutrinoos> " 150
+wait_for "root-/> " 150
 result "boot (shell prompt)" $?
 wait_for "\[hotplug\] root port" 30
 result "root port discovered (PCIe capability walk)" $?

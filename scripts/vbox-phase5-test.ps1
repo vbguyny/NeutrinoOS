@@ -106,11 +106,11 @@ Write-Host "Starting '$VmName'..."
 Start-Process -FilePath $vb -ArgumentList @("startvm", $VmName) -WindowStyle Hidden | Out-Null
 
 # --- wait for the shell -------------------------------------------------------
-Write-Host "Waiting for 'neutrinoos>' in $serial ..."
+Write-Host "Waiting for 'root-/>' in $serial ..."
 $deadline = (Get-Date).AddSeconds($ShellTimeoutSec)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
-    if ((Read-SerialLog $serial) -match "neutrinoos>") { $ready = $true; break }
+    if ((Read-SerialLog $serial) -match "root-/>") { $ready = $true; break }
     Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw "shell prompt not seen within ${ShellTimeoutSec}s - check the VM window and $serial" }
@@ -124,9 +124,9 @@ $steps = @(
     @{ Cmd = "uname -a";                        Wait = 30; Marker = "phase5 x86_64" },
     @{ Cmd = "ls /bin";                Wait = 30; Marker = "WGET.DLL" },
     @{ Cmd = "ls /bin | wc -l";                 Wait = 30; Marker = "(?m)^\s+33\r?$" },
-    @{ Cmd = "echo hello phase5 > /t.txt";      Wait = 30; Marker = "neutrinoos>" },
+    @{ Cmd = "echo hello phase5 > /t.txt";      Wait = 30; Marker = "root-/>" },
     @{ Cmd = "cat /t.txt";                      Wait = 30; Marker = "hello phase5" },
-    @{ Cmd = "echo second line >> /t.txt";      Wait = 30; Marker = "neutrinoos>" },
+    @{ Cmd = "echo second line >> /t.txt";      Wait = 30; Marker = "root-/>" },
     @{ Cmd = "cat /t.txt";                      Wait = 30; Marker = "second line" },
     @{ Cmd = "wc -l < /t.txt";                  Wait = 30; Marker = "(?m)^\s+2\r?$" },
     @{ Cmd = "sleep 4 &";                       Wait = 30; Marker = "started: sleep 4" },
@@ -143,7 +143,7 @@ $steps = @(
     @{ Cmd = "mount";                           Wait = 30; Marker = "boot volume: NEUTRINOOS" },
     @{ Cmd = "ps";                              Wait = 30; Marker = "KERNEL THREADS" },
     @{ Cmd = "kill 9999";                       Wait = 30; Marker = "no such job" },
-    @{ Cmd = "history";                         Wait = 30; Marker = "neutrinoos>" },
+    @{ Cmd = "history";                         Wait = 30; Marker = "root-/>" },
     @{ Cmd = "export PS1='\u@\h:\w\`$ '";       Wait = 30; Marker = "(?i)root@neutrinoos" },
     @{ Cmd = "exit";                            Wait = 30; Marker = "logout" }
 )

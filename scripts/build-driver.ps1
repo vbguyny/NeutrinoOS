@@ -92,4 +92,4 @@ if ($RepoDir) {
 Write-Host ""
 Write-Host "[build-driver] package: $PkgPath"
 Write-Host "[build-driver] install on device: copy the .npkg into /repo on the image,"
-Write-Host "[build-driver]   then: neutrinoos> npkg install $Name"
+Write-Host "[build-driver]   then: root-/> npkg install $Name"

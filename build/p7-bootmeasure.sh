@@ -28,7 +28,7 @@ mkfifo /root/qin
 
 BOOT_START=$(date +%s)
 for i in $(seq 1 150); do
-  if strings /root/p7bootmeas.log 2>/dev/null | grep -q 'neutrinoos> '; then
+  if strings /root/p7bootmeas.log 2>/dev/null | grep -q 'root-/> '; then
     echo "prompt at $(( $(date +%s) - BOOT_START ))s"
     break
   fi

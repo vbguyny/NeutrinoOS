@@ -2,7 +2,7 @@
 //
 // Sets the default environment (Task 5), loads the persistent history
 // file, runs /etc/profile and ~/.profile when present, and builds the
-// prompt (default "neutrinoos> "; PS1 with \u \h \w \$ expansions).
+// prompt (default "{user}-{cwd}> "; PS1 with \u \h \w \$ expansions).
 
 using System;
 using System.IO;
@@ -265,15 +265,15 @@ public static class ShellInit
     // ==================== Prompt ====================
 
     /// <summary>
-    /// Builds the prompt: "neutrinoos> " by default; when PS1 is set, the
-    /// escapes \u (user), \h (host), \w (working directory) and \$
-    /// (root indicator) are expanded.
+    /// Builds the prompt: "{user}-{cwd}> " by default (e.g. "root-/> ");
+    /// when PS1 is set, the escapes \u (user), \h (host), \w (working
+    /// directory) and \$ (root indicator) are expanded.
     /// </summary>
     public static string BuildPrompt()
     {
         string ps1 = ShellState.GetVar("PS1");
         if (ps1.Length == 0)
-            return "neutrinoos> ";
+            ps1 = "\\u-\\w> ";      // default prompt: {user}-{cwd}>
 
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < ps1.Length; i++)

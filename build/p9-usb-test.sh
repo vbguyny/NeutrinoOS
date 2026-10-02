@@ -101,7 +101,7 @@ QPID=$!
 cat /tmp/p9usb.ser.out > "$LOG" &
 CATPID=$!
 
-wait_for_file "$LOG" "neutrinoos> " 240
+wait_for_file "$LOG" "root-/> " 240
 result "boot (shell prompt)" $?
 
 grep -aq '\[usb-xhci\] xHCI running' "$LOG"

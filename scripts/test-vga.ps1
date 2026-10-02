@@ -3,7 +3,7 @@
 # Boots neutrinoos.img under QEMU (inside WSL2), drives the emulated PS/2
 # keyboard through the QEMU monitor (`sendkey`), reads the VGA text
 # framebuffer through the monitor (`xp 0xB8000`) and asserts that:
-#   1. the boot banner and the `neutrinoos>` prompt appear on VGA,
+#   1. the boot banner and the `root-/>` prompt appear on VGA,
 #   2. keystrokes typed on the PS/2 keyboard are echoed on VGA,
 #   3. a submitted line is executed and the result is visible on VGA,
 #   4. a screendump can be captured (kept under the WSL build tree).
@@ -158,7 +158,7 @@ try {
     }
     if (-not $connected) { throw "could not connect to the QEMU monitor" }
 
-    Check "prompt appears on the VGA text buffer" (Wait-VgaFor $monitor "neutrinoos>" $BootTimeoutSec)
+    Check "prompt appears on the VGA text buffer" (Wait-VgaFor $monitor "root-/>" $BootTimeoutSec)
 
     Send-Keys $monitor "echo hi"
     [void]$monitor.Send("sendkey ret")

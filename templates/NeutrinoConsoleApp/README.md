@@ -19,8 +19,8 @@ tool must be on `PATH`, or set `NeutrinoNpkgTool` (MSBuild property) /
 Package install (preferred):
 
 ```text
-neutrinoos> npkg install MyApp.npkg
-neutrinoos> MyApp
+root-/> npkg install MyApp.npkg
+root-/> MyApp
 ```
 
 Manual copy (development images, no npkg):
@@ -30,7 +30,7 @@ mcopy -o -i build/x64/neutrinoos.img bin/Release/net10.0/MyApp.dll ::/apps/MyApp
 ```
 
 ```text
-neutrinoos> run /apps/MyApp.dll
+root-/> run /apps/MyApp.dll
 ```
 
 ## Constraints

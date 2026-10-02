@@ -32,7 +32,7 @@ cp -f /usr/share/OVMF/OVMF_VARS_4M.fd /tmp/p9tapvars.fd
 
 ok=0
 for i in $(seq 1 120); do
-  if strings /root/p9tap.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "prompt at ${i}s"; ok=1; break; fi
+  if strings /root/p9tap.log 2>/dev/null | grep -q 'root-/> '; then echo "prompt at ${i}s"; ok=1; break; fi
   sleep 1
 done
 if [ "$ok" != 1 ]; then echo "NO PROMPT"; tail -20 /root/p9tap.log; exit 1; fi

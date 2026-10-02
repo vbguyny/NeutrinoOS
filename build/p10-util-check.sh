@@ -22,7 +22,7 @@ mkfifo /root/qin-util
   -display none -serial stdio -no-reboot -no-shutdown > "$LOG" 2>&1 ) &
 
 for i in $(seq 1 120); do
-  if strings "$LOG" 2>/dev/null | grep -q 'neutrinoos> '; then break; fi
+  if strings "$LOG" 2>/dev/null | grep -q 'root-/> '; then break; fi
   sleep 1
 done
 sleep 2
@@ -76,9 +76,9 @@ pkill -9 qemu-system 2>/dev/null || true
 sleep 1
 
 echo "=== suspicious non-bracket hex lines post-prompt ==="
-awk '/neutrinoos> /{seen=1} seen' "$LOG" | grep -n '0x[0-9A-Fa-f]\{3,\}' | grep -v ':\[[A-Za-z]' | head -40 || true
+awk '/root-/> /{seen=1} seen' "$LOG" | grep -n '0x[0-9A-Fa-f]\{3,\}' | grep -v ':\[[A-Za-z]' | head -40 || true
 echo "=== bracketed post-prompt lines (incl. indented) ==="
-awk '/neutrinoos> /{seen=1} seen' "$LOG" | grep -E '^[[:space:]]*\[' | sort -u | head -40 || true
+awk '/root-/> /{seen=1} seen' "$LOG" | grep -E '^[[:space:]]*\[' | sort -u | head -40 || true
 echo "=== stray literal markers ==="
-awk '/neutrinoos> /{seen=1} seen' "$LOG" | grep -E 'Suspending NeutrinoOS|GENINST|VAR-FLD|resolved from|StackRoot|frames,' | sort -u | head -40 || true
+awk '/root-/> /{seen=1} seen' "$LOG" | grep -E 'Suspending NeutrinoOS|GENINST|VAR-FLD|resolved from|StackRoot|frames,' | sort -u | head -40 || true
 echo "=== end ==="

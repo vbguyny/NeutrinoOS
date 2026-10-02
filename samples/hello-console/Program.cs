@@ -1,8 +1,8 @@
 // hello-console - the application half of the SDK sample pair.
 //
 //   dotnet build -c Release          # -> hellocon.npkg (incl. hellolib.dll)
-//   neutrinoos> npkg install hellocon.npkg
-//   neutrinoos> hellocon Ada
+//   root-/> npkg install hellocon.npkg
+//   root-/> hellocon Ada
 
 using System;
 using HelloLibrary;

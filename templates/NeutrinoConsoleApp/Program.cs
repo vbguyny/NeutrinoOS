@@ -9,7 +9,7 @@
 // the NeutrinoOS SDK MSBuild targets. Install it on the device with
 // `npkg install` (see docs/SDK-GETTING-STARTED.md) or run it directly from
 // the shell once the dll is on the image:
-//     neutrinoos> run /apps/myapp.dll
+//     root-/> run /apps/myapp.dll
 //
 // The application uses the standard .NET BCL surface; on NeutrinoOS the
 // kernel resolves those references against korlib (see

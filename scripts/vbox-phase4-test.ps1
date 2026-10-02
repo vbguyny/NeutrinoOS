@@ -88,11 +88,11 @@ function Wait-ForMarker([string]$pattern, [int]$minCount, [int]$timeoutSec, [str
 }
 
 # --- wait for the shell -------------------------------------------------------
-Write-Host "Waiting for 'neutrinoos>' in $serial ..."
+Write-Host "Waiting for 'root-/>' in $serial ..."
 $deadline = (Get-Date).AddSeconds($ShellTimeoutSec)
 $ready = $false
 while ((Get-Date) -lt $deadline) {
-    if ((Read-SerialLog $serial) -match "neutrinoos>") { $ready = $true; break }
+    if ((Read-SerialLog $serial) -match "root-/>") { $ready = $true; break }
     Start-Sleep -Milliseconds 500
 }
 if (-not $ready) { throw "shell prompt not seen within ${ShellTimeoutSec}s - is $VmName running (scripts\cli-vm.ps1)?" }
@@ -139,7 +139,7 @@ Send-Line "vbox keyboard test"
 [void](Wait-ForMarker "\[interactive\] echo: vbox keyboard test" ($echoBefore + 1) 60 "interactive echo")
 Send-Line "exit"
 [void](Wait-ForMarker "\[interactive\] bye" ($byeBefore + 1) 60 "interactive bye")
-[void](Wait-ForMarker "neutrinoos>" 1 30 "shell prompt after p4inter")
+[void](Wait-ForMarker "root-/>" 1 30 "shell prompt after p4inter")
 
 Save-Screenshot "vbox-phase4-final.png" | Out-Null
 

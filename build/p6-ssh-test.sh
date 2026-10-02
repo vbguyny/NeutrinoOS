@@ -46,7 +46,7 @@ echo "[$(date +%T)] launching QEMU..."
 
 echo "[$(date +%T)] waiting for shell..."
 for i in $(seq 1 90); do
-  if strings /root/p6ssh.log 2>/dev/null | grep -q 'neutrinoos> '; then echo "[$(date +%T)] prompt at ${i}s"; break; fi
+  if strings /root/p6ssh.log 2>/dev/null | grep -q 'root-/> '; then echo "[$(date +%T)] prompt at ${i}s"; break; fi
   if [ $((i % 15)) -eq 0 ]; then echo "[$(date +%T)]   ...still booting (${i}s)"; fi
   sleep 1
 done

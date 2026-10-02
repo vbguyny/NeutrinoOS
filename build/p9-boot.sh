@@ -22,10 +22,10 @@ cat /tmp/p9b.out > "$LOG" &
 CATPID=$!
 
 for i in $(seq 1 240); do
-  grep -aq 'neutrinoos> ' "$LOG" 2>/dev/null && break
+  grep -aq 'root-/> ' "$LOG" 2>/dev/null && break
   sleep 1
 done
-echo "booted: $(grep -ac 'neutrinoos> ' "$LOG" 2>/dev/null)"
+echo "booted: $(grep -ac 'root-/> ' "$LOG" 2>/dev/null)"
 
 if [ -n "$CMD" ]; then
   printf '%s\r' "$CMD" > /tmp/p9b.in

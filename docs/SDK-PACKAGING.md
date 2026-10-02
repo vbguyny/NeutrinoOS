@@ -106,10 +106,10 @@ powershell -ExecutionPolicy Bypass -File scripts\start-repo-server.ps1 `
 Device side:
 
 ```text
-neutrinoos> npkg repo add local http://10.0.2.2:8080     # QEMU user-net host
-neutrinoos> npkg update
-neutrinoos> npkg search
-neutrinoos> npkg install MyApp
+root-/> npkg repo add local http://10.0.2.2:8080     # QEMU user-net host
+root-/> npkg update
+root-/> npkg search
+root-/> npkg install MyApp
 ```
 
 Repositories can also be local paths (`file:///path` or `/path`) — handy
