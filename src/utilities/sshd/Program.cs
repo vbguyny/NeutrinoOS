@@ -24,6 +24,14 @@ public static class Program
     {
         if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
+        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+            return Util.Help(
+                "usage: sshd [start|stop|status]",
+                "  start   start the SSH service (default)",
+                "  stop    stop the SSH service",
+                "  status  show whether the SSH service is running",
+                "The daemon is driven by the kernel idle tick; without eth0 run",
+                "with a virtio NIC and configure with dhcp first.");
         string cmd = args.Length > 0 ? args[0] : "start";
 
         if (cmd == "stop")

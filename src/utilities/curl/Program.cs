@@ -68,7 +68,7 @@ public static unsafe class Program
         string host;
         int port;
         string path;
-        bool https;
+        bool https = false;
         if (!Http.ParseUrl(url, out host, out port, out path, out https, out string schemeError))
             return Util.Fail("curl", schemeError);
 

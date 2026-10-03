@@ -204,11 +204,11 @@ public static unsafe class RepoClient
 
     private static byte[] HttpGet(string url)
     {
-        string host;
-        int port;
-        string path;
-        string urlError;
-        bool https;
+        string host = null;
+        int port = 0;
+        string path = null;
+        string urlError = null;
+        bool https = false;
         if (!Http.ParseUrl(url, out host, out port, out path, out https, out urlError))
             throw new Exception(urlError);
         if (https)
@@ -260,11 +260,17 @@ public static unsafe class RepoClient
     {
         byte[] buffer = new byte[65536];
         int length = 0;
+        int expectedTotal = -1;   // headerEnd + 4 + Content-Length, once known
+        int headerEnd = -1;
         byte* chunk = stackalloc byte[1460];
         ulong start = Timer.GetUptimeMilliseconds();
         while (Timer.GetUptimeMilliseconds() - start < (ulong)timeoutMs)
         {
             NetworkPump.Pump(stack, 8);
+            // Keep a locally hosted service (webhost) responsive while we
+            // wait - npkg is a foreground command, so nothing else ticks it.
+            Http.DriveLocalServices();
+            Thread.Sleep(1);
             int n = sock.Receive(chunk, 1460);
             if (n > 0)
             {
@@ -281,6 +287,19 @@ public static unsafe class RepoClient
                 for (int i = 0; i < n; i++)
                     buffer[length + i] = chunk[i];
                 length += n;
+
+                // Stop as soon as the full response arrived (keep-alive
+                // peers never close the connection).
+                if (headerEnd < 0)
+                    headerEnd = FindHeaderEndBytes(buffer, length);
+                if (headerEnd >= 0 && expectedTotal < 0)
+                {
+                    int cl = ContentLengthBytes(buffer, headerEnd);
+                    if (cl >= 0)
+                        expectedTotal = headerEnd + 4 + cl;
+                }
+                if (expectedTotal >= 0 && length >= expectedTotal)
+                    break;
             }
             else if (!sock.Connected && sock.Available == 0)
             {
@@ -292,6 +311,56 @@ public static unsafe class RepoClient
         for (int i = 0; i < length; i++)
             result[i] = buffer[i];
         return result;
+    }
+
+    /// <summary>Index of the CRLFCRLF header terminator, or -1.</summary>
+    private static int FindHeaderEndBytes(byte[] data, int length)
+    {
+        for (int i = 0; i + 3 < length; i++)
+        {
+            if (data[i] == 13 && data[i + 1] == 10 && data[i + 2] == 13 && data[i + 3] == 10)
+                return i;
+        }
+        return -1;
+    }
+
+    /// <summary>Content-Length from the header block, or -1 when absent.</summary>
+    private static int ContentLengthBytes(byte[] data, int headerEnd)
+    {
+        for (int i = 0; i + 15 <= headerEnd; i++)
+        {
+            if ((data[i] == (byte)'C' || data[i] == (byte)'c')
+                && (data[i + 1] == (byte)'o' || data[i + 1] == (byte)'O')
+                && (data[i + 2] == (byte)'n' || data[i + 2] == (byte)'N')
+                && (data[i + 3] == (byte)'t' || data[i + 3] == (byte)'T')
+                && (data[i + 4] == (byte)'e' || data[i + 4] == (byte)'E')
+                && (data[i + 5] == (byte)'n' || data[i + 5] == (byte)'N')
+                && (data[i + 6] == (byte)'t' || data[i + 6] == (byte)'T')
+                && data[i + 7] == (byte)'-'
+                && (data[i + 8] == (byte)'L' || data[i + 8] == (byte)'l')
+                && (data[i + 9] == (byte)'e' || data[i + 9] == (byte)'E')
+                && (data[i + 10] == (byte)'n' || data[i + 10] == (byte)'N')
+                && (data[i + 11] == (byte)'g' || data[i + 11] == (byte)'G')
+                && (data[i + 12] == (byte)'t' || data[i + 12] == (byte)'T')
+                && (data[i + 13] == (byte)'h' || data[i + 13] == (byte)'H')
+                && data[i + 14] == (byte)':')
+            {
+                int j = i + 15;
+                while (j < headerEnd && data[j] == (byte)' ')
+                    j++;
+                int value = 0;
+                int digits = 0;
+                while (j < headerEnd && data[j] >= (byte)'0' && data[j] <= (byte)'9')
+                {
+                    value = value * 10 + (data[j] - (byte)'0');
+                    digits++;
+                    j++;
+                }
+                if (digits > 0)
+                    return value;
+            }
+        }
+        return -1;
     }
 
     private static byte[] ParseResponse(string url, byte[] raw)

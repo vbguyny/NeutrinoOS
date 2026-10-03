@@ -59,10 +59,10 @@ public static unsafe class Program
         if (url == null)
             return Util.Fail("wget", "usage: wget [-O file] url");
 
-        string host;
-        int port;
-        string path;
-        bool https;
+        string host = null;
+        int port = 0;
+        string path = null;
+        bool https = false;
         if (!Http.ParseUrl(url, out host, out port, out path, out https, out string schemeError))
             return Util.Fail("wget", schemeError);
 
@@ -134,49 +134,20 @@ public static unsafe class Program
             NetworkPump.FlushTx(stack);
         }
 
-        // Read the response.
-        var sb = new System.Text.StringBuilder();
+        // Read the response (shared helpers tick the cooperative webhost
+        // and stop as soon as the declared response body arrived).
+        string all;
         if (tls != null)
         {
-            byte[] tbuf = new byte[1460];
-            ulong tstart = Timer.GetUptimeMilliseconds();
-            while (Timer.GetUptimeMilliseconds() - tstart < 15000)
-            {
-                int n = tls.ReadApp(tbuf, 0, 1460);
-                if (n > 0)
-                {
-                    for (int i = 0; i < n; i++)
-                        sb.Append(tbuf[i] < 128 ? (char)tbuf[i] : '?');
-                }
-                else if (n < 0)
-                {
-                    break;
-                }
-            }
+            all = Http.ReadResponseTls(tls, 15000);
             tls.CloseGraceful();
         }
         else
         {
-            byte* buf = stackalloc byte[1460];
-            ulong start = Timer.GetUptimeMilliseconds();
-            while (Timer.GetUptimeMilliseconds() - start < 15000)
-            {
-                NetworkPump.Pump(stack, 8);
-                int n = sock.Receive(buf, 1460);
-                if (n > 0)
-                {
-                    for (int i = 0; i < n; i++)
-                        sb.Append(buf[i] < 128 ? (char)buf[i] : '?');
-                }
-                else if (!sock.Connected && sock.Available == 0)
-                {
-                    break;
-                }
-            }
+            all = Http.ReadResponse(sock, stack, 15000);
             sock.Close();
         }
 
-        string all = sb.ToString();
         if (all.Length == 0)
             return Util.Fail("wget", "no response received");
 

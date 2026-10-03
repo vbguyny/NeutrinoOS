@@ -56,6 +56,11 @@ public static unsafe class JitStubs
         _ensureVtableSlotCompiledExportAddress = (nint)(delegate* unmanaged<nint, short, nint>)&EnsureVtableSlotCompiledExport;
         _getInterfaceMethodExportAddress = (nint)(delegate* unmanaged<nint, MethodTable*, int, nint>)&GetInterfaceMethodExport;
 
+        // Give the native shims real RUNTIME_FUNCTION/UNWIND_INFO entries so
+        // stack walks (GC mark/compaction, exception unwinding) can traverse
+        // shim frames instead of wandering through the raw stack.
+        JitShimUnwind.Register();
+
         _initialized = true;
         JitTrace.WriteLine("[JitStubs] Initialized");
     }

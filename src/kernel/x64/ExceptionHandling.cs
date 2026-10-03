@@ -356,50 +356,17 @@ public static unsafe class ExceptionHandling
 
         if (!handled)
         {
-            // Unhandled exception - fatal
-            DebugConsole.WriteLine("[EH] FATAL: Unhandled managed exception!");
-
-            // Print exception type MT and try to get type name
-            MethodTable* exMT = *(MethodTable**)exceptionObject;
-            DebugConsole.Write("[EH] Exception type MT: 0x");
-            DebugConsole.WriteHex((ulong)exMT);
-            DebugConsole.WriteLine();
-
-            // Try to get type name from reflection runtime
-            uint assemblyId = 0, typeToken = 0;
-            NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeInfo(exMT, &assemblyId, &typeToken);
-            if (assemblyId != 0 && typeToken != 0)
-            {
-                byte* typeName = NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeName(assemblyId, typeToken);
-                byte* typeNs = NeutrinoOS.Runtime.Reflection.ReflectionRuntime.GetTypeNamespace(assemblyId, typeToken);
-                DebugConsole.Write("[EH] Type: ");
-                if (typeNs != null && *typeNs != 0)
-                {
-                    for (int i = 0; typeNs[i] != 0 && i < 64; i++)
-                        DebugConsole.WriteChar((char)typeNs[i]);
-                    DebugConsole.WriteChar('.');
-                }
-                if (typeName != null)
-                {
-                    for (int i = 0; typeName[i] != 0 && i < 64; i++)
-                        DebugConsole.WriteChar((char)typeName[i]);
-                }
-                DebugConsole.WriteLine();
-            }
-
-            DebugConsole.Write("[EH] Exception object at: 0x");
-            DebugConsole.WriteHex((ulong)exceptionObject);
-            DebugConsole.WriteLine();
-            DebugConsole.Write("[EH] Thrown from RIP: 0x");
-            DebugConsole.WriteHex(context->Rip);
-            DebugConsole.WriteLine();
-
-            // Print stack trace
-            DebugConsole.WriteLine("[EH] Stack trace:");
-            PrintStackTrace(context);
-
-            // Halt - can't continue without a handler
-            CPU.Halt();
+            // The first dispatch pass found no enclosing catch. This is the
+            // normal two-pass flow, not a fatal error: RhpThrowEx returns
+            // and the assembly falls through to the int3 that the JIT emits
+            // after every throw call. The #BP re-enters through the
+            // interrupt path (DefaultHandler), where the interrupt frame is
+            // the exact throw context and dispatch succeeds. Staying silent
+            // here matters: a utility catching a routine IOException (e.g.
+            // `touch /missing-dir/file`) must not print a crash dump. A
+            // genuinely unhandled exception traps again and is fully
+            // reported (raw triage dump + halt) by the DefaultHandler path.
+            return;
         }
 
         // If handled, the context has been modified to point to the handler.
@@ -452,6 +419,35 @@ public static unsafe class ExceptionHandling
             ExceptionCodes.EXCEPTION_STACK_OVERFLOW => new StackOverflowException(),
             _ => new Exception() // Generic exception for unknown codes
         };
+    }
+
+    /// <summary>
+    /// Catch-handler funclets reserve stack space below the parent frame's
+    /// locals: their first instruction is `sub rsp, imm32` (48 81 EC xx xx xx xx)
+    /// so runtime pushes cannot land in the parent's local slots. The
+    /// dispatcher enters funclets at [parentRbp-0x108]; without subtracting
+    /// the reservation from the entry RSP, hardware interrupts, ISR stubs or
+    /// the prolog's own first pushes land INSIDE the parent's local area for
+    /// the window before the funclet executes its own `sub rsp` - observed:
+    /// cp's `dst` local at [rbp-0x128] overwritten by an ISR register push
+    /// (a small stale value), making the catch pass a length where a string
+    /// pointer belongs (#PF cr2 = value+8 inside String.Concat). Entering the
+    /// funclet below its own reservation closes that window completely; the
+    /// funclet's exit paths step back to the entry RSP either way.
+    /// Returns 0 for funclets without the reservation prefix (finally
+    /// handlers, small catches).
+    /// </summary>
+    private static ulong ComputeHandlerReserve(ulong handlerAddr)
+    {
+        byte* p = (byte*)handlerAddr;
+        // 48 81 EC imm32 = sub rsp, imm32
+        if (p[0] == 0x48 && p[1] == 0x81 && p[2] == 0xEC)
+        {
+            uint imm = *(uint*)(p + 3);
+            if (imm <= 0x20000)  // sanity bound
+                return imm;
+        }
+        return 0;
     }
 
     // ======================== Current Exception Tracking (for rethrow) ========================
@@ -2205,7 +2201,7 @@ public static unsafe class ExceptionHandling
                         // Use the ORIGINAL throw context's RSP (not searchContext which was corrupted by unwinding)
                         // The new funclet prolog (push rbp; mov rbp, rdx) needs room for push + ret addr
                         context->Rip = handlerAddr;
-                        context->Rsp = context->Rsp - 16;  // Use original RSP from throw site, leave room for push and ret
+                        context->Rsp = context->Rsp - 16 - ComputeHandlerReserve(handlerAddr);  // original RSP, reserved below parent locals
                         context->Rbp = parentFramePtr;  // Keep parent frame for new funclet's RBP source
                         context->Rcx = (ulong)exceptionObject;
                         context->Rdx = parentFramePtr;  // Pass parent's frame pointer to new handler
@@ -2317,7 +2313,7 @@ public static unsafe class ExceptionHandling
                     ulong targetRsp = catchSearchContext.Rbp - 0x100;
 
                     context->Rip = handlerAddr;
-                    context->Rsp = targetRsp - 8;  // Leave room for push rbp
+                    context->Rsp = targetRsp - 8 - ComputeHandlerReserve(handlerAddr);  // below parent locals (see helper)
                     context->Rbp = catchSearchContext.Rbp;  // Keep the frame pointer
                     context->Rcx = (ulong)exceptionObject;
                     context->Rdx = catchSearchContext.Rbp;  // Pass frame pointer

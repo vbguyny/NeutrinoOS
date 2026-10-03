@@ -32,6 +32,12 @@ public static unsafe class Program
     {
         if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
+        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+            return Util.Help(
+                "usage: h2test",
+                "In-guest HTTP/2 (h2c) client test: HPACK round-trip plus two",
+                "multiplexed streams against the local web service (run",
+                "'webhost start' first).");
         if (args.Length > 1)
             return Util.Fail("h2test", "usage: h2test");
 

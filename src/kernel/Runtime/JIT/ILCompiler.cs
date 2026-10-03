@@ -2981,7 +2981,7 @@ public unsafe struct ILCompiler
         if (!JitDiag.VerboseJit) return;
         if (!X64Emitter.RspDeltaTracking) return;
         if (X64Emitter.RspDeltaAccumulator == _evalStackByteSize) return;
-        if (_physReports >= 24) return;
+        if (_physReports >= 400) return;
         _physReports++;
         DebugConsole.Write("[PHYS] il=0x");
         DebugConsole.WriteHex((uint)_ilOffset);
@@ -8701,20 +8701,13 @@ public unsafe struct ILCompiler
         {
             // In a funclet, leave exits by returning from the funclet.
             // The exception dispatch code sets up the return address to be
-            // the leave target address.
-            // Funclet prolog did: push rbp; mov rbp, rdx; push rbx; push r12-r15
+            // the leave target address at the funclet ENTRY RSP.
+            // Funclet prolog layout (cumulative below the entry RSP):
+            //   [catch-only reservation,] saved rbp, saved rbx, saved r12-r15.
             // We must NOT pop rbp because the leave target expects RBP to be
-            // the parent frame pointer (which was set from RDX). Instead, we
-            // restore callee-saved registers then skip over the saved rbp.
-
-            // Undo any catch-handler frame reservation first.
-            if (_funcletFrameReserve > 0)
-            {
-                _code.EmitByte(0x48);  // add rsp, imm32
-                _code.EmitByte(0x81);
-                _code.EmitByte(0xC4);
-                _code.EmitInt32(_funcletFrameReserve);
-            }
+            // the parent frame pointer (which was set from RDX). Restore the
+            // callee-saved registers, then step over the saved rbp AND the
+            // frame reservation in one add, then ret to the leave target.
 
             // Restore callee-saved registers (5 registers * 8 bytes = 40 bytes)
             // pop r15; pop r14; pop r13; pop r12; pop rbx
@@ -8728,11 +8721,11 @@ public unsafe struct ILCompiler
             _code.EmitByte(0x5C);
             _code.EmitByte(0x5B);  // pop rbx
 
-            // add rsp, 8; ret - skip saved rbp
+            // add rsp, 8 + reserve; ret - skip saved rbp + reservation
             _code.EmitByte(0x48);  // REX.W
-            _code.EmitByte(0x83);  // add r/m64, imm8
+            _code.EmitByte(0x81);  // add r/m64, imm32
             _code.EmitByte(0xC4);  // ModRM: reg=0 (add), r/m=4 (RSP)
-            _code.EmitByte(0x08);  // imm8 = 8
+            _code.EmitInt32(8 + _funcletFrameReserve);
             _code.EmitByte(0xC3);  // ret
         }
         else
@@ -8899,15 +8892,6 @@ public unsafe struct ILCompiler
         // When compiling inline handler, just emit 'ret'.
         if (_compilingFunclet)
         {
-            // Undo any catch-handler frame reservation first.
-            if (_funcletFrameReserve > 0)
-            {
-                _code.EmitByte(0x48);  // add rsp, imm32
-                _code.EmitByte(0x81);
-                _code.EmitByte(0xC4);
-                _code.EmitInt32(_funcletFrameReserve);
-            }
-
             // Restore callee-saved registers (5 registers)
             // pop r15; pop r14; pop r13; pop r12; pop rbx
             _code.EmitByte(0x41);  // pop r15
@@ -8920,9 +8904,17 @@ public unsafe struct ILCompiler
             _code.EmitByte(0x5C);
             _code.EmitByte(0x5B);  // pop rbx
 
-            // Funclet epilog: pop rbp; ret
-            // (matches prolog: push rbp; mov rbp, rdx; push callee-saves)
+            // Funclet epilog: pop rbp, undo the catch-handler frame
+            // reservation (it sits BELOW the saved rbp - see the prolog),
+            // then ret.
             _code.EmitByte(0x5D);  // pop rbp
+            if (_funcletFrameReserve > 0)
+            {
+                _code.EmitByte(0x48);  // add rsp, imm32
+                _code.EmitByte(0x81);
+                _code.EmitByte(0xC4);
+                _code.EmitInt32(_funcletFrameReserve);
+            }
         }
 
         // Emit ret - either as part of funclet epilog or for inline handler
@@ -13657,7 +13649,40 @@ public unsafe struct ILCompiler
                 // Compile the handler funclet
                 int funcletCodeStart = _code.Position;
 
+                // Determine the handler kind FIRST: catch handlers need the
+                // entry frame reservation emitted before any push (see below).
+                _funcletFrameReserve = 0;
+                bool isCatchHandler = (flags == (int)ILExceptionClauseFlags.Exception ||
+                                       flags == (int)ILExceptionClauseFlags.Filter);
+
+                // The exception dispatcher enters catch handlers with
+                // RSP = parentRbp - 0x108 (ExceptionHandling:
+                // targetRsp = Rbp - 0x100, minus 8 for the leave-target
+                // slot). The parent's locals start at parentRbp-0x68 and
+                // step 64 bytes per slot, so the plain prolog pushes
+                // (rbp/rbx/r12-r15 landing 0x110..0x138 below the parent
+                // RBP) fall INSIDE the 4th and deeper local slots and
+                // CLOBBER them - observed: cp's `dst` local at [rbp-0x128]
+                // overwritten with the inner frame's stale r13 (a string
+                // LENGTH), making the catch pass a length where a string
+                // pointer belongs (#PF in String.Concat, cr2 = len + 8).
+                // Reserve the difference FIRST so every push lands BELOW
+                // all parent locals; the funclet exit paths add it back
+                // via _funcletFrameReserve. The reservation also keeps
+                // callee frames and interrupts taken inside the catch
+                // from clobbering the shared locals (they run below RSP).
+                if (isCatchHandler && localBytes > 0x110)
+                {
+                    int reserve = (localBytes - 0x110 + 15) & ~15;
+                    _code.EmitByte(0x48);  // sub rsp, imm32
+                    _code.EmitByte(0x81);
+                    _code.EmitByte(0xEC);
+                    _code.EmitInt32(reserve);
+                    _funcletFrameReserve = reserve;
+                }
+
                 // Emit funclet prolog:
+                // [sub rsp, reserve]          ; catch handlers only - see above
                 // push rbp                    ; 1 byte (0x55) - save caller's RBP
                 // mov rbp, rdx                ; 3 bytes (0x48 0x89 0xD5) - set RBP to parent frame pointer
                 // Save callee-saved registers in case funclet body corrupts them:
@@ -13685,39 +13710,10 @@ public unsafe struct ILCompiler
                 // Reset eval stack for funclet compilation
                 _evalStackDepth = 0;
                 _evalStackByteSize = 0;
-                X64Emitter.RspDeltaAccumulator = 0;  // re-anchor to the funclet frame base
+                X64Emitter.RspDeltaAccumulator = 0;  // re-anchor to the funclet frame base (after callee-saves)
 
                 // For catch handlers (Exception=0 or Filter=1), the exception object is passed in RCX.
                 // Push it onto the stack so IL can use it (callvirt on exception, or pop to discard).
-                _funcletFrameReserve = 0;
-                bool isCatchHandler = (flags == (int)ILExceptionClauseFlags.Exception ||
-                                       flags == (int)ILExceptionClauseFlags.Filter);
-
-                // The exception dispatcher enters catch handlers with
-                // RSP = parentRbp - 0x108 (ExceptionHandling:
-                // targetRsp = Rbp - 0x100, minus 8 for the leave-target
-                // slot). That entry stack is SHALLOWER than this method's
-                // own local frame: locals live at [rbp-40-64k] down to
-                // rbp-40-localBytes. Without reserving the difference,
-                // callee frames and interrupts taken inside the catch run
-                // below RSP and can clobber the shared locals (observed:
-                // the cached exception object at [rbp-0x3A8] overwritten
-                // with garbage). Reserve the same space the main body
-                // reserved so locals stay above RSP; the funclet epilogs
-                // add it back via _funcletFrameReserve.
-                // CRITICAL: this must be emitted BEFORE the exception push
-                // below - the eval stack uses raw push/pop, so a sub between
-                // a push and its pop would break the LIFO order.
-                if (isCatchHandler && localBytes > 0x110)
-                {
-                    int reserve = (localBytes - 0x110 + 15) & ~15;
-                    _code.EmitByte(0x48);  // sub rsp, imm32
-                    _code.EmitByte(0x81);
-                    _code.EmitByte(0xEC);
-                    _code.EmitInt32(reserve);
-                    _funcletFrameReserve = reserve;
-                }
-
                 if (isCatchHandler)
                 {
                     // Push RCX (exception object) onto the physical stack
@@ -13726,7 +13722,7 @@ public unsafe struct ILCompiler
                     // Track exception on eval stack as an object reference
                     _evalStackDepth = 1;
                     _evalStackByteSize = 8;
-                    X64Emitter.RspDeltaAccumulator = 8 + _funcletFrameReserve;  // re-anchor: prolog pushed rcx
+                    X64Emitter.RspDeltaAccumulator = 8;  // re-anchor: prolog pushed rcx (reserve sits above the anchor)
                     if (_evalStack != null)
                     {
                         _evalStack[0] = EvalStackEntry.ObjRef;
@@ -13760,15 +13756,10 @@ public unsafe struct ILCompiler
                 PatchBranches();
 
                 // Emit funclet epilog (safety - endfinally/leave should have already emitted appropriate code)
-                // Restore callee-saved registers first, then handle RBP and return
-                // Undo any catch-handler frame reservation first.
-                if (_funcletFrameReserve > 0)
-                {
-                    _code.EmitByte(0x48);  // add rsp, imm32
-                    _code.EmitByte(0x81);
-                    _code.EmitByte(0xC4);
-                    _code.EmitInt32(_funcletFrameReserve);
-                }
+                // Restore callee-saved registers first, then handle RBP and return.
+                // NOTE: the catch-handler frame reservation sits BELOW the
+                // saved rbp (prolog: sub rsp, reserve; push rbp; ...), so it
+                // is undone AFTER the pops.
                 // pop r15; pop r14; pop r13; pop r12; pop rbx
                 _code.EmitByte(0x41);  // pop r15
                 _code.EmitByte(0x5F);
@@ -13780,21 +13771,28 @@ public unsafe struct ILCompiler
                 _code.EmitByte(0x5C);
                 _code.EmitByte(0x5B);  // pop rbx
 
-                // For catch handlers, we use 'add rsp, 8; ret' to preserve RBP (parent frame pointer)
-                // For finally handlers, we use 'pop rbp; ret' to restore caller's RBP
+                // For catch handlers, we use 'add rsp, 8 + reserve; ret' to preserve RBP (parent frame pointer)
+                // For finally handlers, we use 'pop rbp; [add rsp, reserve;] ret' to restore caller's RBP
                 if (isCatchHandler)
                 {
-                    // add rsp, 8; ret - skip saved rbp, keep RBP = parent frame pointer
+                    // add rsp, 8 + reserve; ret - skip saved rbp + reservation, keep RBP = parent frame pointer
                     _code.EmitByte(0x48);  // REX.W
-                    _code.EmitByte(0x83);  // add r/m64, imm8
+                    _code.EmitByte(0x81);  // add r/m64, imm32
                     _code.EmitByte(0xC4);  // ModRM: reg=0 (add), r/m=4 (RSP)
-                    _code.EmitByte(0x08);  // imm8 = 8
+                    _code.EmitInt32(8 + _funcletFrameReserve);
                     _code.EmitByte(0xC3);  // ret
                 }
                 else
                 {
-                    // pop rbp; ret - restore caller's RBP for finally handlers
+                    // pop rbp; [add rsp, reserve;] ret - restore caller's RBP for finally handlers
                     _code.EmitByte(0x5D);  // pop rbp
+                    if (_funcletFrameReserve > 0)
+                    {
+                        _code.EmitByte(0x48);  // add rsp, imm32
+                        _code.EmitByte(0x81);
+                        _code.EmitByte(0xC4);
+                        _code.EmitInt32(_funcletFrameReserve);
+                    }
                     _code.EmitByte(0xC3);  // ret
                 }
 

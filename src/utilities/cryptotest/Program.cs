@@ -22,6 +22,12 @@ public static class Program
     {
         if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
+        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+            return Util.Help(
+                "usage: cryptotest",
+                "Runs managed crypto known-answer tests (SHA-1/2, MD5, HMAC, AES,",
+                "AEAD, HKDF, X25519, Ed25519, scrypt, CSPRNG) and prints one",
+                "PASS/FAIL line per vector. Exit code = number of failures.");
         Console.WriteLine("[cryptotest] NeutrinoOS managed crypto KATs");
 
         TestHashes();

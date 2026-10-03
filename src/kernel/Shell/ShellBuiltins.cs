@@ -67,7 +67,6 @@ public static class ShellBuiltins
             case "version": return true && RunVersion(args, out exitCode);
             case "poweroff": return true && RunPoweroff(args, out exitCode);
             case "reboot": return true && RunReboot(args, out exitCode);
-            case "sleep": return true && RunSleep(args, out exitCode);
             case "suspend": return true && RunSleep(args, out exitCode);
             case "cpupower": return true && RunCpuPower(args, out exitCode);
             case "usb": return true && RunUsb(args, out exitCode);
@@ -560,8 +559,7 @@ public static class ShellBuiltins
             case "version": return "usage: version - print the NeutrinoOS version string";
             case "poweroff": return "usage: poweroff - shut down the system via ACPI S5";
             case "reboot": return "usage: reboot - reset the system via ACPI/PCI reset";
-            case "sleep": return "usage: sleep - suspend to RAM via ACPI S3; alias: suspend";
-            case "suspend": return "usage: suspend - suspend to RAM via ACPI S3; alias: sleep";
+            case "suspend": return "usage: suspend - suspend to RAM via ACPI S3";
             case "cpupower": return "usage: cpupower - report ACPI C-states/P-states and idle policy";
             case "usb": return "usage: usb - list USB controllers, devices, disks and serial ports";
             default: return null;

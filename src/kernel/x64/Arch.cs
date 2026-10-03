@@ -443,9 +443,20 @@ public unsafe struct Arch : NeutrinoOS.Arch.IArchitecture<Arch>
         // CPU exceptions (0-31) - try SEH dispatch first
         if (vector < 32)
         {
-            // Temporary boot-debug diagnostic: raw polled COM1 dump of the
-            // faulting vector/RIP (bypasses the console CAL and interrupts,
-            // which may itself be the broken path).
+            // Try to dispatch through exception handling infrastructure
+            // FIRST: an exception that JIT'd code handles (e.g. a utility
+            // catching an IOException from a failed file operation) must not
+            // print crash diagnostics. The raw COM1 triage dump below is
+            // reserved for genuinely unhandled exceptions.
+            if (ExceptionHandling.DispatchException(frame, vector))
+            {
+                // Exception was handled, return to continue execution
+                return;
+            }
+
+            // Unhandled: raw polled COM1 dump of the faulting vector/RIP
+            // (bypasses the console CAL and interrupts, which may itself be
+            // the broken path).
             RawDiag("!!! RAWV v=0x", (ulong)vector);
             RawDiag(" rip=0x", frame->Rip);
             RawDiag(" err=0x", (ulong)frame->ErrorCode);
@@ -510,13 +521,6 @@ public unsafe struct Arch : NeutrinoOS.Arch.IArchitecture<Arch>
             RawDiagCodeBytes(frame->Rip, 16);
             RawDiagCrlf();
             NeutrinoOS.Runtime.JIT.CompiledMethodRegistry.RawDumpForFault();
-
-            // Try to dispatch through exception handling infrastructure
-            if (ExceptionHandling.DispatchException(frame, vector))
-            {
-                // Exception was handled, return to continue execution
-                return;
-            }
 
             // Unhandled exception - display info and halt
             DebugConsole.WriteLine();

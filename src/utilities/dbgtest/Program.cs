@@ -5,6 +5,7 @@
 // the first WriteHex call while string prints were fine.
 
 using System;
+using NeutrinoOS.Utils;
 using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.Utility.DbgTest;
@@ -15,6 +16,11 @@ public static class Program
     /// <summary>Entry point.</summary>
     public static int Main(string[] args)
     {
+        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+            return Util.Help(
+                "usage: dbgtest",
+                "Probes the DDK Debug P/Invoke path (Debug.Write/WriteHex/",
+                "WriteDecimal) from the JIT utility context.");
         Debug.Write("dbgtest: start\n");
         Debug.Write("dbgtest: hex64 -> ");
         Debug.WriteHex((ulong)0x1122334455667788UL);

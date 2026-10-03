@@ -11,6 +11,7 @@ using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Network;
 using NeutrinoOS.DDK.Network.Sockets;
 using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Services;
 
 namespace NeutrinoOS.Utils;
 
@@ -185,6 +186,32 @@ public static unsafe class Http
     }
 
     /// <summary>
+    /// Drives the cooperative local web service while a foreground command
+    /// waits on the network. The shell idle hook does not run during a
+    /// foreground command, so utilities that talk to a locally hosted
+    /// service (curl/wget -> webhost) must tick it themselves - the same
+    /// pattern h2test uses.
+    /// </summary>
+    /// <summary>
+    /// Drives the cooperative local web service while a foreground command
+    /// waits on the network. The shell idle hook does not run during a
+    /// foreground command, so utilities that talk to a locally hosted
+    /// service (curl/wget/npkg -> webhost) must tick it themselves - the
+    /// same pattern h2test uses. Public entry for utilities with their own
+    /// receive loops.
+    /// </summary>
+    public static void DriveLocalServices()
+    {
+        TickLocalService();
+    }
+
+    private static void TickLocalService()
+    {
+        if (WebService.Active)
+            WebService.Tick();
+    }
+
+    /// <summary>
     /// Waits for a TCP socket to finish connecting, pumping frames.
     /// Returns true when established.
     /// </summary>
@@ -198,6 +225,9 @@ public static unsafe class Http
             if (sock.State == TcpState.Closed)
                 return false;
             NetworkPump.Pump(stack, 8);
+            // Keep a locally hosted service responsive while we wait.
+            TickLocalService();
+            Thread.Sleep(1);
         }
         return sock.Connected;
     }
@@ -238,11 +268,33 @@ public static unsafe class Http
         while (Timer.GetUptimeMilliseconds() - start < (ulong)timeoutMs)
         {
             NetworkPump.Pump(stack, 8);
+            // Keep a locally hosted service responsive while we wait for
+            // the response (curl/wget -> webhost).
+            TickLocalService();
+            Thread.Sleep(1);
             int n = sock.Receive(buf, 1460);
             if (n > 0)
             {
                 for (int i = 0; i < n; i++)
                     sb.Append(buf[i] < 128 ? (char)buf[i] : '?');
+
+                // Stop as soon as the response is complete: the full
+                // header block is present and the received body length
+                // reaches Content-Length (when advertised). Without this
+                // the loop always ran until the timeout whenever the
+                // peer keeps the connection open (keep-alive).
+                string sofar = sb.ToString();
+                int headerEnd = sofar.IndexOf("\r\n\r\n");
+                if (headerEnd >= 0)
+                {
+                    int bodyGot = sofar.Length - (headerEnd + 4);
+                    int contentLength = ContentLengthOf(sofar, headerEnd);
+                    if (contentLength >= 0 && bodyGot >= contentLength)
+                        break;
+                    // No Content-Length: fall back to connection handling.
+                    if (contentLength < 0 && !sock.Connected && sock.Available == 0)
+                        break;
+                }
             }
             else if (!sock.Connected && sock.Available == 0)
             {
@@ -250,6 +302,48 @@ public static unsafe class Http
             }
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Content-Length of an HTTP response header block, or -1 when absent.
+    /// </summary>
+    private static int ContentLengthOf(string response, int headerEnd)
+    {
+        // Case-insensitive scan of the header lines.
+        for (int i = 0; i + 15 <= headerEnd; i++)
+        {
+            if ((response[i] == 'C' || response[i] == 'c')
+                && (response[i + 1] == 'o' || response[i + 1] == 'O')
+                && (response[i + 2] == 'n' || response[i + 2] == 'N')
+                && (response[i + 3] == 't' || response[i + 3] == 'T')
+                && (response[i + 4] == 'e' || response[i + 4] == 'E')
+                && (response[i + 5] == 'n' || response[i + 5] == 'N')
+                && (response[i + 6] == 't' || response[i + 6] == 'T')
+                && response[i + 7] == '-'
+                && (response[i + 8] == 'L' || response[i + 8] == 'l')
+                && (response[i + 9] == 'e' || response[i + 9] == 'E')
+                && (response[i + 10] == 'n' || response[i + 10] == 'N')
+                && (response[i + 11] == 'g' || response[i + 11] == 'G')
+                && (response[i + 12] == 't' || response[i + 12] == 'T')
+                && (response[i + 13] == 'h' || response[i + 13] == 'H')
+                && response[i + 14] == ':')
+            {
+                int j = i + 15;
+                while (j < headerEnd && response[j] == ' ')
+                    j++;
+                int value = 0;
+                int digits = 0;
+                while (j < headerEnd && response[j] >= '0' && response[j] <= '9')
+                {
+                    value = value * 10 + (response[j] - '0');
+                    digits++;
+                    j++;
+                }
+                if (digits > 0)
+                    return value;
+            }
+        }
+        return -1;
     }
 
     /// <summary>
@@ -264,11 +358,27 @@ public static unsafe class Http
         ulong start = Timer.GetUptimeMilliseconds();
         while (Timer.GetUptimeMilliseconds() - start < (ulong)timeoutMs)
         {
+            // Drive the cooperative local web service (h2test does the
+            // same) and yield the CPU while waiting for application data.
+            TickLocalService();
+            Thread.Sleep(1);
             int n = tls.ReadApp(buf, 0, 1460);
             if (n > 0)
             {
                 for (int i = 0; i < n; i++)
                     sb.Append(buf[i] < 128 ? (char)buf[i] : '?');
+
+                // Stop once the full response (headers + advertised body)
+                // arrived; keep-alive peers never close the session.
+                string sofar = sb.ToString();
+                int headerEnd = sofar.IndexOf("\r\n\r\n");
+                if (headerEnd >= 0)
+                {
+                    int bodyGot = sofar.Length - (headerEnd + 4);
+                    int contentLength = ContentLengthOf(sofar, headerEnd);
+                    if (contentLength >= 0 && bodyGot >= contentLength)
+                        break;
+                }
             }
             else if (n < 0)
             {

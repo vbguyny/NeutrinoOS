@@ -22,6 +22,12 @@ public static unsafe class Program
     {
         if (NeutrinoOS.DDK.Util.VersionFlag.Handle(args))
             return 0;
+        if (args.Length == 1 && (args[0] == "--help" || args[0] == "-h"))
+            return Util.Help(
+                "usage: socktest [port] [timeoutSec]",
+                "TCP server socket smoke test: binds [port] (default 7777) on",
+                "eth0, accepts one connection within [timeoutSec] (default 20),",
+                "sends a banner and echoes data back.");
         int port = 7777;
         int timeoutSec = 20;
 
