@@ -144,6 +144,14 @@ public static class Program
             int lineIndex = startLines[pageTop];
             int charOffset = startOffsets[pageTop];
 
+            // Reset the progress counter to where this page starts
+            // before rendering it: the percentage must reflect the END
+            // of the page being shown. Without the reset, re-rendering
+            // a page (pressing 'b') added its characters to the counter
+            // a second time and the percentage climbed while scrolling
+            // backwards.
+            consumed = CharsBefore(lines, lineIndex, charOffset);
+
             int rowsLeft = pageSize;
             while (rowsLeft > 0 && lineIndex < lines.Length)
             {
@@ -199,11 +207,8 @@ public static class Program
             if (c == 'b' || c == 'B')
             {
                 if (pageTop > 0)
-                {
                     pageTop--;
-                    consumed = CharsBefore(lines, startLines[pageTop], startOffsets[pageTop]);
-                }
-                continue;
+                continue;       // re-render; the counter resets at the top
             }
 
             pageTop++;
