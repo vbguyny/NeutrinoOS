@@ -31,13 +31,8 @@ public static class ShellCompletion
     /// <summary>Maximum candidates printed before the list is truncated.</summary>
     public const int MaxCandidates = 32;
 
-    /// <summary>Command names that are shell built-ins (completed for the first word).</summary>
-    private static readonly string[] _builtins =
-    {
-        "cd", "pwd", "exit", "logout", "export", "unset", "history",
-        "alias", "unalias", "source", "jobs", "fg", "bg", "help",
-        "run", "true", "false", "gc"
-    };
+    // Built-in command names come from ShellBuiltins.BuiltinNames (the
+    // single source of truth also used by the `help` listing).
 
     /// <summary>
     /// Completion entry point (line-discipline callback; returns -1/
@@ -94,10 +89,11 @@ public static class ShellCompletion
         if (firstWord)
         {
             // Built-ins first.
-            for (int i = 0; i < _builtins.Length; i++)
+            string[] builtins = ShellBuiltins.BuiltinNames;
+            for (int i = 0; i < builtins.Length; i++)
             {
-                if (StartsWithIgnoreCase(_builtins[i], namePart))
-                    AddUnique(candidates, _builtins[i]);
+                if (StartsWithIgnoreCase(builtins[i], namePart))
+                    AddUnique(candidates, builtins[i]);
             }
 
             // <name>.dll in each $PATH directory. FAT returns names in
@@ -240,7 +236,7 @@ public static class ShellCompletion
         return -2;
     }
 
-    private static void AddUnique(System.Collections.Generic.List<string> list, string value)
+    internal static void AddUnique(System.Collections.Generic.List<string> list, string value)
     {
         for (int i = 0; i < list.Count; i++)
         {
@@ -306,7 +302,7 @@ public static class ShellCompletion
         return c;
     }
 
-    private static string ToLowerString(string s)
+    internal static string ToLowerString(string s)
     {
         var sb = new System.Text.StringBuilder(s.Length);
         for (int i = 0; i < s.Length; i++)
@@ -314,7 +310,7 @@ public static class ShellCompletion
         return sb.ToString();
     }
 
-    private static bool EndsWithIgnoreCase(string text, string suffix)
+    internal static bool EndsWithIgnoreCase(string text, string suffix)
     {
         if (suffix.Length > text.Length)
             return false;
@@ -333,7 +329,7 @@ public static class ShellCompletion
         return true;
     }
 
-    private static int Compare(string a, string b)
+    internal static int Compare(string a, string b)
     {
         int n = a.Length < b.Length ? a.Length : b.Length;
         for (int i = 0; i < n; i++)
@@ -346,7 +342,7 @@ public static class ShellCompletion
         return a.Length < b.Length ? -1 : 1;
     }
 
-    private static string[] SplitList(string text, char separator)
+    internal static string[] SplitList(string text, char separator)
     {
         var parts = new System.Collections.Generic.List<string>();
         int start = 0;

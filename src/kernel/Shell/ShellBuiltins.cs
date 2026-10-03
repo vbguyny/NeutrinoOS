@@ -6,8 +6,12 @@
 // through $PATH and executed via the Tier-0 JIT (Task 4 requirement);
 // the built-ins here are the shell intrinsics that cannot be external:
 //
-//   cd pwd exit logout export unset env-like listing history
-//   alias unalias source jobs fg bg kill-job help run true false gc
+//   cd pwd exit logout export unset history alias unalias source
+//   jobs fg bg help run true false gc boottime jitstats gcstats
+//   perf version poweroff reboot suspend cpupower usb
+//
+// BuiltinNames below is the single source of truth for the command
+// inventory (used by the `help` listing and tab completion).
 //
 // Every built-in prints a usage line for --help (or -h).
 
@@ -26,6 +30,18 @@ namespace NeutrinoOS.Shell;
 /// </summary>
 public static class ShellBuiltins
 {
+    /// <summary>
+    /// Every built-in command name. Single source of truth for the `help`
+    /// listing and tab completion; keep in sync with the TryRun switch.
+    /// </summary>
+    public static readonly string[] BuiltinNames =
+    {
+        "cd", "pwd", "exit", "logout", "export", "unset", "history",
+        "alias", "unalias", "source", "jobs", "fg", "bg", "help",
+        "run", "true", "false", "gc", "boottime", "jitstats", "gcstats",
+        "perf", "version", "poweroff", "reboot", "suspend", "cpupower", "usb",
+    };
+
     // cd - target of the previous cd (lazy default: static string field
     // initializers trip the bflat TypePreinit pass; see Directory.cs note).
     private static string? _previousDir;
@@ -505,18 +521,24 @@ public static class ShellBuiltins
                 Console.WriteLine(text);
                 return true;
             }
-            Console.WriteLine(cmd + " is an external utility; run '" + cmd + " --help'");
+            if (TryResolveExternal(cmd, out string path))
+            {
+                Console.WriteLine(cmd + ": external utility (" + path + ")");
+                Console.WriteLine("  run '" + cmd + " --help' for its usage");
+                return true;
+            }
+            Console.WriteLine("no built-in or utility named '" + cmd + "'");
+            exitCode = 1;
             return true;
         }
 
         Console.WriteLine("NeutrinoOS shell - built-in commands:");
-        Console.WriteLine("  cd pwd exit logout export unset history alias unalias source");
-        Console.WriteLine("  jobs fg bg help run true false gc poweroff reboot sleep cpupower usb");
+        PrintWrappedList(BuiltinNames);
+
         Console.WriteLine();
-        Console.WriteLine("External utilities resolve through $PATH (default /bin:/apps):");
-        Console.WriteLine("  ls cat echo mkdir rm cp mv touch head tail wc grep find");
-        Console.WriteLine("  ps kill sleep df mount umount uname date uptime free env");
-        Console.WriteLine("  ifconfig dhcp ping dns netstat wget curl ssh");
+        Console.WriteLine("External commands ($PATH, default /bin:/apps):");
+        PrintExternalCommands();
+
         Console.WriteLine();
         Console.WriteLine("Operators:  |   >   >>   <   2>   2>>   ;   &&   ||   &");
         Console.WriteLine("Quoting:    '...' (literal)   \"...\" (escapes + $VARS)   \\x");
@@ -528,6 +550,109 @@ public static class ShellBuiltins
         Console.WriteLine("  cat /test.txt");
         Console.WriteLine("  sleep 2 &");
         return true;
+    }
+
+    /// <summary>
+    /// Prints every <name>.dll found in the $PATH directories (the
+    /// external commands the shell can execute), lower-cased and sorted.
+    /// </summary>
+    private static void PrintExternalCommands()
+    {
+        string pathVar = ShellState.GetVar("PATH");
+        if (string.IsNullOrEmpty(pathVar))
+            pathVar = "/bin:/apps";
+
+        var names = new System.Collections.Generic.List<string>();
+        string[] dirs = ShellCompletion.SplitList(pathVar, ':');
+        for (int d = 0; d < dirs.Length; d++)
+        {
+            string dir = dirs[d];
+            if (dir.Length == 0 || !Directory.Exists(dir))
+                continue;
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(dir);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            for (int f = 0; f < files.Length; f++)
+            {
+                string baseName = Path.GetFileName(files[f]);
+                if (!ShellCompletion.EndsWithIgnoreCase(baseName, ".dll"))
+                    continue;
+                string command = ShellCompletion.ToLowerString(
+                    baseName.Substring(0, baseName.Length - 4));
+                ShellCompletion.AddUnique(names, command);
+            }
+        }
+
+        string[] ordered = names.ToArray();
+        SortNames(ordered);
+        PrintWrappedList(ordered);
+    }
+
+    /// <summary>True when the name resolves as <dir>/<name>.dll in $PATH.</summary>
+    private static bool TryResolveExternal(string name, out string path)
+    {
+        path = "";
+        string pathVar = ShellState.GetVar("PATH");
+        if (string.IsNullOrEmpty(pathVar))
+            pathVar = "/bin:/apps";
+
+        string[] dirs = ShellCompletion.SplitList(pathVar, ':');
+        for (int d = 0; d < dirs.Length; d++)
+        {
+            string dir = dirs[d];
+            if (dir.Length == 0)
+                continue;
+            string candidate = dir[dir.Length - 1] == '/'
+                ? dir + name + ".dll"
+                : dir + "/" + name + ".dll";
+            if (File.Exists(candidate))
+            {
+                path = candidate;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Prints a name list wrapped at ~72 columns (two-space indent).</summary>
+    private static void PrintWrappedList(string[] names)
+    {
+        string line = "  ";
+        for (int i = 0; i < names.Length; i++)
+        {
+            if (line.Length > 2 && line.Length + names[i].Length > 72)
+            {
+                Console.WriteLine(line);
+                line = "  ";
+            }
+            line = line + names[i] + " ";
+        }
+        if (line.Length > 2)
+            Console.WriteLine(line);
+    }
+
+    /// <summary>In-place ordinal sort (Array.Sort is not in korlib).</summary>
+    private static void SortNames(string[] items)
+    {
+        for (int i = 1; i < items.Length; i++)
+        {
+            string key = items[i];
+            int j = i - 1;
+            while (j >= 0 && ShellCompletion.Compare(items[j], key) > 0)
+            {
+                items[j + 1] = items[j];
+                j--;
+            }
+            items[j + 1] = key;
+        }
     }
 
     private static string? GetBuiltinHelp(string cmd)
