@@ -530,6 +530,18 @@ public static unsafe class Scheduler
 
         // We've been woken up - check why
         _globalLock.Acquire();
+
+        // Defensive repair: this thread is executing again, so it must be
+        // the running thread with no outstanding deadline. If a scheduler
+        // path ever returns without dispatching it (State still Blocked),
+        // fix the state and cancel the stale deadline - otherwise the wake
+        // scan could ready a thread that is already running.
+        if (thread->State == ThreadState.Blocked)
+        {
+            thread->State = ThreadState.Running;
+            thread->WakeTime = 0;
+        }
+
         thread->Alertable = false;
         uint result = thread->WaitResult;
         thread->WaitResult = 0;
@@ -808,18 +820,12 @@ public static unsafe class Scheduler
     }
 
     /// <summary>
-    /// Schedule for BSP-only mode (before SMP init)
+    /// Ready every BSP-scheduled thread whose sleep deadline has passed.
+    /// Caller must hold the global scheduler lock. Shared by the main
+    /// scheduling path and the idle-wait loop in ScheduleBsp.
     /// </summary>
-    private static void ScheduleBsp()
+    private static void WakeExpiredSleepersBsp()
     {
-        _globalLock.Acquire();
-
-        // Process cleanup queue (free terminated thread resources)
-        ProcessCleanupQueue();
-
-        var current = _bspCurrentThread;
-
-        // Wake up any sleeping threads whose time has come
         ulong now = APIC.TickCount;
         for (var t = _allThreadsHead; t != null; t = t->NextAll)
         {
@@ -832,6 +838,50 @@ public static unsafe class Scheduler
                 AddToReadyQueue(t);
             }
         }
+    }
+
+    /// <summary>
+    /// Ready every thread whose sleep deadline has passed, appending them
+    /// to the given CPU's ready queue. Caller must hold the global lock
+    /// and the per-CPU scheduler lock.
+    /// </summary>
+    private static void WakeExpiredSleepersSmp(PerCpuState* perCpu)
+    {
+        ulong now = APIC.TickCount;
+        for (var t = _allThreadsHead; t != null; t = t->NextAll)
+        {
+            if (t->State == ThreadState.Blocked &&
+                t->WakeTime > 0 &&
+                t->WakeTime <= now)
+            {
+                t->WakeTime = 0;
+                t->State = ThreadState.Ready;
+                t->PrevReady = perCpu->ReadyQueueTail;
+                t->NextReady = null;
+                if (perCpu->ReadyQueueTail != null)
+                    perCpu->ReadyQueueTail->NextReady = t;
+                else
+                    perCpu->ReadyQueueHead = t;
+                perCpu->ReadyQueueTail = t;
+                perCpu->ReadyQueueCount++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Schedule for BSP-only mode (before SMP init)
+    /// </summary>
+    private static void ScheduleBsp()
+    {
+        _globalLock.Acquire();
+
+        // Process cleanup queue (free terminated thread resources)
+        ProcessCleanupQueue();
+
+        var current = _bspCurrentThread;
+
+        // Wake up any sleeping threads whose time has come
+        WakeExpiredSleepersBsp();
 
         // If current thread is still running, move it to ready queue
         if (current != null && current->State == ThreadState.Running)
@@ -844,7 +894,8 @@ public static unsafe class Scheduler
         var next = _bspReadyQueueHead;
         if (next == null)
         {
-            // No ready threads - continue with current or idle
+            // No ready threads - continue with the current thread if it
+            // can still run.
             if (current != null && current->State == ThreadState.Ready)
             {
                 RemoveFromReadyQueue(current);
@@ -852,9 +903,51 @@ public static unsafe class Scheduler
                 _globalLock.Release();
                 return;
             }
-            // No runnable threads at all - this shouldn't happen
-            _globalLock.Release();
-            return;
+
+            // Nothing runnable at all: the current thread is blocked (for
+            // example inside Scheduler.Sleep) and no other thread is ready.
+            // Idle with interrupts enabled until a deadline passes or an
+            // interrupt readies a thread, then retry. Returning here used
+            // to let the "sleeping" thread keep executing: Scheduler.Sleep
+            // became a silent no-op and its stale wake bookkeeping could
+            // corrupt the ready queue (apparent hangs on long sleeps).
+            //
+            // Only idle from interruptible (thread) context. An interrupt
+            // handler runs with IF=0 where HLT would never wake; in that
+            // corner the interrupted thread is about to reschedule from
+            // thread context anyway, so just return.
+            if (!CPU.AreInterruptsEnabled())
+            {
+                _globalLock.Release();
+                return;
+            }
+
+            while (true)
+            {
+                _globalLock.Release();
+                CpuPower.IdleOnce();
+                _globalLock.Acquire();
+
+                ProcessCleanupQueue();
+                WakeExpiredSleepersBsp();
+
+                // The current thread may have been readied - and even
+                // dispatched back to - by a nested reschedule: continue it.
+                if (current != null &&
+                    (current->State == ThreadState.Ready ||
+                     current->State == ThreadState.Running))
+                {
+                    if (current->State == ThreadState.Ready)
+                        RemoveFromReadyQueue(current);
+                    current->State = ThreadState.Running;
+                    _globalLock.Release();
+                    return;
+                }
+
+                next = _bspReadyQueueHead;
+                if (next != null)
+                    break;
+            }
         }
 
         // Remove from ready queue
@@ -941,27 +1034,7 @@ public static unsafe class Scheduler
         // Process cleanup queue (free terminated thread resources)
         ProcessCleanupQueue();
 
-        ulong now = APIC.TickCount;
-        for (var t = _allThreadsHead; t != null; t = t->NextAll)
-        {
-            if (t->State == ThreadState.Blocked &&
-                t->WakeTime > 0 &&
-                t->WakeTime <= now)
-            {
-                t->WakeTime = 0;
-                t->State = ThreadState.Ready;
-                // Add to appropriate CPU's queue (prefer last CPU for cache)
-                // For now, add to current CPU's queue
-                t->PrevReady = perCpu->ReadyQueueTail;
-                t->NextReady = null;
-                if (perCpu->ReadyQueueTail != null)
-                    perCpu->ReadyQueueTail->NextReady = t;
-                else
-                    perCpu->ReadyQueueHead = t;
-                perCpu->ReadyQueueTail = t;
-                perCpu->ReadyQueueCount++;
-            }
-        }
+        WakeExpiredSleepersSmp(perCpu);
         _globalLock.Release();
 
         // If current thread is still running, move it to ready queue
@@ -1006,7 +1079,20 @@ public static unsafe class Scheduler
                     current->NextReady = null;
                     current->PrevReady = null;
                     current->State = ThreadState.Running;
+                    perCpu->SchedulerLock.Release();
+                    return;
                 }
+
+                // Nothing runnable on this CPU and no idle thread yet.
+                // Do NOT hide here waiting for a sleeper's deadline: CPU0
+                // (unlike the APs) has no idle thread to park on, and its
+                // current thread's context is not saved while it runs, so
+                // another CPU's wake scan could resume it from a stale
+                // context if it were made dispatchable. Return instead;
+                // SleepEx()'s defensive repair cancels the stale deadline
+                // so the leftover Blocked state cannot corrupt the ready
+                // queues. (ScheduleBsp has no such hazard - it is the only
+                // CPU - so it idles there until a deadline passes.)
                 perCpu->SchedulerLock.Release();
                 return;
             }

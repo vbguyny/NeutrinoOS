@@ -15,8 +15,8 @@ public static class NeutrinoVersion
     public const int Minor = 1;
 
     /// <summary>Build number; increments on every build.</summary>
-    public const int Build = 47;
+    public const int Build = 49;
 
     /// <summary>"major.minor.build" version string (e.g. "0.1.7").</summary>
-    public const string ShortVersion = "0.1.47";
+    public const string ShortVersion = "0.1.49";
 }
