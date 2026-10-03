@@ -110,12 +110,38 @@ public static unsafe class ConsoleExports
         if (top != null) *top = t;
     }
 
-    /// <summary>Gets the configured console size (80x50 default).</summary>
+    /// <summary>
+    /// Gets the console size for full-screen output (pagers, TUI layout):
+    /// the smallest size among the registered console devices, falling
+    /// back to the configured default (80x50) when none is registered.
+    /// Output fans out to every registered device, so a screen written
+    /// for this size fits all of them - e.g. the CLI image runs an 80x25
+    /// VGA text console mirrored to the serial console, and a page must
+    /// fit the 25 VGA rows (not the 50-row default).
+    /// </summary>
     [UnmanagedCallersOnly(EntryPoint = "ConsoleGetSize")]
     public static void ConsoleGetSize(int* width, int* height)
     {
-        if (width != null) *width = ConsoleAbstractionLayer.DefaultWidth;
-        if (height != null) *height = ConsoleAbstractionLayer.DefaultHeight;
+        int w = ConsoleAbstractionLayer.DefaultWidth;
+        int h = ConsoleAbstractionLayer.DefaultHeight;
+
+        var devices = ConsoleAbstractionLayer.Devices;
+        int count = devices.DeviceCount;
+        for (int i = 0; i < count; i++)
+        {
+            var device = devices.GetDevice(i);
+            if (device == null)
+                continue;
+            int dw = device.WindowWidth;
+            int dh = device.WindowHeight;
+            if (dw > 0 && dw < w)
+                w = dw;
+            if (dh > 0 && dh < h)
+                h = dh;
+        }
+
+        if (width != null) *width = w;
+        if (height != null) *height = h;
     }
 
     /// <summary>Flushes console output.</summary>
