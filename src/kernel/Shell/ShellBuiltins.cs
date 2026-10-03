@@ -10,8 +10,8 @@
 //   jobs fg bg help run true false gc boottime jitstats gcstats
 //   perf version poweroff reboot suspend cpupower usb
 //
-// BuiltinNames below is the single source of truth for the command
-// inventory (used by the `help` listing and tab completion).
+// BuiltinNames and ExternalUtilityNames below are the single source of
+// truth for the `help` inventory (tab completion uses BuiltinNames).
 //
 // Every built-in prints a usage line for --help (or -h).
 
@@ -40,6 +40,26 @@ public static class ShellBuiltins
         "alias", "unalias", "source", "jobs", "fg", "bg", "help",
         "run", "true", "false", "gc", "boottime", "jitstats", "gcstats",
         "perf", "version", "poweroff", "reboot", "suspend", "cpupower", "usb",
+    };
+
+    /// <summary>
+    /// Every external utility shipped in /bin (the `help` listing).
+    /// Hard-coded on purpose: /bin also holds files that are not commands
+    /// (e.g. NeutrinoOS.DDK.dll), so enumerating the directory would list
+    /// things the shell cannot run. Keep in sync with src/utilities/
+    /// (and the sweep list in build/utils-check.sh).
+    /// </summary>
+    public static readonly string[] ExternalUtilityNames =
+    {
+        "cat", "clear", "cp", "cryptotest", "curl", "date", "dbgtest",
+        "df", "dhcp", "dhcp6", "dns", "dns6", "du", "echo", "env",
+        "exfatattrib", "exfatlabel", "find", "free", "fsck.exfat",
+        "grep", "h2test", "head", "hexdump", "ifconfig", "kill", "ls",
+        "mkdir", "mkexfat", "more", "mount", "mv", "netstat", "npkg",
+        "ping", "ping6", "ps", "rm", "seq", "sleep", "socktest",
+        "sort", "ssh", "sshd", "startup", "tail", "tee", "touch",
+        "tree", "umount", "uname", "uptime", "wc", "webhost", "wget",
+        "which", "whoami",
     };
 
     // cd - target of the previous cd (lazy default: static string field
@@ -521,10 +541,9 @@ public static class ShellBuiltins
                 Console.WriteLine(text);
                 return true;
             }
-            if (TryResolveExternal(cmd, out string path))
+            if (IsExternalUtility(cmd))
             {
-                Console.WriteLine(cmd + ": external utility (" + path + ")");
-                Console.WriteLine("  run '" + cmd + " --help' for its usage");
+                Console.WriteLine(cmd + " is an external utility; run '" + cmd + " --help'");
                 return true;
             }
             Console.WriteLine("no built-in or utility named '" + cmd + "'");
@@ -536,8 +555,8 @@ public static class ShellBuiltins
         PrintWrappedList(BuiltinNames);
 
         Console.WriteLine();
-        Console.WriteLine("External commands ($PATH, default /bin:/apps):");
-        PrintExternalCommands();
+        Console.WriteLine("External utilities ($PATH, default /bin/apps):");
+        PrintWrappedList(ExternalUtilityNames);
 
         Console.WriteLine();
         Console.WriteLine("Operators:  |   >   >>   <   2>   2>>   ;   &&   ||   &");
@@ -552,72 +571,13 @@ public static class ShellBuiltins
         return true;
     }
 
-    /// <summary>
-    /// Prints every <name>.dll found in the $PATH directories (the
-    /// external commands the shell can execute), lower-cased and sorted.
-    /// </summary>
-    private static void PrintExternalCommands()
+    /// <summary>True when the name matches a hard-coded external utility.</summary>
+    private static bool IsExternalUtility(string name)
     {
-        string pathVar = ShellState.GetVar("PATH");
-        if (string.IsNullOrEmpty(pathVar))
-            pathVar = "/bin:/apps";
-
-        var names = new System.Collections.Generic.List<string>();
-        string[] dirs = ShellCompletion.SplitList(pathVar, ':');
-        for (int d = 0; d < dirs.Length; d++)
+        for (int i = 0; i < ExternalUtilityNames.Length; i++)
         {
-            string dir = dirs[d];
-            if (dir.Length == 0 || !Directory.Exists(dir))
-                continue;
-
-            string[] files;
-            try
-            {
-                files = Directory.GetFiles(dir);
-            }
-            catch (Exception)
-            {
-                continue;
-            }
-
-            for (int f = 0; f < files.Length; f++)
-            {
-                string baseName = Path.GetFileName(files[f]);
-                if (!ShellCompletion.EndsWithIgnoreCase(baseName, ".dll"))
-                    continue;
-                string command = ShellCompletion.ToLowerString(
-                    baseName.Substring(0, baseName.Length - 4));
-                ShellCompletion.AddUnique(names, command);
-            }
-        }
-
-        string[] ordered = names.ToArray();
-        SortNames(ordered);
-        PrintWrappedList(ordered);
-    }
-
-    /// <summary>True when the name resolves as <dir>/<name>.dll in $PATH.</summary>
-    private static bool TryResolveExternal(string name, out string path)
-    {
-        path = "";
-        string pathVar = ShellState.GetVar("PATH");
-        if (string.IsNullOrEmpty(pathVar))
-            pathVar = "/bin:/apps";
-
-        string[] dirs = ShellCompletion.SplitList(pathVar, ':');
-        for (int d = 0; d < dirs.Length; d++)
-        {
-            string dir = dirs[d];
-            if (dir.Length == 0)
-                continue;
-            string candidate = dir[dir.Length - 1] == '/'
-                ? dir + name + ".dll"
-                : dir + "/" + name + ".dll";
-            if (File.Exists(candidate))
-            {
-                path = candidate;
+            if (ExternalUtilityNames[i] == name)
                 return true;
-            }
         }
         return false;
     }
@@ -637,22 +597,6 @@ public static class ShellBuiltins
         }
         if (line.Length > 2)
             Console.WriteLine(line);
-    }
-
-    /// <summary>In-place ordinal sort (Array.Sort is not in korlib).</summary>
-    private static void SortNames(string[] items)
-    {
-        for (int i = 1; i < items.Length; i++)
-        {
-            string key = items[i];
-            int j = i - 1;
-            while (j >= 0 && ShellCompletion.Compare(items[j], key) > 0)
-            {
-                items[j + 1] = items[j];
-                j--;
-            }
-            items[j + 1] = key;
-        }
     }
 
     private static string? GetBuiltinHelp(string cmd)

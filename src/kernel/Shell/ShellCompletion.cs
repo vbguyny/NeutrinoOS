@@ -236,7 +236,7 @@ public static class ShellCompletion
         return -2;
     }
 
-    internal static void AddUnique(System.Collections.Generic.List<string> list, string value)
+    private static void AddUnique(System.Collections.Generic.List<string> list, string value)
     {
         for (int i = 0; i < list.Count; i++)
         {
@@ -302,7 +302,7 @@ public static class ShellCompletion
         return c;
     }
 
-    internal static string ToLowerString(string s)
+    private static string ToLowerString(string s)
     {
         var sb = new System.Text.StringBuilder(s.Length);
         for (int i = 0; i < s.Length; i++)
@@ -310,7 +310,7 @@ public static class ShellCompletion
         return sb.ToString();
     }
 
-    internal static bool EndsWithIgnoreCase(string text, string suffix)
+    private static bool EndsWithIgnoreCase(string text, string suffix)
     {
         if (suffix.Length > text.Length)
             return false;
@@ -329,7 +329,7 @@ public static class ShellCompletion
         return true;
     }
 
-    internal static int Compare(string a, string b)
+    private static int Compare(string a, string b)
     {
         int n = a.Length < b.Length ? a.Length : b.Length;
         for (int i = 0; i < n; i++)
@@ -342,7 +342,7 @@ public static class ShellCompletion
         return a.Length < b.Length ? -1 : 1;
     }
 
-    internal static string[] SplitList(string text, char separator)
+    private static string[] SplitList(string text, char separator)
     {
         var parts = new System.Collections.Generic.List<string>();
         int start = 0;
