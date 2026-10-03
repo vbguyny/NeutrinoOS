@@ -2,12 +2,15 @@
 //
 // Phase 2 input engine. Bytes arrive from the UART RX interrupt handler
 // (LineDiscipline.Feed) and are:
-//   - canonical mode (default): echoed, line-edited (backspace, Ctrl+U),
-//     terminated by Enter (CR/LF), Ctrl+C cancels the line, Ctrl+D signals
-//     EOF on an empty line, arrow keys browse up to 32 history entries
-//     with full line redraw, and ANSI escape sequences (arrows, Home, End,
-//     Delete, PgUp, PgDn, F1-F12, SS3 forms) are decoded into
-//     System.ConsoleKeyInfo events.
+//   - canonical mode (default): echoed, line-edited (backspace, Ctrl+U,
+//     insert-at-cursor with left/right/Home/End movement within the
+//     typed line), terminated by Enter (CR/LF), Ctrl+C cancels the line,
+//     Ctrl+D signals EOF on an empty line, up/down arrows browse up to
+//     32 history entries with full line redraw, and ANSI escape
+//     sequences (arrows, Home, End, Delete, PgUp, PgDn, F1-F12, SS3
+//     forms) are decoded into System.ConsoleKeyInfo events. Left/right/
+//     Home/End edit the line only in canonical mode with no ReadKey
+//     consumer active; raw mode and ReadKey keep them as plain keys.
 //   - raw mode: bytes are passed through without echo or editing.
 //
 // Completed lines/EOF/cancel are queued for ReadLine; decoded keys are
@@ -64,9 +67,10 @@ public static unsafe class LineDiscipline
     private static int _keyHead;
     private static int _keyTail;
 
-    // Line being edited
+    // Line being edited; _editPos is the cursor within it (0.._editLength)
     private static readonly char[] _edit = new char[LineCapacity];
     private static int _editLength;
+    private static int _editPos;
 
     // History (oldest first; data kept as bytes to stay allocation-free).
     private struct HistoryStore
@@ -80,6 +84,7 @@ public static unsafe class LineDiscipline
     private static int _historyPos = -1;                    // -1 = not browsing
     private static readonly char[] _historySaved = new char[LineCapacity];
     private static int _historySavedLength;
+    private static int _historySavedPos;
 
     // Modes
     private static bool _rawMode;
@@ -292,8 +297,8 @@ public static unsafe class LineDiscipline
                     case 'Q': DeliverKey('\0', ConsoleKey.F2, ConsoleModifiers.None); return;
                     case 'R': DeliverKey('\0', ConsoleKey.F3, ConsoleModifiers.None); return;
                     case 'S': DeliverKey('\0', ConsoleKey.F4, ConsoleModifiers.None); return;
-                    case 'H': DeliverKey('\0', ConsoleKey.Home, ConsoleModifiers.None); return;
-                    case 'F': DeliverKey('\0', ConsoleKey.End, ConsoleModifiers.None); return;
+                    case 'H': HandleEditCursor(ConsoleKey.Home, ConsoleModifiers.None); return;
+                    case 'F': HandleEditCursor(ConsoleKey.End, ConsoleModifiers.None); return;
                     default: return;
                 }
         }
@@ -352,13 +357,28 @@ public static unsafe class LineDiscipline
 
             case 0x7F:      // DEL / backspace
             case 0x08:      // BS
-                if (_editLength > 0)
+                if (_editPos > 0)
                 {
-                    _editLength--;
                     _historyPos = -1;
-                    EchoAscii(0x08);
-                    EchoAscii((byte)' ');
-                    EchoAscii(0x08);
+                    if (_editPos == _editLength)
+                    {
+                        // At the end: erase the last cell in place.
+                        _editLength--;
+                        _editPos--;
+                        EchoAscii(0x08);
+                        EchoAscii((byte)' ');
+                        EchoAscii(0x08);
+                    }
+                    else
+                    {
+                        // Mid-line: remove the character before the
+                        // cursor, shift the tail left and redraw.
+                        for (int i = _editPos - 1; i < _editLength - 1; i++)
+                            _edit[i] = _edit[i + 1];
+                        _editLength--;
+                        _editPos--;
+                        RedrawLine();
+                    }
                 }
                 return;
 
@@ -374,6 +394,7 @@ public static unsafe class LineDiscipline
                     EchoAscii(0x0D);
                     EchoAscii(0x0A);
                     _editLength = 0;
+                    _editPos = 0;
                     _historyPos = -1;
                     CompleteLine(LineType.Cancelled);
                 }
@@ -397,6 +418,7 @@ public static unsafe class LineDiscipline
             case 0x15:      // Ctrl+U - clear the line
                 RedrawBegin();
                 _editLength = 0;
+                _editPos = 0;
                 _historyPos = -1;
                 return;
 
@@ -425,9 +447,25 @@ public static unsafe class LineDiscipline
         // Printable (ASCII and passthrough high bytes)
         if (_editLength < LineCapacity)
         {
-            _edit[_editLength++] = (char)b;
             _historyPos = -1;
-            EchoAscii(b);
+            if (_editPos == _editLength)
+            {
+                // Append at the end: fast path (plain echo).
+                _edit[_editLength++] = (char)b;
+                _editPos = _editLength;
+                EchoAscii(b);
+            }
+            else
+            {
+                // Insert at the cursor: the tail shifts right and the
+                // line is redrawn, never overwriting existing text.
+                for (int i = _editLength; i > _editPos; i--)
+                    _edit[i] = _edit[i - 1];
+                _edit[_editPos] = (char)b;
+                _editLength++;
+                _editPos++;
+                RedrawLine();
+            }
         }
     }
 
@@ -482,10 +520,10 @@ public static unsafe class LineDiscipline
         {
             case 'A': HandleArrow(ConsoleKey.UpArrow, mods); return;
             case 'B': HandleArrow(ConsoleKey.DownArrow, mods); return;
-            case 'C': DeliverKey('\0', ConsoleKey.RightArrow, mods); return;
-            case 'D': DeliverKey('\0', ConsoleKey.LeftArrow, mods); return;
-            case 'H': DeliverKey('\0', ConsoleKey.Home, mods); return;
-            case 'F': DeliverKey('\0', ConsoleKey.End, mods); return;
+            case 'C': HandleEditCursor(ConsoleKey.RightArrow, mods); return;
+            case 'D': HandleEditCursor(ConsoleKey.LeftArrow, mods); return;
+            case 'H': HandleEditCursor(ConsoleKey.Home, mods); return;
+            case 'F': HandleEditCursor(ConsoleKey.End, mods); return;
 
             case '~':
                 switch (p1)
@@ -538,6 +576,50 @@ public static unsafe class LineDiscipline
             HistoryPrev();
         else
             HistoryNext();
+    }
+
+    /// <summary>
+    /// Left/right/Home/End in line-editing mode: move the edit cursor
+    /// within the typed line. The cursor never leaves the statement -
+    /// not before its first character and not past the last one typed.
+    /// While a key consumer (ReadKey) is active or in raw mode the keys
+    /// stay plain key events.
+    /// </summary>
+    private static void HandleEditCursor(ConsoleKey key, ConsoleModifiers mods)
+    {
+        if (_keyReadActive || _rawMode)
+        {
+            DeliverKey('\0', key, mods);
+            return;
+        }
+
+        int newPos = _editPos;
+        if (key == ConsoleKey.LeftArrow)
+        {
+            if (_editPos > 0)
+                newPos = _editPos - 1;
+        }
+        else if (key == ConsoleKey.RightArrow)
+        {
+            if (_editPos < _editLength)
+                newPos = _editPos + 1;
+        }
+        else if (key == ConsoleKey.Home)
+        {
+            newPos = 0;
+        }
+        else if (key == ConsoleKey.End)
+        {
+            newPos = _editLength;
+        }
+
+        if (newPos == _editPos)
+            return;
+
+        int oldPos = _editPos;
+        _editPos = newPos;
+        CalcPromptTailLength(out char[] prompt, out int promptLen);
+        EchoMoveCursor(prompt, promptLen, promptLen + oldPos, promptLen + newPos);
     }
 
     private static ConsoleKey KeyFromChar(byte b)
@@ -648,8 +730,10 @@ public static unsafe class LineDiscipline
         _lineTail = next;
 
         _editLength = 0;
+        _editPos = 0;
         _historyPos = -1;
         _historySavedLength = 0;
+        _historySavedPos = 0;
 
         // The line is complete: drop the tracked prompt tail on every
         // console. Everything written from here on (the command's output
@@ -761,8 +845,10 @@ public static unsafe class LineDiscipline
 
         if (_historyPos == -1)
         {
-            // Save the line being edited so Down can restore it
+            // Save the line being edited (text and cursor) so Down can
+            // restore it
             _historySavedLength = _editLength;
+            _historySavedPos = _editPos;
             for (int i = 0; i < _editLength; i++)
                 _historySaved[i] = _edit[i];
             _historyPos = _historyCount;
@@ -791,6 +877,13 @@ public static unsafe class LineDiscipline
             _editLength = _historySavedLength;
             for (int i = 0; i < _historySavedLength; i++)
                 _edit[i] = _historySaved[i];
+            _editPos = _historySavedPos <= _editLength ? _historySavedPos : _editLength;
+            if (_editPos < _editLength)
+            {
+                // Restore the cursor where the line was left.
+                CalcPromptTailLength(out char[] prompt, out int promptLen);
+                EchoMoveToEditPos(prompt, promptLen);
+            }
             return;
         }
 
@@ -810,6 +903,7 @@ public static unsafe class LineDiscipline
                 _edit[i] = (char)b;
             }
             _editLength = len;
+            _editPos = len;     // recalling a line puts the cursor at its end
         }
     }
 
@@ -909,6 +1003,17 @@ public static unsafe class LineDiscipline
         if (_rawMode || _keyReadActive || _tabCompleter == null)
             return;
 
+        // Completion operates on the whole buffer and appends at its end:
+        // park a mid-line cursor at the end first.
+        if (_editPos != _editLength)
+        {
+            int oldPos = _editPos;
+            _editPos = _editLength;
+            CalcPromptTailLength(out char[] movePrompt, out int movePromptLen);
+            EchoMoveCursor(movePrompt, movePromptLen,
+                movePromptLen + oldPos, movePromptLen + _editPos);
+        }
+
         int newLen;
         fixed (char* p = _edit)
         {
@@ -928,6 +1033,7 @@ public static unsafe class LineDiscipline
                     EchoAsciiChar(prompt[i]);
                 for (int i = 0; i < _editLength; i++)
                     EchoAsciiChar(_edit[i]);
+                _editPos = _editLength;
             }
             return;
         }
@@ -937,12 +1043,14 @@ public static unsafe class LineDiscipline
             for (int i = _editLength; i < newLen; i++)
                 EchoAsciiChar(_edit[i]);
             _editLength = newLen;
+            _editPos = _editLength;
             _historyPos = -1;
         }
         else if (newLen < _editLength)
         {
             // Defensive: completer shortened the line; redraw it.
             _editLength = newLen;
+            _editPos = _editLength;
             RedrawBegin();
             for (int i = 0; i < _editLength; i++)
                 EchoAsciiChar(_edit[i]);
@@ -951,35 +1059,109 @@ public static unsafe class LineDiscipline
 
     /// <summary>
     /// Erases the current line (prompt + text) and re-prints the prompt.
-    /// The caller then echoes the replacement text.
+    /// The caller then echoes the replacement text (and repositions the
+    /// cursor when it should not sit at the end of the line).
     ///
-    /// Redraw invariant: the cursor sits at the end of the displayed line,
-    /// which starts at column 0 and may wrap over several rows. The erase
-    /// moves to the start of the cursor's row, erases it, and walks up one
-    /// row at a time - ESC[K erases from the cursor to the end of the row
-    /// on both the serial terminals and the VGA text console (which uses
-    /// the same delayed-wrap model).
+    /// The displayed line starts at column 0 and may wrap over several
+    /// rows; the cursor may sit anywhere in it. The erase works from
+    /// wherever the cursor is: erase its row, LF down through the row's
+    /// remaining lines, then walk back up to the first row - only CR /
+    /// LF / ESC[K / ESC[1A are used, which both the serial terminals and
+    /// the VGA text console honor in their echo paths.
     /// </summary>
     private static void RedrawBegin()
     {
         CalcPromptTailLength(out char[] prompt, out int promptLen);
 
-        int oldLen = promptLen + _editLength;
-        int wrappedRows = oldLen > 0 ? (oldLen - 1) / ConsoleWidth() : 0;
+        int width = ConsoleWidth();
+        int cursorRow = RowOfAbs(promptLen + _editPos, width);
+        int endRow = RowOfAbs(promptLen + _editLength, width);
 
         EchoAscii(0x0D);
         EchoEraseRow();
-        for (int i = 0; i < wrappedRows; i++)
+        for (int row = cursorRow; row < endRow; row++)
+        {
+            EchoAscii(0x0A);        // LF: one row down
+            EchoEraseRow();
+        }
+        for (int row = 0; row < endRow; row++)
         {
             EchoAscii(0x1B);
             EchoAscii((byte)'[');
             EchoAscii((byte)'1');
             EchoAscii((byte)'A');
-            EchoEraseRow();
         }
 
         for (int i = 0; i < promptLen; i++)
             EchoAsciiChar(prompt[i]);
+    }
+
+    /// <summary>
+    /// Screen row (relative to the line's first row) holding the cell at
+    /// absolute line position <paramref name="abs"/> (0 = column 0 of
+    /// the first row). Positions exactly on a row boundary map to the
+    /// end of the previous row - the terminal's delayed-wrap pending
+    /// state after printing exactly a full row.
+    /// </summary>
+    private static int RowOfAbs(int abs, int width)
+        => abs > 0 ? (abs - 1) / width : 0;
+
+    /// <summary>
+    /// Moves the terminal cursor from absolute line position
+    /// <paramref name="fromAbs"/> to <paramref name="toAbs"/> using only
+    /// the sequences the kernel echo paths apply (CR, LF, ESC[K,
+    /// ESC[nA): walk up with ESC[1A, down with LF (never below the line,
+    /// so it cannot scroll), then CR to column 0 and re-echo the target
+    /// row's prefix. The re-echoed glyphs are already on screen, so the
+    /// pass is visually idempotent.
+    /// </summary>
+    private static void EchoMoveCursor(char[] prompt, int promptLen, int fromAbs, int toAbs)
+    {
+        int width = ConsoleWidth();
+        int row = RowOfAbs(fromAbs, width);
+        int targetRow = RowOfAbs(toAbs, width);
+
+        while (row > targetRow)
+        {
+            EchoAscii(0x1B);
+            EchoAscii((byte)'[');
+            EchoAscii((byte)'1');
+            EchoAscii((byte)'A');
+            row--;
+        }
+        while (row < targetRow)
+        {
+            EchoAscii(0x0A);        // LF: one row down (column unchanged)
+            row++;
+        }
+
+        EchoAscii(0x0D);
+        int rowStart = targetRow * width;
+        for (int i = rowStart; i < toAbs; i++)
+            EchoAsciiChar(i < promptLen ? prompt[i] : _edit[i - promptLen]);
+    }
+
+    /// <summary>
+    /// Moves the cursor to the edit position after the full line
+    /// (prompt + text) has just been printed (cursor at the line end).
+    /// </summary>
+    private static void EchoMoveToEditPos(char[] prompt, int promptLen)
+    {
+        EchoMoveCursor(prompt, promptLen,
+            promptLen + _editLength, promptLen + _editPos);
+    }
+
+    /// <summary>
+    /// Redraws the whole edit line (erase + prompt + text) and puts the
+    /// cursor back at the edit position; used by mid-line edits.
+    /// </summary>
+    private static void RedrawLine()
+    {
+        RedrawBegin();
+        for (int i = 0; i < _editLength; i++)
+            EchoAsciiChar(_edit[i]);
+        CalcPromptTailLength(out char[] prompt, out int promptLen);
+        EchoMoveToEditPos(prompt, promptLen);
     }
 
     /// <summary>Emits ESC[K (erase from the cursor to the end of its row).</summary>
