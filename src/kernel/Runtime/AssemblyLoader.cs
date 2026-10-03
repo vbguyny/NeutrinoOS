@@ -592,8 +592,13 @@ public unsafe struct LoadedAssembly
 /// </summary>
 public static unsafe class AssemblyLoader
 {
-    /// <summary>Maximum number of loaded assemblies.</summary>
-    public const int MaxAssemblies = 64;
+    /// <summary>
+    /// Maximum number of loaded assemblies. Must fit the normalized token
+    /// encoding (assemblyId = top byte - TokenNormalizationOffset), so the
+    /// ceiling is 253. 128 leaves room for the kernel/driver assemblies and
+    /// every shipped utility loaded in a single shell session.
+    /// </summary>
+    public const int MaxAssemblies = 128;
 
     /// <summary>Special assembly IDs.</summary>
     public const uint InvalidAssemblyId = 0;

@@ -240,7 +240,7 @@ public static unsafe class AssemblyRunner
 
     // ==================== Assembly path cache (Phase 5) ====================
 
-    private const int AssemblyCacheSize = 64;
+    private const int AssemblyCacheSize = 128;
     private static readonly string?[] _cachePaths = new string?[AssemblyCacheSize];
     private static readonly uint[] _cacheIds = new uint[AssemblyCacheSize];
     private static int _cacheCount;

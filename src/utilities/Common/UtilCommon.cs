@@ -14,6 +14,7 @@
 using System;
 using System.IO;
 using System.Text;
+using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.Utils;
 
@@ -297,4 +298,63 @@ public static class Util
 
     /// <summary>True when the path names the root or an empty path.</summary>
     public static bool IsRoot(string path) => path == "/" || string.IsNullOrEmpty(path);
+
+    /// <summary>
+    /// Reads environment variable <paramref name="name"/>; returns "" when
+    /// unset. The shell and all utilities share one process-wide environment
+    /// table (see the env utility); this wraps the SysInfo enumeration export.
+    /// </summary>
+    public static string GetEnvironment(string name)
+    {
+        int count = SysInfo.GetEnvironmentVariableCount();
+        for (int i = 0; i < count; i++)
+        {
+            if (SysInfo.TryGetEnvironmentVariable(i, out string varName, out string varValue) &&
+                varName == name)
+            {
+                return varValue;
+            }
+        }
+        return "";
+    }
+
+    /// <summary>
+    /// Splits text into lines on '\n', dropping a trailing '\r' from each
+    /// line and ignoring a final newline (no dangling empty line).
+    /// </summary>
+    public static string[] SplitLines(string text)
+    {
+        var lines = new System.Collections.Generic.List<string>();
+        int start = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                int end = i;
+                if (end > start && text[end - 1] == '\r')
+                    end--;
+                lines.Add(text.Substring(start, end - start));
+                start = i + 1;
+            }
+        }
+        if (start < text.Length)
+        {
+            int end = text.Length;
+            if (end > start && text[end - 1] == '\r')
+                end--;
+            lines.Add(text.Substring(start, end - start));
+        }
+        return lines.ToArray();
+    }
+
+    /// <summary>Reverses an array in place.</summary>
+    public static void Reverse(string[] items)
+    {
+        for (int i = 0, j = items.Length - 1; i < j; i++, j--)
+        {
+            string tmp = items[i];
+            items[i] = items[j];
+            items[j] = tmp;
+        }
+    }
 }

@@ -1096,7 +1096,7 @@ public static unsafe class ReflectionRuntime
     {
         // Iterate through loaded assemblies to find the nth one
         int count = 0;
-        for (uint id = 1; id <= 32; id++)  // AssemblyLoader.MaxAssemblies = 32
+        for (uint id = 1; id < AssemblyLoader.MaxAssemblies; id++)
         {
             LoadedAssembly* asm = AssemblyLoader.GetAssembly(id);
             if (asm != null && asm->IsLoaded)
