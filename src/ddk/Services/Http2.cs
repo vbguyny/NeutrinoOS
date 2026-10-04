@@ -64,6 +64,16 @@ public sealed class Http2Stream
     public byte[] Pending;          // DATA not yet writable (flow control)
     public int PendingOffset;
     public int PendingLength;
+
+    // Request assembly: HEADERS records method/path, DATA frames fill
+    // ReqBody, and the request is served once END_STREAM arrives.
+    public string Method;
+    public string Path;
+    public bool Responded;
+    public byte[] ReqBody;          // reused across requests on this slot
+    public int ReqBodyLen;
+    public bool ReqBodyOverflow;    // body exceeded MaxReqBody -> 413
+    public long RecvWindow;         // our advertised receive window left
 }
 
 /// <summary>
@@ -74,6 +84,15 @@ public sealed class Http2Connection
 {
     private const int MaxStreams = 16;
     private const int DefaultFrameSize = 16384;
+    // Per-request body cap. Deliberately below GCHeap.LOHThreshold (85000):
+    // every allocation of 85 KB or more lands on the Large Object Heap, and
+    // the LOH free list has been observed to hand out blocks that overlap
+    // live objects (same failure the normal heap's free list was disabled
+    // for). A 32 KB body keeps both the byte buffer and the char[] used to
+    // convert it well inside the normal heap; larger requests get 413.
+    private const int MaxReqBody = 32768;
+    private const int InitialReqBody = 16384;
+    private const long InitialRecvWindow = 65535;
 
     private readonly WebConnection _owner;
     private readonly HpackDecoder _hpack = new HpackDecoder();
@@ -103,6 +122,7 @@ public sealed class Http2Connection
     private bool _upgradeMode;
     private string _upgradeMethod;
     private string _upgradePath;
+    private string _upgradeBody;
 
     /// <summary>The magic connection preface: PRI * HTTP/2.0 CRLF CRLF SM CRLF CRLF (24 octets).</summary>
     public static readonly byte[] ClientPreface = new byte[]
@@ -116,6 +136,21 @@ public sealed class Http2Connection
     /// <summary>True once any stream has been served (used by WebConnection).</summary>
     public bool ServedRequest { get; private set; }
 
+    /// <summary>
+    /// True while any stream still needs the transport (response awaiting
+    /// flow-control credit). Used by the owner to decide whether a peer
+    /// close can tear the connection down immediately.
+    /// </summary>
+    public bool HasOpenWork()
+    {
+        for (int i = 0; i < MaxStreams; i++)
+        {
+            if (_streams[i].Open)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>True when the connection finished/errored.</summary>
     public bool Closed => _closed;
 
@@ -127,11 +162,12 @@ public sealed class Http2Connection
     }
 
     /// <summary>Enable the h2c upgrade flow: HTTP/1.1 request served as stream 1.</summary>
-    public void BeginUpgrade(string method, string path, byte[] settingsPayload)
+    public void BeginUpgrade(string method, string path, string reqBody, byte[] settingsPayload)
     {
         _upgradeMode = true;
         _upgradeMethod = method;
         _upgradePath = path;
+        _upgradeBody = reqBody;
         if (settingsPayload != null)
             ApplySettings(settingsPayload, settingsPayload.Length);
     }
@@ -546,9 +582,13 @@ public sealed class Http2Connection
             ResetStream(streamId, H2Error.RefusedStream);
             return;
         }
+        st.Method = method;
+        st.Path = path;
         st.EndStreamReceived = (_continuationFlags & 0x1) != 0;
-
-        ServeRequest(streamId, method, path, true);
+        // Serve now when the request ended on HEADERS; otherwise wait for
+        // the DATA frames (HandleData serves at END_STREAM).
+        if (st.EndStreamReceived)
+            ServeBufferedRequest(streamId, st);
     }
 
     private void HandleData(int streamId, byte flags, byte[] payload, int len)
@@ -562,10 +602,55 @@ public sealed class Http2Connection
             return;
         }
         _connRecvWindow -= len;
-        TopUpRecvWindow(len, streamId);
+        st.RecvWindow -= len;
+        TopUpRecvWindow(len, 0);
+        TopUpStreamRecvWindow(st, len);
+
+        if (st.Responded)
+        {
+            // Already answered (e.g. overflow); keep draining the stream.
+            if ((flags & 0x1) != 0)
+                st.EndStreamReceived = true;
+            return;
+        }
+
+        // Buffer the request body for the deferred serve. The buffer starts
+        // small and doubles on demand, never exceeding MaxReqBody; anything
+        // larger is answered with 413 once the stream ends.
+        if (len > 0)
+        {
+            if (st.ReqBody == null)
+                st.ReqBody = new byte[InitialReqBody];
+            if (st.ReqBodyLen + len > st.ReqBody.Length)
+            {
+                int want = st.ReqBodyLen + len;
+                if (want > MaxReqBody)
+                    want = MaxReqBody;
+                int cap = st.ReqBody.Length;
+                while (cap < want)
+                    cap = cap * 2 > MaxReqBody ? MaxReqBody : cap * 2;
+                if (cap > st.ReqBody.Length)
+                {
+                    var bigger = new byte[cap];
+                    for (int i = 0; i < st.ReqBodyLen; i++)
+                        bigger[i] = st.ReqBody[i];
+                    st.ReqBody = bigger;
+                }
+            }
+            int room = st.ReqBody.Length - st.ReqBodyLen;
+            int take = len <= room ? len : room;
+            for (int i = 0; i < take; i++)
+                st.ReqBody[st.ReqBodyLen + i] = payload[i];
+            st.ReqBodyLen += take;
+            if (take < len)
+                st.ReqBodyOverflow = true;
+        }
+
         if ((flags & 0x1) != 0)
+        {
             st.EndStreamReceived = true;
-        // Request bodies are not used by the built-in routes; discard.
+            ServeBufferedRequest(streamId, st);
+        }
     }
 
     private void TopUpRecvWindow(int consumed, int streamId)
@@ -583,6 +668,31 @@ public sealed class Http2Connection
             _connRecvWindow += consumed;
         }
         _ = streamId;
+    }
+
+    /// <summary>Extend the stream-level receive window as DATA is consumed.</summary>
+    private void TopUpStreamRecvWindow(Http2Stream st, int consumed)
+    {
+        if (consumed <= 0 || st.RecvWindow >= 32768)
+            return;
+        int streamId = 0;
+        for (int i = 0; i < MaxStreams; i++)
+        {
+            if (_streams[i] == st)
+            {
+                streamId = (int)_streamIds[i];
+                break;
+            }
+        }
+        if (streamId == 0)
+            return;
+        var wu = new byte[4];
+        wu[0] = (byte)(consumed >> 24);
+        wu[1] = (byte)(consumed >> 16);
+        wu[2] = (byte)(consumed >> 8);
+        wu[3] = (byte)consumed;
+        SendFrame(H2Frame.WindowUpdate, 0, streamId, wu, 4);
+        st.RecvWindow += consumed;
     }
 
     // ====================================================================
@@ -614,6 +724,13 @@ public sealed class Http2Connection
                 _streams[i].Pending = null;
                 _streams[i].PendingOffset = 0;
                 _streams[i].PendingLength = 0;
+                _streams[i].Method = null;
+                _streams[i].Path = null;
+                _streams[i].Responded = false;
+                // ReqBody is deliberately kept for reuse on this slot.
+                _streams[i].ReqBodyLen = 0;
+                _streams[i].ReqBodyOverflow = false;
+                _streams[i].RecvWindow = InitialRecvWindow;
                 _streamIds[i] = id;
                 return _streams[i];
             }
@@ -659,10 +776,33 @@ public sealed class Http2Connection
         var st = GetOrCreateStream(1);
         st.SendWindow = _peerInitialWindow;
         st.EndStreamReceived = true;
-        ServeRequest(1, _upgradeMethod, _upgradePath, true);
+        st.Method = _upgradeMethod;
+        st.Path = _upgradePath;
+        ServeRequest(1, _upgradeMethod, _upgradePath, _upgradeBody ?? "", false, true);
     }
 
-    private void ServeRequest(int streamId, string method, string path, bool sendInitialHeaders)
+    /// <summary>
+    /// Answer a request whose END_STREAM has been seen, using the DATA frames
+    /// buffered on the stream as the request body.
+    /// </summary>
+    private void ServeBufferedRequest(int streamId, Http2Stream st)
+    {
+        if (st.Responded)
+            return;
+        st.Responded = true;
+        string reqBody = "";
+        if (!st.ReqBodyOverflow && st.ReqBodyLen > 0)
+        {
+            var chars = new char[st.ReqBodyLen];
+            for (int i = 0; i < st.ReqBodyLen; i++)
+                chars[i] = (char)st.ReqBody[i];
+            reqBody = new string(chars);
+        }
+        ServeRequest(streamId, st.Method ?? "GET", st.Path ?? "/", reqBody, st.ReqBodyOverflow, true);
+    }
+
+    private void ServeRequest(int streamId, string method, string path, string reqBody,
+        bool payloadTooLarge, bool sendInitialHeaders)
     {
         ServedRequest = true;
 
@@ -670,10 +810,7 @@ public sealed class Http2Connection
         string statusText;
         string contentType;
         string body;
-        // (Request bodies are not plumbed through the HTTP/2 front end yet -
-        // bodyless methods and DELETE work fully; POST/PUT with a body are
-        // supported over HTTP/1.1.)
-        if (!WebService.BuildRoute(method, path, "", out status, out statusText, out contentType, out body))
+        if (!WebService.BuildRoute(method, path, reqBody, out status, out statusText, out contentType, out body))
         {
             status = 404;
             statusText = "Not Found";
@@ -692,6 +829,13 @@ public sealed class Http2Connection
             statusText = "Method Not Allowed";
             contentType = "text/plain";
             body = "method not allowed\n";
+        }
+        if (payloadTooLarge)
+        {
+            status = 413;
+            statusText = "Payload Too Large";
+            contentType = "text/plain";
+            body = "payload too large\n";
         }
 
         // Phase 7 parity: per-source-IP rate limiting.

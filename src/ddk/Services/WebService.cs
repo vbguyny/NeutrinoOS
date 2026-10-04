@@ -1055,7 +1055,21 @@ public sealed unsafe class WebConnection
         {
             _h2.Tick();
             if (_h2.Closed)
+            {
                 _closed = true;
+                return;
+            }
+            // Release the connection slot as soon as the peer closes.
+            // Without this, closed HTTP/2 connections kept their slots
+            // until the 12s idle timeout and the per-IP cap (4) refused
+            // every fresh connection once a few short-lived h2 clients
+            // (curl) had come and gone - connections 1-4 worked, then
+            // everything got "empty reply from server".
+            if ((_sock.State == TcpState.CloseWait || _sock.State == TcpState.Closed) && !_h2.HasOpenWork())
+            {
+                _closed = true;
+                _sock.Close();
+            }
             return;
         }
 
@@ -1166,6 +1180,17 @@ public sealed unsafe class WebConnection
             if (_inLen < totalLen)
                 return;   // wait for the body
 
+            // Capture the request body (used by the /api/items resource and
+            // by the h2c upgrade request).
+            string reqBody = "";
+            if (contentLength > 0)
+            {
+                var bodyChars = new char[contentLength];
+                for (int i = 0; i < contentLength; i++)
+                    bodyChars[i] = (char)_in[headerEnd + 4 + i];
+                reqBody = new string(bodyChars);
+            }
+
             // Phase 9: h2c upgrade (RFC 7540 3.2). Accept with 101, then
             // hand the connection to HTTP/2; the captured request is
             // answered on stream 1.
@@ -1195,7 +1220,7 @@ public sealed unsafe class WebConnection
                 }
                 _h2Checked = true;
                 _h2 = new Http2Connection(this);
-                _h2.BeginUpgrade(method, path, settings);
+                _h2.BeginUpgrade(method, path, reqBody, settings);
                 if (totalLen < _inLen)
                     _h2.Seed(_in, totalLen, _inLen - totalLen);
                 _inLen = 0;
@@ -1226,15 +1251,6 @@ public sealed unsafe class WebConnection
             }
 
             _requests++;
-            // Capture the request body (used by the /api/items resource).
-            string reqBody = "";
-            if (contentLength > 0)
-            {
-                var bodyChars = new char[contentLength];
-                for (int i = 0; i < contentLength; i++)
-                    bodyChars[i] = (char)_in[headerEnd + 4 + i];
-                reqBody = new string(bodyChars);
-            }
             SendRoute(method, path, reqBody, headOnly);
             Consume(totalLen);
             MaybeClose(keepAlive);

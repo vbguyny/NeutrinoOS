@@ -79,6 +79,8 @@ public sealed class QuicConnection
     private int[] _slen = new int[4];
     private bool[] _sused = new bool[4];
     private bool[] _sresponded = new bool[4];
+    private bool[] _sfin = new bool[4];
+    private bool[] _soverflow = new bool[4];
 
     public QuicConnection(byte[] certDer, byte[] keySeed)
     {
@@ -582,6 +584,8 @@ public sealed class QuicConnection
                     _sid[i] = id;
                     _slen[i] = 0;
                     _sresponded[i] = false;
+                    _sfin[i] = false;
+                    _soverflow[i] = false;
                     break;
                 }
             }
@@ -594,13 +598,30 @@ public sealed class QuicConnection
                 _sbuf[slot][_slen[slot] + i] = buf[off + i];
             _slen[slot] += len;
         }
+        else
+        {
+            _soverflow[slot] = true;   // request larger than the buffer -> 413
+        }
+        if (fin)
+            _sfin[slot] = true;
         if (!_sresponded[slot])
             TryRespond(slot);
     }
 
-    /// <summary>Parse the request HEADERS frame and answer the request.</summary>
+    /// <summary>Request bodies are bounded by the stream buffer (minus the
+    /// HEADERS frame); bigger requests are answered with 413.</summary>
+    private const int MaxH3Body = 15000;
+
+    /// <summary>
+    /// Parse the buffered request frames (HEADERS + DATA) and answer the
+    /// request once the client closed its side of the stream (FIN). DATA
+    /// frame payloads are collected as the request body; trailer HEADERS
+    /// and unknown frame types are skipped.
+    /// </summary>
     private void TryRespond(int slot)
     {
+        if (!_sfin[slot])
+            return;                        // wait for the request to end
         byte[] data = _sbuf[slot];
         int len = _slen[slot];
         if (len < 2)
@@ -620,6 +641,7 @@ public sealed class QuicConnection
         int count = Qpack.DecodeFieldSection(data, pos, blockLen, names, values, 32);
         if (count < 0)
             return;
+        pos += blockLen;
 
         string method = null;
         string path = null;
@@ -632,15 +654,59 @@ public sealed class QuicConnection
         }
         if (path == null)
             return;
+
+        var bodyChars = new char[MaxH3Body];
+        int bodyOff = 0;
+        bool tooLarge = _soverflow[slot];
+        while (pos < len)
+        {
+            int ft;
+            int fp = ReadVarint(data, pos, len, out ft);
+            if (fp < 0)
+                break;
+            int fl;
+            fp = ReadVarint(data, fp, len, out fl);
+            if (fp < 0 || fp + fl > len)
+                break;
+            if (ft == 0x00)   // DATA
+            {
+                for (int i = 0; i < fl && !tooLarge; i++)
+                {
+                    if (bodyOff >= bodyChars.Length)
+                    {
+                        tooLarge = true;
+                        break;
+                    }
+                    bodyChars[bodyOff++] = (char)data[fp + i];
+                }
+            }
+            pos = fp + fl;
+        }
+        string reqBody = "";
+        if (!tooLarge && bodyOff > 0)
+        {
+            var chars = new char[bodyOff];
+            for (int i = 0; i < bodyOff; i++)
+                chars[i] = bodyChars[i];
+            reqBody = new string(chars);
+        }
         _sresponded[slot] = true;
 
         int status;
         string statusText;
         string contentType;
         string body;
-        // (HTTP/3 request bodies are not plumbed through yet; bodyless
-        // methods and DELETE work - see Http2.ServeRequest.)
-        WebService.BuildRoute(method == null ? "GET" : method, path, "", out status, out statusText, out contentType, out body);
+        if (tooLarge)
+        {
+            status = 413;
+            statusText = "Payload Too Large";
+            contentType = "text/plain";
+            body = "payload too large\n";
+        }
+        else
+        {
+            WebService.BuildRoute(method == null ? "GET" : method, path, reqBody, out status, out statusText, out contentType, out body);
+        }
 
         // Response field section.
         var rnames = new string[4];
