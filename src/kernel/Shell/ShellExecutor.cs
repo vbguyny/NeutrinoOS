@@ -208,6 +208,19 @@ public static class ShellExecutor
 
     private static void CommitFile(string path, string text, bool append)
     {
+        // Validate the target directory up front: the kernel's file-write
+        // path raises IOException for a missing parent directory, and an
+        // exception raised inside kernel (AOT) code is not caught here
+        // reliably - failing on the raw trap would take the shell down.
+        // The common user error (redirect into a directory that does not
+        // exist) is reported like the catch below would otherwise.
+        string? dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Console.Error.WriteLine("neutrinoos: " + path + ": write failed");
+            return;
+        }
+
         try
         {
             if (append)
