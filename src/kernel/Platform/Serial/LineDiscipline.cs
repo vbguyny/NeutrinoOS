@@ -72,6 +72,15 @@ public static unsafe class LineDiscipline
     private static int _editLength;
     private static int _editPos;
 
+    // Positions (in line-absolute cells, prompt included) of the cursor and
+    // of the line end as last echoed to the console, 0 = nothing echoed yet
+    // for the current line. Redraws must erase starting from the row that
+    // physically holds the cursor - which, after a line that exactly fills
+    // a row, rests at the END of that row (delayed wrap) even though the
+    // edit model may already place the cursor on the next row.
+    private static int _renderedCursorAbs;
+    private static int _renderedEndAbs;
+
     // History (oldest first; data kept as bytes to stay allocation-free).
     private struct HistoryStore
     {
@@ -365,6 +374,11 @@ public static unsafe class LineDiscipline
                         // At the end: erase the last cell in place.
                         _editLength--;
                         _editPos--;
+                        if (_renderedEndAbs > 0)
+                        {
+                            _renderedCursorAbs--;
+                            _renderedEndAbs--;
+                        }
                         EchoAscii(0x08);
                         EchoAscii((byte)' ');
                         EchoAscii(0x08);
@@ -416,10 +430,10 @@ public static unsafe class LineDiscipline
                 return;
 
             case 0x15:      // Ctrl+U - clear the line
-                RedrawBegin();
                 _editLength = 0;
                 _editPos = 0;
                 _historyPos = -1;
+                RedrawBegin();
                 return;
 
             case 0x09:      // Tab - Phase 5: request deferred completion
@@ -453,6 +467,16 @@ public static unsafe class LineDiscipline
                 // Append at the end: fast path (plain echo).
                 _edit[_editLength++] = (char)b;
                 _editPos = _editLength;
+                if (_renderedEndAbs == 0)
+                {
+                    // First echoed cell of the line: the cursor rested
+                    // right after the prompt.
+                    CalcPromptTailLength(out _, out int baseLen);
+                    _renderedCursorAbs = baseLen;
+                    _renderedEndAbs = baseLen;
+                }
+                _renderedCursorAbs++;
+                _renderedEndAbs++;
                 EchoAscii(b);
             }
             else
@@ -734,6 +758,8 @@ public static unsafe class LineDiscipline
         _historyPos = -1;
         _historySavedLength = 0;
         _historySavedPos = 0;
+        _renderedCursorAbs = 0;
+        _renderedEndAbs = 0;
 
         // The line is complete: drop the tracked prompt tail on every
         // console. Everything written from here on (the command's output
@@ -871,18 +897,22 @@ public static unsafe class LineDiscipline
         {
             // Back to the line that was being edited
             _historyPos = -1;
-            RedrawBegin();
-            for (int i = 0; i < _historySavedLength; i++)
-                EchoAscii((byte)_historySaved[i]);
             _editLength = _historySavedLength;
             for (int i = 0; i < _historySavedLength; i++)
                 _edit[i] = _historySaved[i];
             _editPos = _historySavedPos <= _editLength ? _historySavedPos : _editLength;
+            RedrawBegin();
+            for (int i = 0; i < _editLength; i++)
+                EchoAscii((byte)_edit[i]);
+            CalcPromptTailLength(out char[] prompt, out int promptLen);
             if (_editPos < _editLength)
             {
                 // Restore the cursor where the line was left.
-                CalcPromptTailLength(out char[] prompt, out int promptLen);
                 EchoMoveToEditPos(prompt, promptLen);
+            }
+            else
+            {
+                _renderedCursorAbs = promptLen + _editPos;
             }
             return;
         }
@@ -895,6 +925,8 @@ public static unsafe class LineDiscipline
         fixed (HistoryStore* h = &_historyStore)
         {
             int len = h->Lengths[index];
+            _editLength = len;
+            _editPos = len;     // recalling a line puts the cursor at its end
             RedrawBegin();
             for (int i = 0; i < len; i++)
             {
@@ -902,8 +934,8 @@ public static unsafe class LineDiscipline
                 EchoAscii(b);
                 _edit[i] = (char)b;
             }
-            _editLength = len;
-            _editPos = len;     // recalling a line puts the cursor at its end
+            CalcPromptTailLength(out _, out int promptLen);
+            _renderedCursorAbs = promptLen + _editPos;
         }
     }
 
@@ -1034,6 +1066,8 @@ public static unsafe class LineDiscipline
                 for (int i = 0; i < _editLength; i++)
                     EchoAsciiChar(_edit[i]);
                 _editPos = _editLength;
+                _renderedCursorAbs = promptLen + _editPos;
+                _renderedEndAbs = promptLen + _editLength;
             }
             return;
         }
@@ -1045,6 +1079,9 @@ public static unsafe class LineDiscipline
             _editLength = newLen;
             _editPos = _editLength;
             _historyPos = -1;
+            CalcPromptTailLength(out _, out int tailPromptLen);
+            _renderedCursorAbs = tailPromptLen + _editPos;
+            _renderedEndAbs = tailPromptLen + _editLength;
         }
         else if (newLen < _editLength)
         {
@@ -1054,6 +1091,8 @@ public static unsafe class LineDiscipline
             RedrawBegin();
             for (int i = 0; i < _editLength; i++)
                 EchoAsciiChar(_edit[i]);
+            CalcPromptTailLength(out _, out int shrinkPromptLen);
+            _renderedCursorAbs = shrinkPromptLen + _editPos;
         }
     }
 
@@ -1063,28 +1102,41 @@ public static unsafe class LineDiscipline
     /// cursor when it should not sit at the end of the line).
     ///
     /// The displayed line starts at column 0 and may wrap over several
-    /// rows; the cursor may sit anywhere in it. The erase works from
-    /// wherever the cursor is: erase its row, LF down through the row's
-    /// remaining lines, then walk back up to the first row - only CR /
-    /// LF / ESC[K / ESC[1A are used, which both the serial terminals and
-    /// the VGA text console honor in their echo paths.
+    /// rows; the cursor may sit anywhere in it. The erase starts at the
+    /// row that physically holds the cursor - the row of the position last
+    /// echoed, which is NOT always the row of the new cursor position:
+    /// when the previous render ended exactly on a row boundary, the
+    /// terminal rests on the last column of that row (delayed wrap) and an
+    /// edit that pushes the cursor past the boundary leaves the physical
+    /// cursor one row above the new cursor row. The walk therefore erases
+    /// from the last-rendered cursor row down through the farthest row the
+    /// old and new text can occupy, then climbs back to the first row -
+    /// only CR / LF / ESC[K / ESC[1A are used, which both the serial
+    /// terminals and the VGA text console honor in their echo paths.
     /// </summary>
     private static void RedrawBegin()
     {
         CalcPromptTailLength(out char[] prompt, out int promptLen);
 
         int width = ConsoleWidth();
-        int cursorRow = RowOfAbs(promptLen + _editPos, width);
         int endRow = RowOfAbs(promptLen + _editLength, width);
+
+        // Where the cursor physically is right now (last echoed position),
+        // and the farthest row the previous render could have covered.
+        int startRow = RowOfAbs(_renderedCursorAbs > 0 ? _renderedCursorAbs : promptLen, width);
+        int oldEndRow = RowOfAbs(_renderedEndAbs > 0 ? _renderedEndAbs : promptLen, width);
+        int lastRow = endRow > oldEndRow ? endRow : oldEndRow;
+        if (startRow > lastRow)
+            startRow = lastRow;
 
         EchoAscii(0x0D);
         EchoEraseRow();
-        for (int row = cursorRow; row < endRow; row++)
+        for (int row = startRow; row < lastRow; row++)
         {
             EchoAscii(0x0A);        // LF: one row down
             EchoEraseRow();
         }
-        for (int row = 0; row < endRow; row++)
+        for (int row = 0; row < lastRow; row++)
         {
             EchoAscii(0x1B);
             EchoAscii((byte)'[');
@@ -1094,6 +1146,11 @@ public static unsafe class LineDiscipline
 
         for (int i = 0; i < promptLen; i++)
             EchoAsciiChar(prompt[i]);
+
+        // The caller echoes the full replacement text: from here the line
+        // end is the new length and the cursor rests right after the prompt.
+        _renderedEndAbs = promptLen + _editLength;
+        _renderedCursorAbs = promptLen;
     }
 
     /// <summary>
@@ -1139,6 +1196,11 @@ public static unsafe class LineDiscipline
         int rowStart = targetRow * width;
         for (int i = rowStart; i < toAbs; i++)
             EchoAsciiChar(i < promptLen ? prompt[i] : _edit[i - promptLen]);
+
+        // The cursor now rests at <paramref name="toAbs"/> and the line end
+        // stays the current edit length.
+        _renderedCursorAbs = toAbs;
+        _renderedEndAbs = promptLen + _editLength;
     }
 
     /// <summary>
