@@ -1257,6 +1257,12 @@ RhpThrowEx:
     ; Handler's RET will pop the return address and return to the original caller
     mov rsp, r11
 
+    ; Re-enable interrupts: the C# transfer ran with CLI (see
+    ; DispatchNativeAotException) so no ISR could clobber the funclet's
+    ; return slot between the write and this jump. STI takes effect after
+    ; the following instruction, so the funclet starts with interrupts on.
+    sti
+
     ; Jump directly to handler - it will RET to the original caller
     ; The C# code has set up RSP to point at the return address
     jmp rax
@@ -1324,6 +1330,9 @@ RhpRethrow:
     mov r14, [rsp + 0x80]
     mov r15, [rsp + 0x88]
     mov rsp, r11
+    ; Re-enable interrupts before entering the funclet (the C# transfer
+    ; ran with CLI to protect the return-slot write; see RhpThrowEx).
+    sti
     ; Jump directly to handler - it will RET to the original caller
     jmp rax
 
@@ -1401,9 +1410,27 @@ RhpThrowHwEx:
     mov rsp, r11
     and rsp, ~0xF
     sub rsp, 32
+    ; Re-enable interrupts before invoking the funclet (the C# transfer
+    ; ran with CLI to protect the return-slot write; see RhpThrowEx).
+    sti
     call rax
     add rsp, 32
     jmp rax
+
+;; AOT catch-funclet exit trampoline.
+;; ILCompiler (--emit-eh-info) compiles catch funclets so they leave the
+;; continuation address in RAX and use a plain RET; the managed dispatcher
+;; enters a funclet with this trampoline as the return address, so the
+;; funclet's RET lands in `jmp rax` and execution resumes at the
+;; continuation recorded by the compiler.
+global funclet_exit_trampoline
+funclet_exit_trampoline:
+    jmp rax
+
+global funclet_exit_trampoline_addr
+funclet_exit_trampoline_addr:
+    lea rax, [rel funclet_exit_trampoline]
+    ret
 
 ; void RhpCallCatchFunclet(void* exceptionObject, void* handlerAddress, void* framePointer)
 ; Transfer control to a catch funclet with proper setup

@@ -314,6 +314,7 @@ public unsafe struct FunctionTableEntry
     public ulong BaseAddress;        // Base address of code region
     public RuntimeFunction* Functions; // Pointer to RUNTIME_FUNCTION array
     public uint FunctionCount;       // Number of entries
+    public uint MaxEndAddress;       // Largest EndAddress in the table (RVA space)
     public bool InUse;               // Entry is active
 }
 
@@ -788,6 +789,24 @@ public static unsafe class ExceptionHandling
     }
 
     /// <summary>
+    /// Compute the largest EndAddress in a RUNTIME_FUNCTION table.
+    /// Used to skip code regions that cannot contain a given PC without
+    /// a fixed size heuristic (the kernel's managed code region spans well
+    /// over 1MB, so a hardcoded bound would hide most of it).
+    /// </summary>
+    private static uint ComputeMaxEnd(RuntimeFunction* functions, uint count)
+    {
+        uint maxEnd = 0;
+        for (uint i = 0; i < count; i++)
+        {
+            uint end = functions[i].EndAddress;
+            if (end > maxEnd)
+                maxEnd = end;
+        }
+        return maxEnd;
+    }
+
+    /// <summary>
     /// Register a function table for a code region (like RtlAddFunctionTable).
     /// Uses block allocator for dynamic growth - no fixed limit.
     /// </summary>
@@ -816,6 +835,7 @@ public static unsafe class ExceptionHandling
                         entries[i].BaseAddress = baseAddress;
                         entries[i].Functions = functionTable;
                         entries[i].FunctionCount = entryCount;
+                        entries[i].MaxEndAddress = ComputeMaxEnd(functionTable, entryCount);
                         entries[i].InUse = true;
                         _lock.Release();
                         return true;
@@ -829,6 +849,7 @@ public static unsafe class ExceptionHandling
             newEntry.BaseAddress = baseAddress;
             newEntry.Functions = functionTable;
             newEntry.FunctionCount = entryCount;
+            newEntry.MaxEndAddress = ComputeMaxEnd(functionTable, entryCount);
             newEntry.InUse = true;
 
             byte* result = BlockAllocator.Add(chainPtr, &newEntry);
@@ -906,12 +927,12 @@ public static unsafe class ExceptionHandling
                     if (controlPc < baseAddr)
                         continue;
 
-                    // Calculate RVA (offset within the code region)
+                    // Skip if controlPc is beyond this code region. The bound
+                    // must come from the table itself: the kernel's managed
+                    // code spans well over 1MB from its image base, so a fixed
+                    // "max method size" guard hides most of the image.
                     uint rva = (uint)(controlPc - baseAddr);
-
-                    // Quick upper bound check - if RVA is huge, skip this table
-                    // (avoids searching when controlPc is way past this code region)
-                    if (rva > 0x100000)  // 1MB max method size is very generous
+                    if (rva >= tables[i].MaxEndAddress)
                         continue;
 
                     int left = 0;

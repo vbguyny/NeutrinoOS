@@ -314,6 +314,8 @@ public unsafe struct FunctionTableEntry
     public ulong BaseAddress;        // Base address of code region
     public RuntimeFunction* Functions; // Pointer to RUNTIME_FUNCTION array
     public uint FunctionCount;       // Number of entries
+    public uint MaxEndAddress;       // Largest EndAddress in the table (RVA space)
+    public bool AotFormat;           // True for the kernel image (AOT EH blobs), false for JIT
     public bool InUse;               // Entry is active
 }
 
@@ -341,6 +343,26 @@ public unsafe delegate int UnhandledExceptionFilter(ExceptionRecord* exceptionRe
 public static unsafe class ExceptionHandling
 {
     // ======================== Managed Exception Entry Points ========================
+
+    /// <summary>
+    /// Native trampoline (native.asm) that performs `jmp rax`. AOT catch
+    /// funclets leave the continuation address in RAX and use a plain RET;
+    /// the dispatcher pushes this trampoline as the funclet's return address
+    /// so the RET lands in the jump and execution resumes at the compiler's
+    /// continuation. JIT funclets still get their explicit leave target.
+    /// </summary>
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint funclet_exit_trampoline_addr();
+
+    private static ulong _funcletExitTrampoline;
+
+    private static ulong FuncletExitTrampolineAddress()
+    {
+        if (_funcletExitTrampoline == 0)
+            _funcletExitTrampoline = (ulong)funclet_exit_trampoline_addr();
+        return _funcletExitTrampoline;
+    }
+
 
     /// <summary>
     /// C# handler called by assembly RhpThrowEx.
@@ -419,35 +441,6 @@ public static unsafe class ExceptionHandling
             ExceptionCodes.EXCEPTION_STACK_OVERFLOW => new StackOverflowException(),
             _ => new Exception() // Generic exception for unknown codes
         };
-    }
-
-    /// <summary>
-    /// Catch-handler funclets reserve stack space below the parent frame's
-    /// locals: their first instruction is `sub rsp, imm32` (48 81 EC xx xx xx xx)
-    /// so runtime pushes cannot land in the parent's local slots. The
-    /// dispatcher enters funclets at [parentRbp-0x108]; without subtracting
-    /// the reservation from the entry RSP, hardware interrupts, ISR stubs or
-    /// the prolog's own first pushes land INSIDE the parent's local area for
-    /// the window before the funclet executes its own `sub rsp` - observed:
-    /// cp's `dst` local at [rbp-0x128] overwritten by an ISR register push
-    /// (a small stale value), making the catch pass a length where a string
-    /// pointer belongs (#PF cr2 = value+8 inside String.Concat). Entering the
-    /// funclet below its own reservation closes that window completely; the
-    /// funclet's exit paths step back to the entry RSP either way.
-    /// Returns 0 for funclets without the reservation prefix (finally
-    /// handlers, small catches).
-    /// </summary>
-    private static ulong ComputeHandlerReserve(ulong handlerAddr)
-    {
-        byte* p = (byte*)handlerAddr;
-        // 48 81 EC imm32 = sub rsp, imm32
-        if (p[0] == 0x48 && p[1] == 0x81 && p[2] == 0xEC)
-        {
-            uint imm = *(uint*)(p + 3);
-            if (imm <= 0x20000)  // sanity bound
-                return imm;
-        }
-        return 0;
     }
 
     // ======================== Current Exception Tracking (for rethrow) ========================
@@ -779,9 +772,33 @@ public static unsafe class ExceptionHandling
         uint entryCount = exceptionDir->Size / (uint)sizeof(RuntimeFunction);
         var functionTable = (RuntimeFunction*)(imageBase + exceptionDir->VirtualAddress);
 
-        // Register the kernel's function table
-        AddFunctionTable(functionTable, entryCount, imageBase);
+        // Register the kernel's function table (AOT-format EH blobs).
+        AddFunctionTable(functionTable, entryCount, imageBase, true);
     }
+
+    /// <summary>
+    /// Compute the largest EndAddress in a RUNTIME_FUNCTION table.
+    /// Used to skip code regions that cannot contain a given PC without
+    /// a fixed size heuristic (the kernel's managed code region spans well
+    /// over 1MB, so a hardcoded bound would hide most of it).
+    /// </summary>
+    private static uint ComputeMaxEnd(RuntimeFunction* functions, uint count)
+    {
+        uint maxEnd = 0;
+        for (uint i = 0; i < count; i++)
+        {
+            uint end = functions[i].EndAddress;
+            if (end > maxEnd)
+                maxEnd = end;
+        }
+        return maxEnd;
+    }
+
+    /// <summary>
+    /// Register a function table for a code region (JIT-format EH blobs).
+    /// </summary>
+    public static bool AddFunctionTable(RuntimeFunction* functionTable, uint entryCount, ulong baseAddress)
+        => AddFunctionTable(functionTable, entryCount, baseAddress, false);
 
     /// <summary>
     /// Register a function table for a code region (like RtlAddFunctionTable).
@@ -790,8 +807,14 @@ public static unsafe class ExceptionHandling
     /// <param name="functionTable">Pointer to RUNTIME_FUNCTION array</param>
     /// <param name="entryCount">Number of entries in the array</param>
     /// <param name="baseAddress">Base address of the code region</param>
+    /// <param name="aotFormat">
+    /// True for the kernel image whose EH clauses were emitted by the AOT
+    /// compiler (--emit-eh-info): 4-byte image-relative catch type, no leave
+    /// target, funclets return the continuation in RAX. False for JIT blobs
+    /// (8-byte MethodTable pointer, explicit leave target).
+    /// </param>
     /// <returns>True on success</returns>
-    public static bool AddFunctionTable(RuntimeFunction* functionTable, uint entryCount, ulong baseAddress)
+    public static bool AddFunctionTable(RuntimeFunction* functionTable, uint entryCount, ulong baseAddress, bool aotFormat)
     {
         if (!_initialized) Init();
 
@@ -812,6 +835,8 @@ public static unsafe class ExceptionHandling
                         entries[i].BaseAddress = baseAddress;
                         entries[i].Functions = functionTable;
                         entries[i].FunctionCount = entryCount;
+                        entries[i].MaxEndAddress = ComputeMaxEnd(functionTable, entryCount);
+                        entries[i].AotFormat = aotFormat;
                         entries[i].InUse = true;
                         _lock.Release();
                         return true;
@@ -825,6 +850,8 @@ public static unsafe class ExceptionHandling
             newEntry.BaseAddress = baseAddress;
             newEntry.Functions = functionTable;
             newEntry.FunctionCount = entryCount;
+            newEntry.MaxEndAddress = ComputeMaxEnd(functionTable, entryCount);
+            newEntry.AotFormat = aotFormat;
             newEntry.InUse = true;
 
             byte* result = BlockAllocator.Add(chainPtr, &newEntry);
@@ -868,12 +895,20 @@ public static unsafe class ExceptionHandling
     /// <summary>
     /// Look up the RUNTIME_FUNCTION for an instruction pointer (like RtlLookupFunctionEntry).
     /// </summary>
+    public static RuntimeFunction* LookupFunctionEntry(ulong controlPc, out ulong imageBase)
+        => LookupFunctionEntry(controlPc, out imageBase, out _);
+
+    /// <summary>
+    /// Look up the RUNTIME_FUNCTION for an instruction pointer (like RtlLookupFunctionEntry).
+    /// </summary>
     /// <param name="controlPc">Instruction pointer to look up</param>
     /// <param name="imageBase">Receives the base address of the code region</param>
+    /// <param name="aotFormat">Receives whether the owning table uses AOT-format EH blobs</param>
     /// <returns>Pointer to RUNTIME_FUNCTION or null if not found</returns>
-    public static RuntimeFunction* LookupFunctionEntry(ulong controlPc, out ulong imageBase)
+    public static RuntimeFunction* LookupFunctionEntry(ulong controlPc, out ulong imageBase, out bool aotFormat)
     {
         imageBase = 0;
+        aotFormat = false;
 
         if (!_initialized)
         {
@@ -902,12 +937,13 @@ public static unsafe class ExceptionHandling
                     if (controlPc < baseAddr)
                         continue;
 
-                    // Calculate RVA (offset within the code region)
+                    // Skip if controlPc is beyond this code region. The bound
+                    // must come from the table itself: the kernel's managed
+                    // code spans well over 1MB from its image base, so a fixed
+                    // "max method size" guard hides most of the image (that is
+                    // how redirect IOExceptions ended up as RAWV crashes).
                     uint rva = (uint)(controlPc - baseAddr);
-
-                    // Quick upper bound check - if RVA is huge, skip this table
-                    // (avoids searching when controlPc is way past this code region)
-                    if (rva > 0x100000)  // 1MB max method size is very generous
+                    if (rva >= tables[i].MaxEndAddress)
                         continue;
 
                     int left = 0;
@@ -930,6 +966,7 @@ public static unsafe class ExceptionHandling
                         {
                             // Found it
                             imageBase = baseAddr;
+                            aotFormat = tables[i].AotFormat;
                             _lock.Release();
                             return func;
                         }
@@ -1836,7 +1873,8 @@ public static unsafe class ExceptionHandling
         out uint foundClauseIndex,
         uint startClause = 0,
         ulong framePointer = 0,
-        ulong exceptionObject = 0)
+        ulong exceptionObject = 0,
+        bool aotFormat = false)
     {
         clause = default;
         foundClauseIndex = 0;
@@ -1881,9 +1919,26 @@ public static unsafe class ExceptionHandling
 
             if (kind == (byte)EHClauseKind.Typed)
             {
-                // Read MethodTable pointer (8 bytes)
-                catchTypeMethodTable = *(ulong*)ptr;
-                ptr += 8;
+                if (aotFormat)
+                {
+                    // AOT (bflat/ILCompiler --emit-eh-info): the catch type
+                    // is a 4-byte image-relative RVA to the type's
+                    // MethodTable (RELPTR32), not an 8-byte pointer.
+                    uint typeRva = *(uint*)ptr;
+                    ptr += 4;
+                    if (typeRva == 0)
+                        catchTypeMethodTable = 0;
+                    else if (typeRva < imageBase)
+                        catchTypeMethodTable = imageBase + typeRva;
+                    else
+                        catchTypeMethodTable = typeRva;
+                }
+                else
+                {
+                    // JIT blobs store an absolute MethodTable pointer (8 bytes).
+                    catchTypeMethodTable = *(ulong*)ptr;
+                    ptr += 8;
+                }
             }
             else if (kind == (byte)EHClauseKind.Filter)
             {
@@ -1892,8 +1947,10 @@ public static unsafe class ExceptionHandling
                 filterOffset = ReadNativeUnsigned(ref ptr);
             }
 
-            // Read leave target offset for catch/filter handlers
-            if (kind == (byte)EHClauseKind.Typed || kind == (byte)EHClauseKind.Filter)
+            // Read leave target offset for catch/filter handlers. AOT blobs
+            // have no leave target: AOT funclets return the continuation
+            // address in RAX (see funclet_exit_trampoline).
+            if (!aotFormat && (kind == (byte)EHClauseKind.Typed || kind == (byte)EHClauseKind.Filter))
             {
                 leaveTargetOffset = ReadNativeUnsigned(ref ptr);
             }
@@ -2124,7 +2181,7 @@ public static unsafe class ExceptionHandling
         while (frame < maxFrames && searchContext.Rip != 0)
         {
             ulong imageBase;
-            var funcEntry = LookupFunctionEntry(searchContext.Rip, out imageBase);
+            var funcEntry = LookupFunctionEntry(searchContext.Rip, out imageBase, out bool aotFormat);
 
             if (funcEntry == null)
             {
@@ -2191,24 +2248,35 @@ public static unsafe class ExceptionHandling
                     NativeAotEHClause clause;
                     uint foundClauseIndex;
                     if (FindMatchingEHClause(mainEhInfo, imageBase, mainFunc->BeginAddress, searchOffset, 0,
-                        out clause, out foundClauseIndex, startSearchClause, parentFramePtr, (ulong)exceptionObject))
+                        out clause, out foundClauseIndex, startSearchClause, parentFramePtr, (ulong)exceptionObject, aotFormat))
                     {
                         // Found a handler in the parent function!
                         // Transfer to the handler
                         ulong handlerAddr = imageBase + mainFunc->BeginAddress + clause.HandlerOffset;
 
                         // Set up context for transfer to handler
-                        // Use the ORIGINAL throw context's RSP (not searchContext which was corrupted by unwinding)
-                        // The new funclet prolog (push rbp; mov rbp, rdx) needs room for push + ret addr
+                        // Close the interrupt window: from here until the assembly
+                        // epilogue jumps to the funclet, nothing else may run - an
+                        // ISR landing in the margin below this frame overwrites the
+                        // funclet's return slot (observed: slot clobbered with an
+                        // ISR-saved value, funclet's RET then jumped into the
+                        // stack). CPU.DisableInterrupts for the window; the
+                        // assembly epilogue does STI right before entering the
+                        // funclet (or the interrupt path's IRETQ restores IF).
+                        CPU.DisableInterrupts();
                         context->Rip = handlerAddr;
-                        context->Rsp = context->Rsp - 16 - ComputeHandlerReserve(handlerAddr);  // original RSP, reserved below parent locals
+                        context->Rsp = CPU.GetRsp() - 0x1000 - 8;  // entry below all live frames (approximation for nested-funclet case)
                         context->Rbp = parentFramePtr;  // Keep parent frame for new funclet's RBP source
                         context->Rcx = (ulong)exceptionObject;
                         context->Rdx = parentFramePtr;  // Pass parent's frame pointer to new handler
 
-                        // Write return address at RSP
-                        ulong leaveTargetAddr = imageBase + mainFunc->BeginAddress + clause.LeaveTargetOffset;
-                        *(ulong*)(context->Rsp) = leaveTargetAddr;
+                        // Write the funclet's return address at RSP: AOT funclets
+                        // continue via RAX (trampoline), JIT funclets via the
+                        // explicit leave target.
+                        ulong resumeAddr = aotFormat
+                            ? FuncletExitTrampolineAddress()
+                            : imageBase + mainFunc->BeginAddress + clause.LeaveTargetOffset;
+                        *(ulong*)(context->Rsp) = resumeAddr;
 
                         // Update exception tracking for nested rethrow
                         SetCurrentException(exceptionObject);
@@ -2242,8 +2310,10 @@ public static unsafe class ExceptionHandling
                 // Pass frame pointer and exception object for filter funclet evaluation
                 NativeAotEHClause clause;
                 uint foundClauseIndex;
-                if (FindMatchingEHClause(ehInfo, imageBase, funcEntry->BeginAddress, offsetInFunc, 0,
-                    out clause, out foundClauseIndex, 0, searchContext.Rbp, (ulong)exceptionObject))
+                bool clauseMatched = FindMatchingEHClause(ehInfo, imageBase, funcEntry->BeginAddress, offsetInFunc, 0,
+                    out clause, out foundClauseIndex, 0, searchContext.Rbp, (ulong)exceptionObject, aotFormat);
+
+                if (clauseMatched)
                 {
                     // Found a catch handler!
                     // ========== Pass 2: Execute finally/fault handlers ==========
@@ -2309,18 +2379,38 @@ public static unsafe class ExceptionHandling
                     }
 
                     // ========== Transfer to catch handler ==========
+                    // Close the interrupt window: from here until the assembly
+                    // epilogue jumps to the funclet, nothing else may run - an
+                    // ISR landing in the margin below this frame overwrites the
+                    // funclet's return slot (observed: slot clobbered with an
+                    // ISR-saved value, funclet's RET then jumped into the stack).
+                    CPU.DisableInterrupts();
                     ulong handlerAddr = catchImageBase + catchFuncEntry->BeginAddress + clause.HandlerOffset;
-                    ulong targetRsp = catchSearchContext.Rbp - 0x100;
+                    // Enter the funclet the CoreCLR way: the establisher frame is
+                    // the parent's RSP at the throw call site, and the funclet is
+                    // "called" there - the call-push slot holds the exit
+                    // trampoline. The funclet's prologue reserves its own locals
+                    // below, and its epilogue RET pops the trampoline, so the
+                    // continuation resumes with RSP exactly as the normal leave
+                    // path would have it. Anchoring the entry anywhere else
+                    // (RBP-0x100, RSP-margin below the dispatcher frame) breaks
+                    // that contract: the continuation then reads the wrong frame
+                    // and jumps to garbage (observed RIP=3 / stack NX faults).
+                    ulong targetRsp = catchSearchContext.Rsp - 8;
 
                     context->Rip = handlerAddr;
-                    context->Rsp = targetRsp - 8 - ComputeHandlerReserve(handlerAddr);  // below parent locals (see helper)
+                    context->Rsp = targetRsp;
                     context->Rbp = catchSearchContext.Rbp;  // Keep the frame pointer
                     context->Rcx = (ulong)exceptionObject;
                     context->Rdx = catchSearchContext.Rbp;  // Pass frame pointer
 
-                    // Write the return address at RSP
-                    ulong leaveTargetAddr = catchImageBase + catchFuncEntry->BeginAddress + clause.LeaveTargetOffset;
-                    *(ulong*)(context->Rsp) = leaveTargetAddr;
+                    // Write the funclet's return address at RSP: AOT funclets
+                    // continue via RAX (trampoline), JIT funclets via the
+                    // explicit leave target.
+                    ulong resumeAddr = aotFormat
+                        ? FuncletExitTrampolineAddress()
+                        : catchImageBase + catchFuncEntry->BeginAddress + clause.LeaveTargetOffset;
+                    *(ulong*)(context->Rsp) = resumeAddr;
 
                     // Set current exception info for rethrow support
                     SetCurrentException(exceptionObject);
@@ -2375,7 +2465,7 @@ public static unsafe class ExceptionHandling
         while (frame < maxFrames && walkContext.Rip != 0)
         {
             ulong imageBase;
-            var funcEntry = LookupFunctionEntry(walkContext.Rip, out imageBase);
+            var funcEntry = LookupFunctionEntry(walkContext.Rip, out imageBase, out bool aotFormat);
 
             if (funcEntry == null)
             {
@@ -2421,7 +2511,7 @@ public static unsafe class ExceptionHandling
 
                 // Pass frame pointer and exception object for filter funclet evaluation
                 if (FindMatchingEHClause(ehInfo, imageBase, funcEntry->BeginAddress, offsetInFunc, 0,
-                    out clause, out foundClauseIndex, searchFrom, walkContext.Rbp, (ulong)exceptionObject))
+                    out clause, out foundClauseIndex, searchFrom, walkContext.Rbp, (ulong)exceptionObject, aotFormat))
                 {
                     ulong handlerAddr = imageBase + funcEntry->BeginAddress + clause.HandlerOffset;
 
@@ -2431,16 +2521,20 @@ public static unsafe class ExceptionHandling
                     // - Handler prologue: push rbp (writes to RSP-8), mov rbp, rdx
                     // - Handler epilog: pop rbp (restores from RSP-8), ret (reads from RSP)
                     // - Return address is preserved at [RSP] throughout
-                    ulong leaveTargetAddr = imageBase + funcEntry->BeginAddress + clause.LeaveTargetOffset;
+                    ulong resumeAddr = aotFormat
+                        ? FuncletExitTrampolineAddress()
+                        : imageBase + funcEntry->BeginAddress + clause.LeaveTargetOffset;
 
+                    // Close the interrupt window (see main transfer)
+                    CPU.DisableInterrupts();
                     actualContext->Rip = handlerAddr;
-                    actualContext->Rsp = walkContext.Rsp - 8;  // Leave room for push rbp
+                    actualContext->Rsp = walkContext.Rsp - 8;  // establisher frame: parent's RSP at the throw call site
                     actualContext->Rbp = walkContext.Rbp;  // Parent's frame pointer
                     actualContext->Rcx = (ulong)exceptionObject;
                     actualContext->Rdx = walkContext.Rbp;  // Pass parent's frame pointer to handler
 
                     // Write return address at RSP (where ret will find it after pop rbp)
-                    *(ulong*)(actualContext->Rsp) = leaveTargetAddr;
+                    *(ulong*)(actualContext->Rsp) = resumeAddr;
 
                     // Update exception tracking for nested rethrow
                     SetCurrentException(exceptionObject);
