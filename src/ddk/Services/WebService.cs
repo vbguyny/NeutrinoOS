@@ -255,12 +255,23 @@ public static class WebService
 
     // ==================== Configuration / certificate ====================
 
+    // ==================== /api/items REST resource ====================
+    // In-memory CRUD resource used to exercise full REST semantics
+    // (GET list, POST create, GET/PUT/DELETE item). Fixed capacity keeps it
+    // allocation-light; the service loop is single-threaded so no locking is
+    // needed. Item id = slot + 1 (1..MaxItems).
+    internal const int MaxItems = 16;
+    internal const int MaxItemNameLen = 64;
+    private static readonly string[] _itemNames = new string[MaxItems];
+    private static int _itemCount;
+
     /// <summary>
-    /// Resolve a request path to a full response description. Shared by
-    /// the HTTP/1.1, HTTP/2 and HTTP/3 front ends.
+    /// Resolve a request to a full response description. Shared by the
+    /// HTTP/1.1, HTTP/2 and HTTP/3 front ends. Method and request body are
+    /// used by the /api/items REST resource; static routes ignore them.
     /// </summary>
-    internal static bool BuildRoute(string path, out int status, out string statusText,
-        out string contentType, out string body)
+    internal static bool BuildRoute(string method, string path, string reqBody,
+        out int status, out string statusText, out string contentType, out string body)
     {
         status = 404;
         statusText = "Not Found";
@@ -281,7 +292,9 @@ public static class WebService
                 "<h1>NeutrinoOS web host</h1>" +
                 "<p>Managed .NET host on bare metal. HTTP/1.1 + HTTP/2 + HTTP/3.</p>" +
                 "<ul><li><a href=\"/health\">/health</a></li>" +
-                "<li><a href=\"/time\">/time</a></li></ul></body></html>\n";
+                "<li><a href=\"/time\">/time</a></li>" +
+                "<li><a href=\"/api/items\">/api/items</a> (GET/POST/PUT/DELETE)</li>" +
+                "</ul></body></html>\n";
             return true;
         }
         if (StrEq(clean, "/health"))
@@ -320,6 +333,130 @@ public static class WebService
             statusText = "OK";
             contentType = "application/json";
             body = new string(jsonChars);
+            return true;
+        }
+
+        // REST resource: /api/items (collection) and /api/items/<id> (item).
+        // Full CRUD: GET list / POST create / GET / PUT / DELETE item.
+        bool isCollection = StrEq(clean, "/api/items");
+        int itemId = 0;
+        bool isItem = !isCollection && ParseItemId(clean, out itemId);
+        if (isCollection || isItem)
+        {
+            contentType = "application/json";
+            bool isGetM = StrEq(method, "GET") || StrEq(method, "HEAD");
+            bool isPostM = StrEq(method, "POST");
+            bool isPutM = StrEq(method, "PUT");
+            bool isDeleteM = StrEq(method, "DELETE");
+
+            if (isCollection && isGetM)
+            {
+                status = 200;
+                statusText = "OK";
+                body = ItemsListJson();
+                return true;
+            }
+            if (isCollection && isPostM)
+            {
+                string name = ExtractItemName(reqBody);
+                if (name == null || name.Length == 0)
+                {
+                    status = 400;
+                    statusText = "Bad Request";
+                    body = "{\"error\":\"name required\"}\n";
+                    return true;
+                }
+                if (name.Length > MaxItemNameLen)
+                    name = name.Substring(0, MaxItemNameLen);
+                int slot = -1;
+                for (int i = 0; i < MaxItems; i++)
+                {
+                    if (_itemNames[i] == null)
+                    {
+                        slot = i;
+                        break;
+                    }
+                }
+                if (slot < 0)
+                {
+                    status = 409;
+                    statusText = "Conflict";
+                    body = "{\"error\":\"store full\"}\n";
+                    return true;
+                }
+                _itemNames[slot] = name;
+                _itemCount++;
+                status = 201;
+                statusText = "Created";
+                body = ItemJson(slot) + "\n";
+                return true;
+            }
+            bool itemExists = isItem && _itemNames[itemId - 1] != null;
+            if (isItem && isGetM)
+            {
+                if (itemExists)
+                {
+                    status = 200;
+                    statusText = "OK";
+                    body = ItemJson(itemId - 1) + "\n";
+                }
+                else
+                {
+                    status = 404;
+                    statusText = "Not Found";
+                    body = "{\"error\":\"not found\"}\n";
+                }
+                return true;
+            }
+            if (isItem && isPutM)
+            {
+                if (!itemExists)
+                {
+                    status = 404;
+                    statusText = "Not Found";
+                    body = "{\"error\":\"not found\"}\n";
+                    return true;
+                }
+                string name = ExtractItemName(reqBody);
+                if (name == null || name.Length == 0)
+                {
+                    status = 400;
+                    statusText = "Bad Request";
+                    body = "{\"error\":\"name required\"}\n";
+                    return true;
+                }
+                if (name.Length > MaxItemNameLen)
+                    name = name.Substring(0, MaxItemNameLen);
+                _itemNames[itemId - 1] = name;
+                status = 200;
+                statusText = "OK";
+                body = ItemJson(itemId - 1) + "\n";
+                return true;
+            }
+            if (isItem && isDeleteM)
+            {
+                if (itemExists)
+                {
+                    _itemNames[itemId - 1] = null;
+                    _itemCount--;
+                    status = 200;
+                    statusText = "OK";
+                    body = "{\"deleted\":" + IntToStr(itemId) + "}\n";
+                }
+                else
+                {
+                    status = 404;
+                    statusText = "Not Found";
+                    body = "{\"error\":\"not found\"}\n";
+                }
+                return true;
+            }
+
+            // Any other method on the resource.
+            status = 405;
+            statusText = "Method Not Allowed";
+            contentType = "text/plain";
+            body = "method not allowed\n";
             return true;
         }
 
@@ -372,6 +509,130 @@ public static class WebService
         for (int i = 0; i < s.Length; i++)
             target[pos + i] = s[i];
         return pos + s.Length;
+    }
+
+    // Whether clean is "/api/items/<id>" with 1 <= id <= MaxItems.
+    private static bool ParseItemId(string clean, out int id)
+    {
+        id = 0;
+        const string prefix = "/api/items/";
+        if (clean.Length <= prefix.Length)
+            return false;
+        for (int i = 0; i < prefix.Length; i++)
+        {
+            if (clean[i] != prefix[i])
+                return false;
+        }
+        int value = 0;
+        for (int i = prefix.Length; i < clean.Length; i++)
+        {
+            char c = clean[i];
+            if (c < '0' || c > '9')
+                return false;
+            value = value * 10 + (c - '0');
+            if (value > 999999)
+                return false;
+        }
+        if (value < 1 || value > MaxItems)
+            return false;
+        id = value;
+        return true;
+    }
+
+    // Extract the "name" field from a request body: JSON {"name":"value"}
+    // or form encoding name=value. '+' decodes to a space in form style.
+    private static string ExtractItemName(string reqBody)
+    {
+        if (reqBody == null)
+            return null;
+        int key = FindStr(reqBody, "\"name\"", 0);
+        if (key >= 0)
+        {
+            int colon = IndexOfChar2(reqBody, ':', key + 6);
+            if (colon >= 0)
+            {
+                int q1 = IndexOfChar2(reqBody, '"', colon + 1);
+                int q2 = q1 >= 0 ? IndexOfChar2(reqBody, '"', q1 + 1) : -1;
+                if (q2 > q1)
+                    return reqBody.Substring(q1 + 1, q2 - q1 - 1);
+            }
+        }
+        int eq = FindStr(reqBody, "name=", 0);
+        if (eq >= 0)
+        {
+            int start = eq + 5;
+            int end = IndexOfChar2(reqBody, '&', start);
+            if (end < 0)
+                end = reqBody.Length;
+            var chars = new char[end - start];
+            for (int i = start; i < end; i++)
+                chars[i - start] = reqBody[i] == '+' ? ' ' : reqBody[i];
+            return new string(chars);
+        }
+        return null;
+    }
+
+    private static int FindStr(string s, string needle, int from)
+    {
+        for (int i = from; i + needle.Length <= s.Length; i++)
+        {
+            bool match = true;
+            for (int j = 0; j < needle.Length; j++)
+            {
+                if (s[i + j] != needle[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+                return i;
+        }
+        return -1;
+    }
+
+    // Append {"id":N,"name":"..."} for one slot to buf; returns new end.
+    private static int WriteItemJson(char[] buf, int pos, int slot)
+    {
+        pos = AddStr(buf, pos, "{\"id\":");
+        pos = AddStr(buf, pos, IntToStr(slot + 1));
+        pos = AddStr(buf, pos, ",\"name\":\"");
+        pos = AddStr(buf, pos, _itemNames[slot]);
+        return AddStr(buf, pos, "\"}");
+    }
+
+    private static string ItemJson(int slot)
+    {
+        var buf = new char[MaxItemNameLen + 32];
+        int n = WriteItemJson(buf, 0, slot);
+        var chars = new char[n];
+        for (int i = 0; i < n; i++)
+            chars[i] = buf[i];
+        return new string(chars);
+    }
+
+    private static string ItemsListJson()
+    {
+        var buf = new char[MaxItems * (MaxItemNameLen + 48) + 64];
+        int n = 0;
+        n = AddStr(buf, n, "{\"count\":");
+        n = AddStr(buf, n, IntToStr(_itemCount));
+        n = AddStr(buf, n, ",\"items\":[");
+        bool first = true;
+        for (int i = 0; i < MaxItems; i++)
+        {
+            if (_itemNames[i] == null)
+                continue;
+            if (!first)
+                n = AddStr(buf, n, ",");
+            first = false;
+            n = WriteItemJson(buf, n, i);
+        }
+        n = AddStr(buf, n, "]}\n");
+        var chars = new char[n];
+        for (int i = 0; i < n; i++)
+            chars[i] = buf[i];
+        return new string(chars);
     }
 
     private static bool HasDotDot(string path)
@@ -563,7 +824,14 @@ public static class WebService
             value = value * 10 + (c - '0');
             any = true;
         }
-        return any ? value : fallback;
+        // Mask the result to the declared 32 bits (sign preserved): stale
+        // high bits have been observed riding along with int values on some
+        // call paths (see IntToStr), so narrow at the return boundary. The
+        // AND/channel below clears the upper half of the returned register.
+        long v = (long)(any ? value : fallback) & 0xFFFFFFFFL;
+        if (v >= 0x80000000L)
+            v -= 0x100000000L;
+        return (int)v;
     }
 
     /// <summary>Decode base64url (RFC 4648 section 5, no padding required).</summary>
@@ -609,17 +877,25 @@ public static class WebService
 
     internal static string IntToStr(int value)
     {
-        if (value == 0)
+        // Format through a masking long: stale high bits have been observed
+        // riding along with int values on some call paths (an HTTP status of
+        // 201 surfaced as 0x28_000000C9 = 171798692041). Masking to the
+        // declared 32 bits first makes the result correct however the value
+        // was delivered.
+        long v = (long)value & 0xFFFFFFFFL;
+        if (v >= 0x80000000L)
+            v -= 0x100000000L;   // restore the signed int value
+        if (v == 0)
             return "0";
-        bool neg = value < 0;
+        bool neg = v < 0;
         if (neg)
-            value = -value;
+            v = -v;
         var digits = new char[12];
         int n = 0;
-        while (value > 0)
+        while (v > 0)
         {
-            digits[n++] = (char)('0' + (value % 10));
-            value /= 10;
+            digits[n++] = (char)('0' + (int)(v % 10));
+            v /= 10;
         }
         if (neg)
             digits[n++] = '-';
@@ -929,7 +1205,9 @@ public sealed unsafe class WebConnection
             bool headOnly = WebService.StrEq(method, "HEAD");
             bool isGet = WebService.StrEq(method, "GET");
             bool isPost = WebService.StrEq(method, "POST");
-            if (!isGet && !isPost && !headOnly)
+            bool isPut = WebService.StrEq(method, "PUT");
+            bool isDelete = WebService.StrEq(method, "DELETE");
+            if (!isGet && !isPost && !isPut && !isDelete && !headOnly)
             {
                 SendSimple(405, "Method Not Allowed", "text/plain", "method not allowed\n", headOnly);
                 Consume(totalLen);
@@ -948,7 +1226,16 @@ public sealed unsafe class WebConnection
             }
 
             _requests++;
-            SendRoute(path, headOnly);
+            // Capture the request body (used by the /api/items resource).
+            string reqBody = "";
+            if (contentLength > 0)
+            {
+                var bodyChars = new char[contentLength];
+                for (int i = 0; i < contentLength; i++)
+                    bodyChars[i] = (char)_in[headerEnd + 4 + i];
+                reqBody = new string(bodyChars);
+            }
+            SendRoute(method, path, reqBody, headOnly);
             Consume(totalLen);
             MaybeClose(keepAlive);
         }
@@ -1030,7 +1317,13 @@ public sealed unsafe class WebConnection
         {
             int end = IndexOfStr(head, "\r\n", pos);
             if (end < 0)
-                break;
+            {
+                // The final header line: its CRLF is the first half of the
+                // head terminator, so it lies just outside `head`. Treat the
+                // rest of the string as the last line instead of dropping it
+                // (dropping it silently lost a trailing Content-Length).
+                end = head.Length;
+            }
             string h = head.Substring(pos, end - pos);
             if (h.Length == 0)
                 break;
@@ -1046,9 +1339,7 @@ public sealed unsafe class WebConnection
                 }
                 else if (NameEq(name, "content-length"))
                 {
-                    contentLength = WebService.ParseInt(value, 0);
-                    if (contentLength > 1_000_000)
-                        contentLength = 0;
+                    contentLength = WebService.ParseInt(value, 0) & 0xFFFFF;
                 }
                 else if (NameEq(name, "upgrade"))
                 {
@@ -1121,13 +1412,13 @@ public sealed unsafe class WebConnection
 
     // ==================== Routing ====================
 
-    private void SendRoute(string path, bool headOnly)
+    private void SendRoute(string method, string path, string reqBody, bool headOnly)
     {
         int status;
         string statusText;
         string contentType;
         string body;
-        WebService.BuildRoute(path, out status, out statusText, out contentType, out body);
+        WebService.BuildRoute(method, path, reqBody, out status, out statusText, out contentType, out body);
         SendSimple(status, statusText, contentType, body, headOnly);
     }
 

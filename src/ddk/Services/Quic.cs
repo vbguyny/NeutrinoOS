@@ -638,7 +638,9 @@ public sealed class QuicConnection
         string statusText;
         string contentType;
         string body;
-        WebService.BuildRoute(path, out status, out statusText, out contentType, out body);
+        // (HTTP/3 request bodies are not plumbed through yet; bodyless
+        // methods and DELETE work - see Http2.ServeRequest.)
+        WebService.BuildRoute(method == null ? "GET" : method, path, "", out status, out statusText, out contentType, out body);
 
         // Response field section.
         var rnames = new string[4];
@@ -1077,17 +1079,21 @@ public sealed class QuicConnection
 
     private static string IntToStr(int value)
     {
-        if (value == 0)
+        // Mask to the declared 32 bits first (see WebService.IntToStr).
+        long v = (long)value & 0xFFFFFFFFL;
+        if (v >= 0x80000000L)
+            v -= 0x100000000L;
+        if (v == 0)
             return "0";
-        bool neg = value < 0;
+        bool neg = v < 0;
         if (neg)
-            value = -value;
+            v = -v;
         var digits = new char[12];
         int n = 0;
-        while (value > 0)
+        while (v > 0)
         {
-            digits[n++] = (char)('0' + (value % 10));
-            value /= 10;
+            digits[n++] = (char)('0' + (int)(v % 10));
+            v /= 10;
         }
         if (neg)
             digits[n++] = '-';

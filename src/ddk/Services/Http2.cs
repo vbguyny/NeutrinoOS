@@ -670,7 +670,10 @@ public sealed class Http2Connection
         string statusText;
         string contentType;
         string body;
-        if (!WebService.BuildRoute(path, out status, out statusText, out contentType, out body))
+        // (Request bodies are not plumbed through the HTTP/2 front end yet -
+        // bodyless methods and DELETE work fully; POST/PUT with a body are
+        // supported over HTTP/1.1.)
+        if (!WebService.BuildRoute(method, path, "", out status, out statusText, out contentType, out body))
         {
             status = 404;
             statusText = "Not Found";
@@ -681,7 +684,9 @@ public sealed class Http2Connection
         bool headOnly = Hpack.StrEq(method, "HEAD");
         bool isGet = Hpack.StrEq(method, "GET");
         bool isPost = Hpack.StrEq(method, "POST");
-        if (!isGet && !isPost && !headOnly)
+        bool isPut = Hpack.StrEq(method, "PUT");
+        bool isDelete = Hpack.StrEq(method, "DELETE");
+        if (!isGet && !isPost && !isPut && !isDelete && !headOnly)
         {
             status = 405;
             statusText = "Method Not Allowed";
@@ -894,7 +899,7 @@ public sealed class Http2Connection
         string statusText;
         string contentType;
         string body;
-        if (!WebService.BuildRoute(path, out status, out statusText, out contentType, out body))
+        if (!WebService.BuildRoute("GET", path, "", out status, out statusText, out contentType, out body))
             return;
 
         var block = new byte[512];
