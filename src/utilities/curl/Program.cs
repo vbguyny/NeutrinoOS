@@ -1,10 +1,12 @@
 // NeutrinoOS Phase 5 utility: curl - HTTP client
 //
-// usage: curl [-o file] [-d data] url
+// usage: curl [-X method] [-H header] [-o file] [-d data] url
 //   Minimal HTTP/1.1 client on the DDK TcpSocket: GET by default, POST
-//   with -d (application/x-www-form-urlencoded). http:// and https://
-//   URLs are supported; HTTPS uses the DDK TLS 1.3 client (the
-//   certificate chain is not verified in this phase).
+//   with -d (application/x-www-form-urlencoded), any method via -X
+//   (PUT, DELETE, PATCH, ...) and extra request headers via -H
+//   (repeatable). http:// and https:// URLs are supported; HTTPS uses
+//   the DDK TLS 1.3 client (the certificate chain is not verified in
+//   this phase).
 
 using System;
 using System.IO;
@@ -27,7 +29,10 @@ public static unsafe class Program
             return 0;
         string outFile = null;
         string postData = null;
+        string method = null;
         string url = null;
+        var extraHeaders = new System.Text.StringBuilder();
+        bool hasContentType = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -35,10 +40,12 @@ public static unsafe class Program
             if (a == "--help" || a == "-h")
             {
                 return Util.Help(
-                    "usage: curl [-o file] [-d data] url",
-                    "  Fetch an http:// or https:// URL (GET, or POST with -d data).",
-                    "  -o file   save the response body to file (default: stdout)",
-                    "  -d data   POST data (application/x-www-form-urlencoded)");
+                    "usage: curl [-X method] [-H header] [-o file] [-d data] url",
+                    "  Fetch an http:// or https:// URL (GET default; POST with -d; any method with -X).",
+                    "  -X method  request method, e.g. PUT or DELETE (default GET, or POST with -d)",
+                    "  -H header  add a request header, e.g. -H 'Accept: application/json' (repeatable)",
+                    "  -o file    save the response body to file (default: stdout)",
+                    "  -d data    request body (default Content-Type: application/x-www-form-urlencoded)");
             }
             if (a == "-o")
             {
@@ -52,18 +59,46 @@ public static unsafe class Program
                     return Util.Fail("curl", "-d requires data");
                 postData = args[++i];
             }
+            else if (a == "-X")
+            {
+                if (i + 1 >= args.Length)
+                    return Util.Fail("curl", "-X requires a method");
+                method = args[++i];
+                if (method.Length == 0)
+                    return Util.Fail("curl", "invalid method");
+                for (int j = 0; j < method.Length; j++)
+                {
+                    char m = method[j];
+                    if (m == ' ' || m == '\t' || m == '\r' || m == '\n')
+                        return Util.Fail("curl", "invalid method");
+                }
+            }
+            else if (a == "-H")
+            {
+                if (i + 1 >= args.Length)
+                    return Util.Fail("curl", "-H requires a header");
+                string h = args[++i];
+                if (h.Length == 0 || h.IndexOf('\r') >= 0 || h.IndexOf('\n') >= 0)
+                    return Util.Fail("curl", "invalid header");
+                if (extraHeaders.Length + h.Length > 4096)
+                    return Util.Fail("curl", "too many headers");
+                extraHeaders.Append(h);
+                extraHeaders.Append("\r\n");
+                if (IsContentTypeHeader(h))
+                    hasContentType = true;
+            }
             else if (url == null)
             {
                 url = a;
             }
             else
             {
-                return Util.Fail("curl", "usage: curl [-o file] [-d data] url");
+                return Util.Fail("curl", "usage: curl [-X method] [-H header] [-o file] [-d data] url");
             }
         }
 
         if (url == null)
-            return Util.Fail("curl", "usage: curl [-o file] [-d data] url");
+            return Util.Fail("curl", "usage: curl [-X method] [-H header] [-o file] [-d data] url");
 
         string host;
         int port;
@@ -118,24 +153,30 @@ public static unsafe class Program
             Console.Error.WriteLine("curl: note: TLS ok (certificate not verified)");
         }
 
-        // Build the request.
+        // Build the request. -X selects any method (PUT/DELETE/PATCH/...);
+        // without it: GET, or POST when -d data is present (real-curl
+        // behavior). -H adds extra header lines; a custom Content-Type
+        // suppresses the form-urlencoded default used with -d.
         var requestBuilder = new System.Text.StringBuilder();
-        if (postData == null)
-        {
-            requestBuilder.Append("GET ");
-        }
+        if (method != null)
+            requestBuilder.Append(method);
+        else if (postData != null)
+            requestBuilder.Append("POST");
         else
-        {
-            requestBuilder.Append("POST ");
-        }
+            requestBuilder.Append("GET");
+        requestBuilder.Append(' ');
         requestBuilder.Append(path);
         requestBuilder.Append(" HTTP/1.1\r\nHost: ");
         requestBuilder.Append(host);
         requestBuilder.Append("\r\nUser-Agent: NeutrinoOS-curl/0.5\r\nAccept: */*\r\n");
+        if (extraHeaders.Length > 0)
+            requestBuilder.Append(extraHeaders.ToString());
         if (postData != null)
         {
             byte[] postBytes = Http.AsciiBytes(postData);
-            requestBuilder.Append("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: ");
+            if (!hasContentType)
+                requestBuilder.Append("Content-Type: application/x-www-form-urlencoded\r\n");
+            requestBuilder.Append("Content-Length: ");
             requestBuilder.Append(postBytes.Length);
             requestBuilder.Append("\r\n");
         }
@@ -202,6 +243,26 @@ public static unsafe class Program
         }
         return 0;
     }
+    /// <summary>
+    /// True when a -H value sets Content-Type (case-insensitive), so the
+    /// default form-urlencoded header for -d data is suppressed.
+    /// </summary>
+    private static bool IsContentTypeHeader(string header)
+    {
+        const string name = "content-type";
+        int i = 0;
+        while (i < name.Length && i < header.Length)
+        {
+            char c = header[i];
+            if (c >= 'A' && c <= 'Z')
+                c = (char)(c + 32);
+            if (c != name[i])
+                return false;
+            i++;
+        }
+        return i == name.Length && i < header.Length && header[i] == ':';
+    }
+
     /// <summary>
     /// Hostname resolution in its own small method: the Tier-0 JIT has a
     /// history of miscompiling call sequences built inline in very large
