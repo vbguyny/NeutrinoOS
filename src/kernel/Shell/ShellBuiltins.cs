@@ -58,7 +58,7 @@ public static class ShellBuiltins
         "mkdir", "mkexfat", "more", "mount", "mv", "netstat", "npkg",
         "ping", "ping6", "ps", "rm", "sampleapi", "seq", "sleep", "socktest",
         "sort", "ssh", "sshd", "startup", "tail", "tee", "touch",
-        "tree", "umount", "uname", "uptime", "wc", "webhost", "wget",
+        "tree", "umount", "uname", "uptime", "wc", "webapi", "webhost", "wget",
         "which", "whoami",
     };
 

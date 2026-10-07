@@ -1,0 +1,34 @@
+web: begin Kestrel port - M1 WebApplication host + WebAPI sample (v0.1.95)
+
+Kestrel port milestone 1 (plan: docs/KESTREL-PORT.md). The goal is to run
+WebAPI-style C#/.NET projects on NeutrinoOS; real Kestrel needs
+System.IO.Pipelines, Memory<T> and deep async flows that the Tier-0
+runtime does not provide yet, so the port proceeds in runnable stages
+with the app-facing API fixed from now on.
+
+- src/ddk/Web/HttpContext.cs: HttpContext/HttpRequest/HttpResponse,
+  RequestHandler delegate, WebStatus (the minimal-API surface).
+- src/ddk/Web/WebHost.cs: cooperative HTTP/1.1 host engine - listener,
+  4 connection slots, head parse + Content-Length body wait (431/413
+  limits), route table with {id} captures and 404/405 semantics. Request
+  path logic generalized from the proven SampleApi internals.
+- src/ddk/Web/WebApplication.cs: WebApplication.CreateBuilder(args)
+  (builder+Build fused) + MapGet/MapPost/MapPut/MapDelete chaining +
+  Start/Tick/Stop service contract.
+- src/ddk/Samples/TasksWebApp.cs: the sample - the task-tracker REST API
+  from the previous sample written declaratively (route wiring + ~9
+  handlers using ctx.Request/ctx.Response); registered as service
+  "webapi" in src/kernel/Services/ServiceRegistry.cs.
+- src/utilities/webapi: start|stop|status CLI (shell help + sweep lists
+  updated).
+- docs/samples/webapi: README + Postman collection (Create captures
+  taskId, chained CRUD + error cases); rest-api README cross-links.
+- build/webapi-probe.sh: 29-check matrix (discovery, echo, CRUD,
+  400/404/405, Server header, concurrency, guest start/stop/restart).
+
+Verified on the CLI image: webapi probe PASSED=29 FAILED=0 and the
+sampleapi regression probe 28/28, host-side HTTP through slirp hostfwd,
+image md5 483ff3bb47f9d008d0091a0c783f0c06.
+
+M2 next: System.IO.Pipelines + Memory<T>/ArrayPool in korlib, then the
+async transport in Kestrel's IConnectionListener/ConnectionContext shape.

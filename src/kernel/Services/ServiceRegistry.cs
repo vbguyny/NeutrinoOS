@@ -110,6 +110,12 @@ public static unsafe class ServiceRegistry
             ns = "NeutrinoOS.DDK.Services";
             type = "SampleApi";
         }
+        else if (name == "webapi")
+        {
+            // WebApplication-style sample app (docs/KESTREL-PORT.md M1).
+            ns = "NeutrinoOS.DDK.Samples";
+            type = "TasksWebApp";
+        }
         else
         {
             return -3;

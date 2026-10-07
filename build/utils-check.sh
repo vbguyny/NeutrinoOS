@@ -53,7 +53,7 @@ send() {
     return 1
 }
 
-ALL="cat clear cp cryptotest curl date dbgtest df dhcp dhcp6 dns dns6 du echo env exfatattrib exfatlabel find free fsck.exfat grep h2test head hexdump ifconfig kill ls mkdir mkexfat more mount mv netstat npkg ping ping6 ps rm sampleapi seq sleep socktest sort ssh sshd startup tail tee touch tree umount uname uptime wc webhost wget which whoami"
+ALL="cat clear cp cryptotest curl date dbgtest df dhcp dhcp6 dns dns6 du echo env exfatattrib exfatlabel find free fsck.exfat grep h2test head hexdump ifconfig kill ls mkdir mkexfat more mount mv netstat npkg ping ping6 ps rm sampleapi seq sleep socktest sort ssh sshd startup tail tee touch tree umount uname uptime wc webapi webhost wget which whoami"
 
 echo "boot ok; starting help sweep..."
 send "cd /" || true

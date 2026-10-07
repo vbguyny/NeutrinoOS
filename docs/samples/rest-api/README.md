@@ -8,6 +8,10 @@ The API is a task tracker: read/write info, echo query strings and request bodie
 and full CRUD over a small in-memory task store. It listens on **guest port 8080**
 and is exposed to Windows as **`http://127.0.0.1:18080`**.
 
+> **See also:** [`docs/samples/webapi`](../webapi/README.md) — the same API written
+> in the `WebApplication` / `MapGet` style (Kestrel-port Milestone 1; plan:
+> [`docs/KESTREL-PORT.md`](../../KESTREL-PORT.md)).
+
 | File | What it is |
 |------|------------|
 | `src/ddk/Services/SampleApi.cs` | The service itself (HTTP/1.1 server + router + JSON). Runs inside the kernel's cooperative service model. |
