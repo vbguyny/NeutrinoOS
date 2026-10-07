@@ -1,0 +1,25 @@
+samples: REST API sample service + sampleapi utility + Postman collection (v0.1.93)
+
+- src/ddk/Services/SampleApi.cs: cooperative HTTP/1.1 service (kernel idle
+  tick, non-blocking virtio sockets, 4 connection slots) serving a small
+  task-tracker REST API on guest port 8080: discovery blurb, info counters,
+  echo (query string + request body), and full tasks CRUD with 400/404/405/
+  409 semantics. 4 KB request cap, 8-task store.
+- src/utilities/sampleapi: start|stop|status CLI shim (same pattern as the
+  webhost utility).
+- Kernel: ServiceRegistry maps "sampleapi" -> NeutrinoOS.DDK.Services.
+  SampleApi; ShellBuiltins help list updated.
+- docs/samples/rest-api: README with a Windows 11 access guide (WSL2 QEMU
+  hostfwd 18080->8080 with automatic localhost forwarding, VirtualBox CLI
+  VM NAT rule, curl.exe/PowerShell examples, endpoint reference, how-it-
+  works and make-your-own notes) + Postman v2.1 collection where Create
+  captures the new id into a collection variable chained through Get /
+  Update / Delete / 404-check, plus 400/405/404 error cases.
+- scripts/cli-vm.ps1: NAT port forward sampleapi,tcp,,18080,,8080.
+- build/sampleapi-probe.sh: 28-check end-to-end matrix (discovery, echo,
+  CRUD, error codes, concurrency, host-side access, guest-side start/stop/
+  restart). build/sampleapi-vm.sh: QEMU launcher with the port forward.
+  utils-check list includes sampleapi.
+
+Verified: build/sampleapi-probe.sh PASSED=28 FAILED=0 on CLI image
+a4c10cd8 (CRUD from host-side access through slirp hostfwd).

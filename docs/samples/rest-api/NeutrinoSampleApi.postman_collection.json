@@ -1,0 +1,452 @@
+{
+  "info": {
+    "name": "NeutrinoOS Sample REST API",
+    "description": "Calls the NeutrinoOS `sampleapi` service (src/ddk/Services/SampleApi.cs) running in QEMU.\n\nHow to run it:\n1. Boot the CLI image with guest port 8080 forwarded to host 18080:\n   - WSL2: `bash build/sampleapi-vm.sh`  (or VirtualBox `scripts/cli-vm.ps1`, which forwards 18080 -> 8080)\n2. In the VM console: `sampleapi start`\n3. Set the collection variable `baseUrl` if you use different ports (default http://127.0.0.1:18080).\n4. Run requests individually or use *Run collection* - the Create task request stores the new id in the `taskId` variable, and Get / Update / Delete / Verify-deleted reuse it.\n\nDocs: docs/samples/rest-api/README.md",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:18080",
+      "type": "string"
+    },
+    {
+      "key": "taskId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Info & Echo",
+      "item": [
+        {
+          "name": "Service blurb",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/",
+            "description": "Root discovery document: service name, port and the endpoint list."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('mentions the service', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.service).to.be.a('string');",
+                  "    pm.expect(j.endpoints).to.be.an('array').that.is.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Service info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/info",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "info"]
+            },
+            "description": "Counters: version, uptime, requests served, tasks in the store."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('service identity', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.service).to.eql('sampleapi');",
+                  "    pm.expect(j.version).to.be.a('string');",
+                  "    pm.expect(j.uptime_s).to.be.a('number');",
+                  "    pm.expect(j.requests).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Echo query string",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/echo?msg=hello-from-postman",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "echo"],
+              "query": [
+                {
+                  "key": "msg",
+                  "value": "hello-from-postman",
+                  "description": "Text to echo back."
+                }
+              ]
+            },
+            "description": "Demonstrates query-string parsing; echoes `msg` back as JSON."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('echoes the message', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.method).to.eql('GET');",
+                  "    pm.expect(j.msg).to.eql('hello-from-postman');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Echo request body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "hello from Postman"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/echo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "echo"]
+            },
+            "description": "Sends a raw body and receives it back, proving request bodies arrive intact."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('echoes the body', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.method).to.eql('POST');",
+                  "    pm.expect(j.you_sent).to.eql('hello from Postman');",
+                  "    pm.expect(j.content_length).to.eql(18);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tasks CRUD",
+      "item": [
+        {
+          "name": "Create task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"created from Postman\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"]
+            },
+            "description": "Creates a task and stores its id in the `taskId` collection variable for the requests below."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('returns the new task', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.id).to.be.a('number');",
+                  "    pm.expect(j.name).to.eql('created from Postman');",
+                  "    pm.collectionVariables.set('taskId', j.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tasks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"]
+            },
+            "description": "Lists every task in the store (max 8 live at once)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('collection shape', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.count).to.be.a('number');",
+                  "    pm.expect(j.tasks).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get task by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks", "{{taskId}}"]
+            },
+            "description": "Reads the task created above (id from the `taskId` variable)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the requested task', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.id).to.eql(Number(pm.collectionVariables.get('taskId')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update task (rename)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\":\"renamed from Postman\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks", "{{taskId}}"]
+            },
+            "description": "Renames the task via PUT."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('renamed', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.id).to.eql(Number(pm.collectionVariables.get('taskId')));",
+                  "    pm.expect(j.name).to.eql('renamed from Postman');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete task",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks", "{{taskId}}"]
+            },
+            "description": "Deletes the task."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted the right id', () => {",
+                  "    const j = pm.response.json();",
+                  "    pm.expect(j.deleted).to.eql(Number(pm.collectionVariables.get('taskId')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify deleted (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks", "{{taskId}}"]
+            },
+            "description": "The task is gone: GET must answer 404 with a JSON error body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error body', () => pm.expect(pm.response.json().error).to.eql('not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error cases",
+      "item": [
+        {
+          "name": "Create without name (expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"]
+            },
+            "description": "Validation: a task needs a name."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('reports the missing name', () => pm.expect(pm.response.json().error).to.include('name'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong method PATCH (expect 405)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tasks"]
+            },
+            "description": "Unknown methods on a known route answer 405."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 405', () => pm.response.to.have.status(405));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown route (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/no/such/route",
+              "host": ["{{baseUrl}}"],
+              "path": ["no", "such", "route"]
+            },
+            "description": "Unknown paths answer 404 with a JSON error body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error body', () => pm.expect(pm.response.json().error).to.eql('not found'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -80,6 +80,8 @@ if (-not $NoNet) {
     & $vb modifyvm $name --natpf1 "ssh,tcp,,2222,,22" 2>&1 | Out-Null
     & $vb modifyvm $name --natpf1 "http,tcp,,8080,,80" 2>&1 | Out-Null
     & $vb modifyvm $name --natpf1 "https,tcp,,8444,,443" 2>&1 | Out-Null
+    # Sample REST API (`sampleapi`, docs/samples/rest-api): host 18080 -> guest 8080.
+    & $vb modifyvm $name --natpf1 "sampleapi,tcp,,18080,,8080" 2>&1 | Out-Null
     & $vb modifyvm $name --nictrace1 on --nictracefile1 (Join-Path $base "vbox-nic.pcap") 2>&1 | Out-Null
     $ErrorActionPreference = "Stop"
 } else {

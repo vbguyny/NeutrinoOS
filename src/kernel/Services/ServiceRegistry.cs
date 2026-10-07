@@ -105,6 +105,11 @@ public static unsafe class ServiceRegistry
             ns = "NeutrinoOS.DDK.Services";
             type = "WebService";
         }
+        else if (name == "sampleapi")
+        {
+            ns = "NeutrinoOS.DDK.Services";
+            type = "SampleApi";
+        }
         else
         {
             return -3;

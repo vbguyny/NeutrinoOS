@@ -56,7 +56,7 @@ public static class ShellBuiltins
         "exfatattrib", "exfatlabel", "find", "free", "fsck.exfat",
         "grep", "h2test", "head", "hexdump", "ifconfig", "kill", "ls",
         "mkdir", "mkexfat", "more", "mount", "mv", "netstat", "npkg",
-        "ping", "ping6", "ps", "rm", "seq", "sleep", "socktest",
+        "ping", "ping6", "ps", "rm", "sampleapi", "seq", "sleep", "socktest",
         "sort", "ssh", "sshd", "startup", "tail", "tee", "touch",
         "tree", "umount", "uname", "uptime", "wc", "webhost", "wget",
         "which", "whoami",
