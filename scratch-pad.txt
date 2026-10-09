@@ -1,0 +1,11 @@
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -machine q35 -cpu max -smp 1 -m 2048 -drive if=pflash,format=raw,readonly=on,file=D:/QEMU/firmware/edk2-x86_64-code.fd -drive if=pflash,format=raw,file=D:/QEMU/firmware/edk2-i386-vars.fd -drive file=D:/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img,format=raw,if=ide -netdev user,id=n0 -device virtio-net-pci,netdev=n0
+
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -machine q35,accel=kvm -cpu max -smp 1 -m 2048 -drive if=pflash,format=raw,readonly=on,file=D:/QEMU/firmware/edk2-x86_64-code.fd -drive if=pflash,format=raw,file=D:/QEMU/firmware/edk2-i386-vars.fd -drive file=D:/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img,format=raw,if=ide -netdev user,id=n0 -device virtio-net-pci,netdev=n0
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -machine q35,accel=whpx -cpu max -smp 1 -m 2048 -drive if=pflash,format=raw,readonly=on,file=D:/QEMU/firmware/edk2-x86_64-code.fd -drive if=pflash,format=raw,file=D:/QEMU/firmware/edk2-i386-vars.fd -drive file=D:/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img,format=raw,if=ide -netdev user,id=n0 -device virtio-net-pci,netdev=n0
+
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -machine q35 -cpu max -smp 1 -m 2048 -drive if=pflash,format=raw,readonly=on,file=D:/QEMU/firmware/edk2-x86_64-code.fd -drive if=pflash,format=raw,file=D:/QEMU/firmware/edk2-i386-vars.fd -drive file=D:/Projects/Code/NeutrinoOS/build/neutrinoos-cli.img,format=raw,if=ide -netdev user,id=n0 -device virtio-net-pci,netdev=n0
+
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -machine q35 -m 2G -smp 1 -drive "if=pflash,format=raw,readonly=on,file=C:\Program Files\qemu\share\edk2-x86_64-code.fd" -drive "format=raw,file=d:\Projects\Code\NeutrinoOS\build\neutrinoos-cli.img" -netdev "user,id=n0,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:80,hostfwd=tcp::8444-:443" -device virtio-net-pci,netdev=n0 -serial "file:d:\Projects\Code\NeutrinoOS\build\qemu-cli-serial.log"
+
+wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/rebuild-cli-image.sh   # if not built
+wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/sampleapi-vm.sh
