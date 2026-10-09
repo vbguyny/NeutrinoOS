@@ -69,6 +69,13 @@ public sealed class SshWriter
         _data[_length++] = (byte)v;
     }
 
+    /// <summary>Write a big-endian uint64 (SFTP sizes/offsets).</summary>
+    public void WriteU64(ulong v)
+    {
+        WriteU32((uint)(v >> 32));
+        WriteU32((uint)v);
+    }
+
     /// <summary>Write raw bytes.</summary>
     public void WriteRaw(byte[] data, int offset, int count)
     {
@@ -152,6 +159,14 @@ public sealed class SshReader
         for (int i = 0; i < 4; i++)
             v = (v << 8) | ReadByte();
         return v;
+    }
+
+    /// <summary>Read a big-endian uint64 (SFTP sizes/offsets).</summary>
+    public ulong ReadU64()
+    {
+        ulong hi = ReadU32();
+        ulong lo = ReadU32();
+        return (hi << 32) | lo;
     }
 
     /// <summary>Read a length-prefixed string; null when malformed.</summary>

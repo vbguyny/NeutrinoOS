@@ -31,13 +31,19 @@ the report).
 ## Sessions and the shell bridge
 
 - `session` channel with `pty-req` (accepted; no dynamic resize yet),
-  `shell`, `exec`, `window-change` (accepted), `env`.
+  `shell`, `exec`, `window-change` (accepted), `env`, and the **`sftp`
+  subsystem** (SFTP v3 file transfer - see `docs/SSH.md` and
+  `src/ddk/Services/Ssh/SftpServer.cs`).
 - `exec`/`shell` lines run through the **kernel shell bridge**
   (`Kernel_ShellExec`): output is captured via `Console.SetOut` into a
   StringWriter, capped at 64 KB, and returned with the command's exit
-  status. The interactive line editor supports arrows, history (8),
-  Ctrl+C/Ctrl+D and backspace.
-- `subsystem`/SFTP deferred.
+  status. The interactive line editor supports cursor keys
+  (left/right/Home/End/Delete), history (8), Ctrl+C/Ctrl+D and
+  backspace, with mid-line editing.
+- Client-initiated **rekey** (mid-session KEXINIT) is supported; channel
+  state, sequence numbers and the session id persist across the exchange.
+- Other subsystems, symlinks (SFTP READLINK/SYMLINK), port forwarding
+  and agent forwarding are deferred.
 
 ## Configuration
 
@@ -81,8 +87,13 @@ from `Csprng`.
 
 ## Testing
 
-- `build/p6-ssh-test.sh` (all-green): exec (`echo`, `uname`),
-  interactive `-tt` session, negative wrong-key auth; host log shows
-  the exec sessions flowing through the shell bridge.
+- `build/ssh-probe.sh` (all-green) - the current end-to-end suite: exec,
+  interactive shell, cursor editing, history, forced rekey, password
+  auth, `sftp` batch, `scp` round-trips, negative auth (18 checks).
+- `build/p6-ssh-test.sh` - original Phase 6 suite (exec, interactive
+  `-tt`, negative wrong-key, password via pty) against the *plain*
+  deploy image. NOTE: plain-image boots with boot tests enabled currently
+  stall in the JITTest phase in this environment (pre-existing; the
+  boot-test assembly FullTest.dll is absent) - use `ssh-probe.sh`.
 - `scripts/phase6-ssh-demo.ps1` — Windows client demo session.
 - `tests/run-phase6-tests.ps1` — includes Windows OpenSSH checks.

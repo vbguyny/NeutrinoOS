@@ -1,0 +1,39 @@
+ssh: SFTP subsystem + cursor editing + rekey - SSH feature-complete (v0.1.102)
+
+Finishes the SSH feature set so stock clients can fully use it, and adds
+the setup/connect guide the todo calls for (docs/SSH.md, Windows 11
+focused).
+
+- src/ddk/Services/Ssh/SftpServer.cs (new): SFTP v3 subsystem over the
+  session channel - INIT/VERSION, REALPATH, STAT/LSTAT/FSTAT, OPEN,
+  CLOSE, READ, WRITE, OPENDIR, READDIR, REMOVE, MKDIR, RMDIR, RENAME,
+  SETSTAT/FSETSTAT (accepted no-op); symlinks and extended requests
+  refused. Backed by the VFS (File/Directory/FileStream); 12 handles;
+  paths canonicalize "." / relatives against the user's home. 64 KiB
+  per-file cap: the VFS buffers whole files and the guest heap must stay
+  below the ~85 KB LOH threshold (the LOH free list corrupts live
+  objects), so larger transfers wait for chunked VFS access.
+- SshConnection: `subsystem sftp` wiring + CHANNEL_DATA routing to the
+  subsystem; per-message SFTP framing loop; client-initiated rekey
+  (mid-session KEXINIT reuses the kex state machine and returns to
+  Connected when authenticated - sequence numbers and session id
+  persist); SFTP handles closed on teardown.
+- Interactive line editor upgraded to the console editor's behavior:
+  left/right/Home/End/Delete keys, mid-line insert and backspace,
+  prompt-preserving redraw (ESC[K + relative cursor moves).
+- SshBuffer: ReadU64/WriteU64 for SFTP sizes/offsets.
+- build/ssh-cli-image.sh: prepares the CLI image for SSH (user fixture
+  + sshd_config, optional authorized_keys arg). build/ssh-vm.sh: QEMU
+  launcher with host 2222 -> guest 22. build/ssh-probe.sh: 18-check
+  end-to-end matrix. docs/PHASE6-SSH.md updated.
+
+Verified: build/ssh-probe.sh PASSED=18 FAILED=0 on image abb81365 with
+OpenSSH clients - pubkey + password auth, exec, interactive session
+(banner/logout/rc=0), cursor-left mid-line insert, history recall,
+forced rekey (RekeyLimit=1K + seq 1 300), sftp batch, sftp and scp
+byte-identical round-trips, wrong-key and wrong-password refused.
+
+Note: build/p6-ssh-test.sh (plain deploy image) cannot run in this
+environment - plain-image boots with boot tests enabled stall in the
+JITTest phase (pre-existing; reproduced with the SSH changes stashed;
+FullTest.dll is absent from the image). Documented in docs/SSH.md.

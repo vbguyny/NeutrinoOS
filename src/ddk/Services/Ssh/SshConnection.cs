@@ -88,10 +88,13 @@ public sealed unsafe class SshConnection
 
     private readonly char[] _line = new char[512];
     private int _lineLen;
+    private int _linePos;              // cursor position within _line
+    private string _prompt = "user@neutrinoos:~$ ";
     private readonly string[] _history = new string[8];
     private int _historyCount;
     private int _historyBrowse = -1;
     private int _escState;
+    private int _escParam;
     private int _exitCode;
 
     private readonly byte[] _pendingOut = new byte[OutCapacity];
@@ -190,6 +193,11 @@ public sealed unsafe class SshConnection
         if (_state == StClosed)
             return;
         _state = StClosed;
+        if (_sftp != null)
+        {
+            _sftp.Close();
+            _sftp = null;
+        }
         _sock.Close();
     }
 
@@ -700,7 +708,10 @@ public sealed unsafe class SshConnection
     {
         _inCrypto = _pendingIn;
         _pendingIn = null;
-        _state = StUserauth;
+        // Return to the phase we were in: userauth on the first exchange,
+        // connected when the client initiated a mid-session rekey (the
+        // channel state, sequence numbers and session id all persist).
+        _state = _authed ? StConnected : StUserauth;
         return true;
     }
 
@@ -894,6 +905,9 @@ public sealed unsafe class SshConnection
     {
         switch (msg)
         {
+            case 20:  // KEXINIT - client-initiated rekey while connected
+                SendKexInit();
+                return OnClientKexInit(payload);
             case 1:   // client DISCONNECT
                 _state = StClosed;
                 return false;
@@ -937,8 +951,15 @@ public sealed unsafe class SshConnection
                     SendWindowAdjust(_ourWindowConsumed);
                     _ourWindowConsumed = 0;
                 }
-                if (_sessionActive && !_execMode && !_sessionDone)
+                if (_sftpMode && _sftp != null)
+                {
+                    if (!_sessionDone)
+                        _sftp.Feed(data);
+                }
+                else if (_sessionActive && !_execMode && !_sessionDone)
+                {
                     ProcessSessionInput(data);
+                }
                 return true;
             }
             case 96:  // CHANNEL_EOF
@@ -1061,6 +1082,22 @@ public sealed unsafe class SshConnection
             RunExec(command == null ? "" : command);
             return true;
         }
+        if (request == "subsystem")
+        {
+            string name = r.ReadAscii();
+            if (name == "sftp")
+            {
+                if (wantReply)
+                    SendChannelReply(true);
+                _sftpMode = true;
+                _sessionActive = true;
+                _sftp = new SftpServer(this);
+                return true;
+            }
+            if (wantReply)
+                SendChannelReply(false);
+            return true;
+        }
         if (request == "window-change")
         {
             r.ReadU32();
@@ -1089,6 +1126,11 @@ public sealed unsafe class SshConnection
 
     private bool _execMode;
 
+    // SFTP subsystem state: channel data is framed as SFTP packets
+    // instead of flowing through the interactive line editor.
+    private SftpServer _sftp;
+    private bool _sftpMode;
+
     private void StartShell()
     {
         _sessionActive = true;
@@ -1113,7 +1155,8 @@ public sealed unsafe class SshConnection
     private void SendPrompt()
     {
         string user = _user == null ? "user" : _user;
-        SendSessionText(user + "@neutrinoos:~$ ");
+        _prompt = user + "@neutrinoos:~$ ";
+        SendSessionText(_prompt);
     }
 
     private void ProcessSessionInput(byte[] data)
@@ -1125,21 +1168,73 @@ public sealed unsafe class SshConnection
             if (_escState == 1)
             {
                 _escState = b == 0x5B ? 2 : 0;
+                _escParam = 0;
                 continue;
             }
             if (_escState == 2)
             {
+                if (b >= '0' && b <= '9')
+                {
+                    _escParam = _escParam * 10 + (b - '0');
+                    continue;
+                }
                 _escState = 0;
-                if (b == 0x41)
+                if (b == 0x41)          // cursor up: history back
+                {
                     BrowseHistory(1);
-                else if (b == 0x42)
+                }
+                else if (b == 0x42)     // cursor down: history forward
+                {
                     BrowseHistory(-1);
+                }
+                else if (b == 0x43)     // cursor right
+                {
+                    if (_linePos < _lineLen)
+                    {
+                        _linePos++;
+                        SendSessionText("\x1b[C");
+                    }
+                }
+                else if (b == 0x44)     // cursor left
+                {
+                    if (_linePos > 0)
+                    {
+                        _linePos--;
+                        SendSessionText("\x1b[D");
+                    }
+                }
+                else if (b == 0x48 || (b == 0x7E && (_escParam == 1 || _escParam == 7)))
+                {
+                    // Home (ESC[H, ESC[1~, ESC[7~)
+                    _linePos = 0;
+                    SendSessionText("\r");
+                    MoveRight(_prompt.Length);
+                }
+                else if (b == 0x46 || (b == 0x7E && (_escParam == 4 || _escParam == 8)))
+                {
+                    // End (ESC[F, ESC[4~, ESC[8~)
+                    int forward = _lineLen - _linePos;
+                    _linePos = _lineLen;
+                    MoveRight(forward);
+                }
+                else if (b == 0x7E && _escParam == 3)
+                {
+                    // Delete (ESC[3~)
+                    if (_linePos < _lineLen)
+                    {
+                        for (int k = _linePos; k < _lineLen - 1; k++)
+                            _line[k] = _line[k + 1];
+                        _lineLen--;
+                        EchoRedraw();
+                    }
+                }
                 continue;
             }
 
             if (b == 0x1B)
             {
                 _escState = 1;
+                _escParam = 0;
                 continue;
             }
             if (b == 0x0D || b == 0x0A)
@@ -1150,10 +1245,14 @@ public sealed unsafe class SshConnection
             }
             if (b == 0x7F || b == 0x08)
             {
-                if (_lineLen > 0)
+                // Backspace deletes before the cursor; the tail shifts left.
+                if (_linePos > 0)
                 {
+                    for (int k = _linePos - 1; k < _lineLen - 1; k++)
+                        _line[k] = _line[k + 1];
                     _lineLen--;
-                    SendSessionText("\b \b");
+                    _linePos--;
+                    EchoRedraw();
                 }
                 continue;
             }
@@ -1161,6 +1260,7 @@ public sealed unsafe class SshConnection
             {
                 SendSessionText("^C\r\n");
                 _lineLen = 0;
+                _linePos = 0;
                 SendPrompt();
                 continue;
             }
@@ -1178,12 +1278,40 @@ public sealed unsafe class SshConnection
             {
                 if (_lineLen < _line.Length - 1)
                 {
-                    _line[_lineLen++] = (char)b;
-                    var echo = new byte[1];
-                    echo[0] = b;
-                    SendSessionBytes(echo);
+                    // Insert at the cursor; the tail shifts right.
+                    for (int k = _lineLen; k > _linePos; k--)
+                        _line[k] = _line[k - 1];
+                    _line[_linePos] = (char)b;
+                    _lineLen++;
+                    _linePos++;
+                    EchoRedraw();
                 }
             }
+        }
+    }
+
+    private void MoveRight(int count)
+    {
+        if (count <= 0)
+            return;
+        SendSessionText("\x1b[");
+        SendSessionText(WebService.IntToStr(count));
+        SendSessionText("C");
+    }
+
+    /// <summary>Repaint the line after an edit; cursor parks at _linePos.</summary>
+    private void EchoRedraw()
+    {
+        SendSessionText("\r");
+        SendSessionText(_prompt);
+        SendSessionText(new string(_line, 0, _lineLen));
+        SendSessionText("\x1b[K");
+        int back = _lineLen - _linePos;
+        if (back > 0)
+        {
+            SendSessionText("\x1b[");
+            SendSessionText(WebService.IntToStr(back));
+            SendSessionText("D");
         }
     }
 
@@ -1206,31 +1334,30 @@ public sealed unsafe class SshConnection
             else
             {
                 _historyBrowse = _historyCount;
-                ReplaceLine("");
+                SetLine("");
                 return;
             }
         }
-        ReplaceLine(_historyBrowse < _historyCount ? _history[_historyBrowse] : "");
+        SetLine(_historyBrowse < _historyCount ? _history[_historyBrowse] : "");
     }
 
-    private void ReplaceLine(string text)
+    private void SetLine(string text)
     {
-        // Erase the current line on the client, then draw the new one.
-        SendSessionText("\r                                                                \r");
         _lineLen = 0;
-        if (text == null)
-            return;
-        for (int i = 0; i < text.Length && _lineLen < _line.Length - 1; i++)
+        if (text != null)
         {
-            _line[_lineLen++] = text[i];
+            for (int i = 0; i < text.Length && _lineLen < _line.Length - 1; i++)
+                _line[_lineLen++] = text[i];
         }
-        SendSessionText(text);
+        _linePos = _lineLen;
+        EchoRedraw();
     }
 
     private void ExecuteSessionLine()
     {
         string command = new string(_line, 0, _lineLen);
         _lineLen = 0;
+        _linePos = 0;
         _historyBrowse = -1;
 
         // Manual trim (String.Trim() is unresolvable in the guest JIT).
@@ -1369,6 +1496,12 @@ public sealed unsafe class SshConnection
             _pendingOut[_pendingLen++] = bytes[i];
         }
         FlushPendingOut();
+    }
+
+    /// <summary>Send raw bytes on the session channel (SFTP subsystem).</summary>
+    public void SendChannelBytes(byte[] data)
+    {
+        SendSessionBytes(data);
     }
 
     private void FlushPendingOut()
