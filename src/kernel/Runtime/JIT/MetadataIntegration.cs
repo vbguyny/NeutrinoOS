@@ -5409,8 +5409,13 @@ public static unsafe class MetadataIntegration
         DebugConsole.WriteHex((ulong)mt);
         DebugConsole.WriteLine();
 
-        // Search all loaded assemblies for this MethodTable
-        for (uint asmId = 0; asmId < 16; asmId++)  // Max assemblies
+        // Search all loaded assemblies for this MethodTable.
+        // NOTE: the bound must follow AssemblyLoader.MaxAssemblies (128) -
+        // a hardcoded 16 used to skip assemblies 16+ (e.g. JITTest itself),
+        // so default ctors of their types were never found and
+        // Activator.CreateInstance<T>/new T() produced unconstructed
+        // objects (one JITTest failure).
+        for (uint asmId = 0; asmId < (uint)AssemblyLoader.MaxAssemblies; asmId++)
         {
             LoadedAssembly* asm = AssemblyLoader.GetAssembly(asmId);
             if (asm == null || !asm->IsLoaded)

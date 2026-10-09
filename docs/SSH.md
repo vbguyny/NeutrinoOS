@@ -142,13 +142,21 @@ Expected: `PASSED=18 FAILED=0` — exec, interactive shell, cursor editing,
 history, forced rekey, password auth, `sftp` batch, `scp` round-trips
 (byte-identical), and negative key/password checks.
 
-> **Known environment issue (unrelated to SSH):** the older
-> `build/p6-ssh-test.sh` boots the *plain* deploy image with boot tests
-> enabled; that path currently stalls in the JITTest phase (the boot-test
-> assembly `FullTest.dll` is absent and JITTest does not complete in this
-> environment — reproduced with the SSH changes stashed, i.e. pre-existing).
-> Use `build/ssh-probe.sh`, which boots the CLI image with the
-> `skip-boot-tests` marker.
+The original Phase 6 suite `build/p6-ssh-test.sh` is green again as well:
+it boots the *plain* deploy image (boot tests included) and runs exec,
+a piped interactive session, a negative wrong-key check and password
+auth — verified together with JITTest 2780/0 and AppTest 24/0 completing
+in ~13 s.
+
+> History (resolved, v0.1.104): plain-image boots used to stall forever in
+> the JITTest phase. A `[Conditional("NEUTRINO_TRACE")]` trace call whose
+> argument carried the loop advance — `while (*p != 0) { JitTrace.WriteChar((char)*p++); }`
+> — had the call *and the increment* compiled away, leaving an empty
+> non-advancing loop in `JitStubs.TryResolveDefaultInterfaceMethod`
+> (RIP verified pinned to a register self-loop with the gdbstub). A second
+> fix: `FindDefaultConstructor` searched only assemblies < 16 while the cap
+> is 128, so `new T()` on JITTest's own types never ran the ctor. Keep side
+> effects out of conditional-trace call arguments.
 
 ## Troubleshooting
 

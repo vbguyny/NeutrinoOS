@@ -90,10 +90,9 @@ from `Csprng`.
 - `build/ssh-probe.sh` (all-green) - the current end-to-end suite: exec,
   interactive shell, cursor editing, history, forced rekey, password
   auth, `sftp` batch, `scp` round-trips, negative auth (18 checks).
-- `build/p6-ssh-test.sh` - original Phase 6 suite (exec, interactive
-  `-tt`, negative wrong-key, password via pty) against the *plain*
-  deploy image. NOTE: plain-image boots with boot tests enabled currently
-  stall in the JITTest phase in this environment (pre-existing; the
-  boot-test assembly FullTest.dll is absent) - use `ssh-probe.sh`.
+- `build/p6-ssh-test.sh` (all-green again) - original Phase 6 suite (exec,
+  interactive `-tt`, negative wrong-key, password via pty) against the
+  *plain* deploy image. It boots with boot tests enabled; those used to
+  stall (JITTest phase) and were fixed in v0.1.104 (see docs/SSH.md).
 - `scripts/phase6-ssh-demo.ps1` — Windows client demo session.
 - `tests/run-phase6-tests.ps1` — includes Windows OpenSSH checks.

@@ -1,0 +1,36 @@
+kernel: fix JITTest boot stall + Activator ctor lookup (v0.1.104)
+
+Plain images (boot tests enabled) could never reach the shell: the
+JITTest phase stalled forever, so suites that boot the deploy image
+(e.g. build/p6-ssh-test.sh) could not run.
+
+Root cause 1 - [Conditional] trace arguments lose side effects:
+  while (*p != 0) { JitTrace.WriteChar((char)*p++); }
+  JitTrace methods are [Conditional("NEUTRINO_TRACE")], so in normal
+  builds the call AND its argument side effect (the *p++) are removed,
+  leaving an empty `while (*p != 0) { }` that spins on any non-empty
+  name. First reached while compiling interface vtable slots during the
+  JITTest phase; confirmed with the gdbstub - RIP pinned to a
+  two-instruction register self-loop in
+  kernel_...JitStubs__TryResolveDefaultInterfaceMethod+0x294 (the load
+  had been hoisted, so even memory changes could not break the spin).
+  Fix: keep the increment on its own statement (comment in place).
+
+Root cause 2 - hardcoded assembly bound: FindDefaultConstructor searched
+  `for (asmId = 0; asmId < 16; asmId++)` while AssemblyLoader.MaxAssemblies
+  is 128. JITTest is loaded as assembly 16, so default ctors of its own
+  types were never found and new T()/Activator.CreateInstance<T>
+  allocated objects WITHOUT running the ctor (GenericTests
+  CreateNew<GenericCreatable> expected the field initializer 42, got 0).
+  Fix: bound the loop by AssemblyLoader.MaxAssemblies.
+
+Verified (plain deploy image; previously hung indefinitely):
+- Boot tests complete at ~13 s: [JITTest] Passed 2780 / Failed 0
+  (ALL TESTS PASSED), [AppTest] 24/0 (ALL TESTS PASSED), user-mode
+  syscall tests run, shell reached.
+- build/p6-ssh-test.sh (the suite blocked by the stall): exec echo +
+  uname rc=0, piped interactive session rc=0, wrong key refused
+  (rc=255), password auth PW-OK - all green.
+- build/ssh-probe.sh regression: PASSED=18 FAILED=0 (image 1f43b74e).
+- docs/SSH.md + docs/PHASE6-SSH.md updated (issue resolved; keep side
+  effects out of conditional-trace call arguments).

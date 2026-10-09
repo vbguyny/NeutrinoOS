@@ -708,7 +708,14 @@ public static unsafe class JitStubs
 
                     JitTrace.Write("[JitStubs] Looking for '");
                     byte* p = interfaceMethodName;
-                    while (*p != 0) { JitTrace.WriteChar((char)*p++); }
+                    // NOTE: the increment must NOT live inside the trace call's
+                    // arguments. JitTrace methods are [Conditional("NEUTRINO_TRACE")],
+                    // so in normal builds the call AND its argument side effects
+                    // (the *p++) are compiled away - which used to leave an empty
+                    // `while (*p != 0) { }` loop that spun forever the first time
+                    // this path ran (it hung plain-image boots in the JITTest
+                    // phase). Keep the advance on its own statement.
+                    while (*p != 0) { JitTrace.WriteChar((char)*p); p++; }
                     JitTrace.Write("' params=");
                     JitTrace.WriteDecimal((uint)(interfaceParamCount < 0 ? 0 : interfaceParamCount));
                     JitTrace.Write(" in type 0x");
