@@ -1,5 +1,6 @@
 {
   "info": {
+    "_postman_id": "8f2c1e7a-3b64-4d5a-9c8e-1f0a2b3c4d5e",
     "name": "NeutrinoOS WebAPI Sample (Kestrel-port M1)",
     "description": "Calls the NeutrinoOS `webapi` sample app (src/ddk/Samples/TasksWebApp.cs) running in QEMU - the same task-tracker REST API as the rest-api sample, written in the WebApplication / MapGet style that the Kestrel port targets (docs/KESTREL-PORT.md).\n\nHow to run it:\n1. Boot the CLI image with guest port 8080 forwarded to host 18080:\n   - WSL2: `bash build/sampleapi-vm.sh`  (or VirtualBox `scripts/cli-vm.ps1`, which forwards 18080 -> 8080)\n2. In the VM console: `webapi start`\n3. Set the collection variable `baseUrl` if you use different ports (default http://127.0.0.1:18080).\n4. Run requests individually or use *Run collection* - the Create task request stores the new id in the `taskId` variable, and Get / Update / Delete / Verify-deleted reuse it.\n\nDocs: docs/samples/webapi/README.md",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -25,7 +26,11 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/",
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
             "description": "Root discovery document: service name, port, style and the endpoint list."
           },
           "event": [

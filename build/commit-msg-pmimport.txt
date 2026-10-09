@@ -1,0 +1,23 @@
+docs: bulletproof Postman collections for import (canonical form + validators)
+
+User report: Postman refused NeutrinoWebApi.postman_collection.json with
+"Incorrect format, please input the right format to import".
+
+Diagnosis of the shipped files: valid JSON, no BOM, schema-valid against
+the official Postman v2.1 collection schema, and parseable by Postman's
+own postman-collection SDK (13 requests). The error is the classic one
+for pasting truncated content (e.g. a chat attachment preview) or for
+non-canonical input; harden both collections anyway to the exact shape
+Postman's exporter produces:
+
+- info._postman_id added to both collections.
+- "Service blurb" root URL converted from the legacy string form to the
+  canonical object form (raw / host / path [""]).
+
+Add a validation harness so future collections are checked before ship:
+- build/pm-validate.py: JSON-Schema validation against the official v2.1
+  schema (fetch URL documented in the header).
+- build/pm-parse-test.js: parse both collections with the official
+  postman-collection SDK.
+
+Verified: SCHEMA OK + PARSED OK (13 requests each), no BOM.

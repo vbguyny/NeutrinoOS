@@ -1,5 +1,6 @@
 {
   "info": {
+    "_postman_id": "5d9b3c41-7a2f-4e86-b0d3-6c1f9a8e2b74",
     "name": "NeutrinoOS Sample REST API",
     "description": "Calls the NeutrinoOS `sampleapi` service (src/ddk/Services/SampleApi.cs) running in QEMU.\n\nHow to run it:\n1. Boot the CLI image with guest port 8080 forwarded to host 18080:\n   - WSL2: `bash build/sampleapi-vm.sh`  (or VirtualBox `scripts/cli-vm.ps1`, which forwards 18080 -> 8080)\n2. In the VM console: `sampleapi start`\n3. Set the collection variable `baseUrl` if you use different ports (default http://127.0.0.1:18080).\n4. Run requests individually or use *Run collection* - the Create task request stores the new id in the `taskId` variable, and Get / Update / Delete / Verify-deleted reuse it.\n\nDocs: docs/samples/rest-api/README.md",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -25,7 +26,11 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/",
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
             "description": "Root discovery document: service name, port and the endpoint list."
           },
           "event": [
