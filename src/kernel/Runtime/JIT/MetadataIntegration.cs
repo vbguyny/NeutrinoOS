@@ -5357,14 +5357,21 @@ public static unsafe class MetadataIntegration
         return IsMemoryMarshalName(typeName) && IsInteropServicesNamespace(typeNs);
     }
 
-    /// <summary>Check if name equals "CreateSpan".</summary>
+    /// <summary>Check if name equals "CreateSpan" or "CreateReadOnlySpan".</summary>
     private static bool IsCreateSpanName(byte* name)
     {
         if (name == null) return false;
         // "CreateSpan" = 10 chars
+        if (name[0] == 'C' && name[1] == 'r' && name[2] == 'e' && name[3] == 'a' &&
+            name[4] == 't' && name[5] == 'e' && name[6] == 'S' && name[7] == 'p' &&
+            name[8] == 'a' && name[9] == 'n' && name[10] == 0)
+            return true;
+        // "CreateReadOnlySpan" = 18 chars (same 16-byte {pointer,length} layout)
         return name[0] == 'C' && name[1] == 'r' && name[2] == 'e' && name[3] == 'a' &&
-               name[4] == 't' && name[5] == 'e' && name[6] == 'S' && name[7] == 'p' &&
-               name[8] == 'a' && name[9] == 'n' && name[10] == 0;
+               name[4] == 't' && name[5] == 'e' && name[6] == 'R' && name[7] == 'e' &&
+               name[8] == 'a' && name[9] == 'd' && name[10] == 'O' && name[11] == 'n' &&
+               name[12] == 'l' && name[13] == 'y' && name[14] == 'S' && name[15] == 'p' &&
+               name[16] == 'a' && name[17] == 'n' && name[18] == 0;
     }
 
     /// <summary>Check if name equals "MemoryMarshal".</summary>

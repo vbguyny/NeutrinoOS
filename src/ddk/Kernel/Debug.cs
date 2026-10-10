@@ -2,9 +2,9 @@
 // Provides debug logging for drivers.
 //
 // Trace output is compiled in only in trace builds (TRACE=1 / --trace):
-// every method is [Conditional("NEUTRINO_TRACE")], so default builds drop
-// all Debug.* call sites (both inside the DDK and in every utility that
-// references it) entirely.
+// every method is [Conditional("NEUTRINO_TRACE")] (except Report), so
+// default builds drop all Debug.* call sites (both inside the DDK and in
+// every utility that references it) entirely.
 
 using System;
 using System.Diagnostics;
@@ -75,6 +75,21 @@ public static unsafe class Debug
     public static void WriteLine()
     {
         WriteLine("");
+    }
+
+    /// <summary>
+    /// Write a string with a newline that survives default (non-trace)
+    /// builds: unlike Write/WriteLine this method is NOT
+    /// [Conditional("NEUTRINO_TRACE")], so call sites remain in every
+    /// build. Used by the boot-test assemblies (JITTest/AppTest) to report
+    /// failing tests during boot.
+    /// </summary>
+    public static void Report(string s)
+    {
+        fixed (char* ptr = s)
+        {
+            Kernel_DebugWriteLine(ptr, s.Length);
+        }
     }
 
     /// <summary>

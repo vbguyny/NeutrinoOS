@@ -1948,10 +1948,42 @@ public static unsafe class Tier0JIT
                         fullToken = 0x1B000000 | typeRid;
 
                     uint baseSize = MetadataIntegration.GetTypeSize(fullToken);
+
                     // Nullable<T> pattern: single primitive type arg (check BEFORE baseSize >= 16)
                     // Note: baseSize from generic definition MethodTable is unreliable for Nullable<T>
                     // because the compiler doesn't know T's size at definition time.
-                    if (argCount == 1 && firstTypeArgSize > 0 && firstTypeArgSize <= 8)
+                    //
+                    // CRITICAL: this heuristic must apply ONLY to real Nullable<T>. It used to
+                    // fire for ANY single-arg generic struct with a small primitive type
+                    // argument, so Memory<byte>/Span<byte>/ArraySegment<byte> were sized 8
+                    // instead of 16, and large-value-type argument handling (ldarg/ldarga of
+                    // such parameters) then treated them as small values (blocked the boxed
+                    // receiver adjustment for Memory<T>.Equals(object) - this manifested as
+                    // the Memory/eq-obj virtual dispatch comparing truncated structs).
+                    bool isNullableDef = false;
+                    {
+                        void* defMtPtr;
+                        if (MetadataIntegration.ResolveType(fullToken, out defMtPtr) && defMtPtr != null)
+                        {
+                            uint nAsmId, nToken;
+                            Reflection.ReflectionRuntime.LookupTypeInfo(
+                                (NeutrinoOS.Runtime.MethodTable*)defMtPtr, out nAsmId, out nToken);
+                            if (nAsmId != 0 && nToken != 0)
+                            {
+                                byte* nm = Reflection.ReflectionRuntime.GetTypeName(nAsmId, nToken);
+                                if (nm != null &&
+                                    nm[0] == (byte)'N' && nm[1] == (byte)'u' && nm[2] == (byte)'l' &&
+                                    nm[3] == (byte)'l' && nm[4] == (byte)'a' && nm[5] == (byte)'b' &&
+                                    nm[6] == (byte)'l' && nm[7] == (byte)'e' && nm[8] == (byte)'`' &&
+                                    nm[9] == (byte)'1' && nm[10] == 0)
+                                {
+                                    isNullableDef = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (isNullableDef && argCount == 1 && firstTypeArgSize > 0 && firstTypeArgSize <= 8)
                     {
                         // Nullable<T> layout: 1 byte hasValue + padding to T alignment + T
                         // - Nullable<byte/sbyte> (T=1): 1+1=2 -> aligned to 8 = 8

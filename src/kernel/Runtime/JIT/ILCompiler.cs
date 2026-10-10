@@ -6125,17 +6125,20 @@ public unsafe struct ILCompiler
                 X64Emitter.SubRI(ref _code, VReg.SP, 32 + loadArgAlignmentPad);
 
                 // If we deferred setting up RCX for a large struct pointer, do it now
-                // The struct data is at [RSP + 32] (just after shadow space)
-                // When both args are large structs, arg0 is at RSP + 32 + largeStructArg0Offset
+                // The struct data is at [RSP + 32 + loadArgAlignmentPad] (after shadow
+                // space AND the ABI parity pad). Missing the pad here misconpiled the
+                // pointer by 8 bytes whenever the eval-stack byte size was not 16-byte
+                // aligned (struct args then reached callees as garbage).
+                // When both args are large structs, arg0 is at +largeStructArg0Offset.
                 if (needsLargeStructPtrInRcx)
                 {
-                    X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32 + largeStructArg0Offset);
+                    X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32 + loadArgAlignmentPad + largeStructArg0Offset);
                 }
                 // If we deferred setting up RDX for a large struct pointer (2-arg case), do it now
-                // arg1 is always at RSP + 32 (start of struct data area)
+                // arg1 is always at RSP + 32 + pad (start of struct data area)
                 if (needsLargeStructPtrInRdx)
                 {
-                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32);
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32 + loadArgAlignmentPad);
                 }
             }
         }
@@ -7007,17 +7010,20 @@ public unsafe struct ILCompiler
                     }
 
                     // Read the value from the pointer
-                    // For small values (<=8 bytes), we can read directly
+                    // For small values (<=8 bytes), we can read directly.
+                    // For large structs (>8 bytes) keep the pointer itself; the
+                    // full copy happens after the box is allocated below.
                     if (valueSize <= 4)
                     {
                         // mov eax, [rax] - read 4 bytes
                         X64Emitter.MovRM32(ref _code, VReg.R0, VReg.R0, 0);
                     }
-                    else
+                    else if (valueSize <= 8)
                     {
                         // mov rax, [rax] - read 8 bytes
                         X64Emitter.MovRM(ref _code, VReg.R0, VReg.R0, 0);
                     }
+                    // else: leave RAX = &value (source pointer for the copy below)
 
                     // Now box it - inline the boxing logic
                     // Need to allocate: baseSize bytes
@@ -7041,16 +7047,38 @@ public unsafe struct ILCompiler
                     if (numArgs >= 3) X64Emitter.Pop(ref _code, VReg.R7);   // Restore arg2
                     if (numArgs >= 2) X64Emitter.Pop(ref _code, VReg.R6);   // Restore arg1
                     if (numArgs >= 1) X64Emitter.Pop(ref _code, VReg.R5);   // Restore arg0
-                    X64Emitter.Pop(ref _code, VReg.R2);  // RDX = saved value
+                    X64Emitter.Pop(ref _code, VReg.R2);  // RDX = saved value (or &value)
 
                     // Store value at [RAX + 8]
                     if (valueSize <= 4)
                     {
                         X64Emitter.MovMR32(ref _code, VReg.R0, 8, VReg.R2);  // [RAX+8] = value (32-bit)
                     }
-                    else
+                    else if (valueSize <= 8)
                     {
                         X64Emitter.MovMR(ref _code, VReg.R0, 8, VReg.R2);  // [RAX+8] = value (64-bit)
+                    }
+                    else
+                    {
+                        // Large struct (>8 bytes): copy the FULL value into the box.
+                        // Copying only 8 bytes left the remainder of the payload zeroed
+                        // (e.g. Memory<T>'s _length stayed 0), so boxed-instance method
+                        // calls on such structs compared against truncated data.
+                        // RAX = box, R2 = &source value, R1 = scratch (RCX is dead here).
+                        int copied = 0;
+                        while (copied + 8 <= (int)valueSize)
+                        {
+                            X64Emitter.MovRM(ref _code, VReg.R1, VReg.R2, copied);
+                            X64Emitter.MovMR(ref _code, VReg.R0, 8 + copied, VReg.R1);
+                            copied += 8;
+                        }
+                        if (copied + 4 <= (int)valueSize)
+                        {
+                            X64Emitter.MovRM32(ref _code, VReg.R1, VReg.R2, copied);
+                            X64Emitter.MovMR32(ref _code, VReg.R0, 8 + copied, VReg.R1);
+                            copied += 4;
+                        }
+                        // Remaining 1-3 bytes are padding for stack/struct layout.
                     }
 
                     // Now push args back in correct order, then the boxed object
@@ -7760,6 +7788,24 @@ public unsafe struct ILCompiler
 
                 // Pop args from stack (reverse order)
                 X64Emitter.Pop(ref _code, VReg.R1);       // Pop RCX (this)
+
+                // For boxed value types, adjust 'this' to point to the value data
+                // (offset 8). Struct instance methods (JIT-compiled overrides as
+                // well as AOT primitives like Int32::ToString) read their fields
+                // at [this+0], i.e. they expect the ECMA-335 boxed-instance
+                // convention where 'this' is the managed pointer to the unboxed
+                // data. The dispatch receiver here is the box (MethodTable at
+                // offset 0). Without this adjustment the callee read the box's
+                // MethodTable pointer as the first field (Memory<T>.Equals(object)
+                // then compared the MT against the array and returned false).
+                // Mirror of the adjustment in the interface-dispatch path below.
+                X64Emitter.MovRM(ref _code, VReg.R0, VReg.R1, 0);   // RAX = [RCX] = MethodTable*
+                X64Emitter.MovRM16(ref _code, VReg.R0, VReg.R0, 2); // RAX = MT->_usFlags
+                X64Emitter.AndImm(ref _code, VReg.R0, 0x0020);      // IsValueType flag?
+                int skipVTAdjust = X64Emitter.Je(ref _code);
+                X64Emitter.AddRI(ref _code, VReg.R1, 8);            // RCX = &value data
+                X64Emitter.PatchJump(ref _code, skipVTAdjust, _code.Position);
+
                 if (totalArgs >= 2)
                     X64Emitter.Pop(ref _code, VReg.R2);   // Pop RDX (arg1)
                 if (totalArgs >= 3)
@@ -7784,10 +7830,18 @@ public unsafe struct ILCompiler
 
                 // 2. Load vtable slot at offset HeaderSize + slot*8
                 // MethodTable.HeaderSize = 24 bytes, each vtable slot is 8 bytes
-                X64Emitter.MovRM(ref _code, VReg.R0, VReg.R0, vtableOffset);  // RAX = vtable[slot]
+                X64Emitter.MovRM(ref _code, VReg.R6, VReg.R0, vtableOffset);  // R11 = vtable[slot]
 
-                // 3. Call through the vtable slot
-                X64Emitter.CallR(ref _code, VReg.R0);
+                // 3. Boxed value types: adjust 'this' to the value data (see the
+                //    long comment in the stub path above). RAX still holds the MT.
+                X64Emitter.MovRM16(ref _code, VReg.R0, VReg.R0, 2); // RAX = MT->_usFlags
+                X64Emitter.AndImm(ref _code, VReg.R0, 0x0020);      // IsValueType flag?
+                int skipVTAdjustFallback = X64Emitter.Je(ref _code);
+                X64Emitter.AddRI(ref _code, VReg.R1, 8);            // RCX = &value data
+                X64Emitter.PatchJump(ref _code, skipVTAdjustFallback, _code.Position);
+
+                // 4. Call through the vtable slot
+                X64Emitter.CallR(ref _code, VReg.R6);
             }
         }
         else

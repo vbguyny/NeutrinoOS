@@ -6073,6 +6073,18 @@ public static unsafe class AssemblyLoader
                 name[11] == 0)
                 return true;
 
+            // "System.Memory" (Kestrel port M2: Memory<T>/ReadOnlySequence<T> -> korlib)
+            if (name[7] == 'M' && name[8] == 'e' && name[9] == 'm' && name[10] == 'o' &&
+                name[11] == 'r' && name[12] == 'y' && name[13] == 0)
+                return true;
+
+            // "System.IO.Pipelines" (Kestrel port M2: Pipe/Reader/Writer -> korlib)
+            if (name[7] == 'I' && name[8] == 'O' && name[9] == '.' &&
+                name[10] == 'P' && name[11] == 'i' && name[12] == 'p' && name[13] == 'e' &&
+                name[14] == 'l' && name[15] == 'i' && name[16] == 'n' && name[17] == 'e' &&
+                name[18] == 's' && name[19] == 0)
+                return true;
+
             // "System.Text.Encoding" (facade: System.Text.Encoding.* names)
             if (name[7] == 'T' && name[8] == 'e' && name[9] == 'x' && name[10] == 't' &&
                 name[11] == '.' && name[12] == 'E' && name[13] == 'n' && name[14] == 'c' &&
@@ -8762,7 +8774,9 @@ public static unsafe class AssemblyLoader
                 uint defSigIdx = MetadataReader.GetMethodDefSignature(ref targetAsm->Tables, ref targetAsm->Sizes, methodRow);
                 byte* defSig = MetadataReader.GetBlob(ref targetAsm->Metadata, defSigIdx, out uint defSigLen);
 
-                if (SignaturesMatch(sourceAsm, sig, sigLen, targetAsm, defSig, defSigLen))
+                bool sigMatched = SignaturesMatch(sourceAsm, sig, sigLen, targetAsm, defSig, defSigLen);
+
+                if (sigMatched)
                 {
                     return 0x06000000 | methodRow;  // MethodDef token
                 }
@@ -9597,6 +9611,50 @@ public static unsafe class AssemblyLoader
     /// <param name="typeArgMTs">Array of MethodTable pointers for each type argument</param>
     /// <param name="typeArgCount">Number of type arguments</param>
     /// <param name="isValueType">Whether the generic type is a value type</param>
+    /// <summary>
+    /// Normalize a generic-definition token (raw TypeDef / raw TypeRef /
+    /// already-normalized "(assemblyId+2) << 24 | row" form, see
+    /// TryDecodeNormalizedToken) to the canonical normalized form used as the
+    /// generic-instantiation cache key. Without this, the same logical type
+    /// resolved from different assemblies or compilation contexts produced
+    /// different cache keys - and therefore DIFFERENT MethodTable instances -
+    /// breaking box/isinst identity checks across assemblies (an isinst in
+    /// one assembly returned false for an instance boxed by another).
+    /// Returns the input unchanged when the token cannot be resolved.
+    /// </summary>
+    private static uint NormalizeGenericInstDefToken(uint genDefToken)
+    {
+        if (TryDecodeNormalizedToken(genDefToken, out uint asmId, out uint row))
+            return ((asmId + TokenNormalizationOffset) << 24) | row;
+
+        uint table = genDefToken >> 24;
+        uint refAsmId = JIT.MetadataIntegration.GetCurrentAssemblyId();
+
+        if (table == 0x02)  // raw TypeDef - defined in the compiling assembly
+        {
+            if (refAsmId != 0)
+                return ((refAsmId + TokenNormalizationOffset) << 24) | (genDefToken & 0x00FFFFFF);
+            return genDefToken;
+        }
+
+        if (table == 0x01)  // raw TypeRef - resolve to the defining assembly
+        {
+            LoadedAssembly* refAsm = GetAssembly(refAsmId);
+            if (refAsm != null)
+            {
+                LoadedAssembly* targetAsm;
+                uint defTypeDefToken;
+                if (ResolveTypeRefToTypeDef(refAsm, genDefToken & 0x00FFFFFF, out targetAsm, out defTypeDefToken))
+                {
+                    if (targetAsm != null && defTypeDefToken != 0)
+                        return ((targetAsm->AssemblyId + TokenNormalizationOffset) << 24) | (defTypeDefToken & 0x00FFFFFF);
+                }
+            }
+        }
+
+        return genDefToken;  // unknown form - keep as-is
+    }
+
     public static MethodTable* GetOrCreateGenericInstMethodTable(uint genDefToken, MethodTable** typeArgMTs, int typeArgCount, bool isValueType)
     {
         if (typeArgCount <= 0 || typeArgMTs == null)
@@ -9627,6 +9685,14 @@ public static unsafe class AssemblyLoader
             }
         }
 
+        // Normalize the definition token to a canonical (assembly-qualified)
+        // form so the SAME logical type resolved from different assemblies or
+        // compilation contexts shares ONE instantiated MethodTable. Raw
+        // assembly-relative tokens previously produced duplicate MTs, which
+        // broke cross-assembly box/isinst identity checks (isinst returned
+        // false for instances boxed by another assembly).
+        uint cacheDefToken = NormalizeGenericInstDefToken(genDefToken);
+
         // Compute hash of type arguments for cache lookup
         ulong argHash = 0;
         for (int i = 0; i < typeArgCount; i++)
@@ -9652,7 +9718,7 @@ public static unsafe class AssemblyLoader
         }
 
         // Compute bucket index for hash lookup (multiply-shift hash)
-        int bucket = (int)(((genDefToken ^ (uint)argHash ^ (uint)(argHash >> 32)) * 0x9E3779B9u) >> 24) & HashBucketMask;
+        int bucket = (int)(((cacheDefToken ^ (uint)argHash ^ (uint)(argHash >> 32)) * 0x9E3779B9u) >> 24) & HashBucketMask;
 
         // Check cache using hash bucket index (O(1) average case with linear probing)
         int probeCount = 0;
@@ -9665,7 +9731,7 @@ public static unsafe class AssemblyLoader
                 // Empty bucket - cache miss, stop probing
                 break;
             }
-            if (_genericInstCacheDefTokens[idx] == genDefToken && _genericInstCacheArgHashes[idx] == argHash)
+            if (_genericInstCacheDefTokens[idx] == cacheDefToken && _genericInstCacheArgHashes[idx] == argHash)
             {
                 if (JitDiag.VerboseJit)
                 {
@@ -9829,7 +9895,7 @@ public static unsafe class AssemblyLoader
         if (_genericInstCacheCount < MaxGenericInstCache)
         {
             cacheSlot = _genericInstCacheCount;
-            _genericInstCacheDefTokens[cacheSlot] = genDefToken;
+            _genericInstCacheDefTokens[cacheSlot] = cacheDefToken;
             _genericInstCacheArgHashes[cacheSlot] = argHash;
             _genericInstCacheInstMTs[cacheSlot] = instMT;
 

@@ -1,0 +1,63 @@
+korlib M2: Memory<T>/ArrayPool/ReadOnlySequence/System.IO.Pipelines + four JIT fixes (v0.1.150)
+
+Kestrel-port milestone M2 step 1: the memory and pipeline primitives the
+transport port is built on, plus the JIT fixes required to make them (and
+boxed value-type dispatch generally) correct on the device.
+
+korlib additions (device corelib IL):
+- System.Memory<T>/ReadOnlyMemory<T>, System.SequencePosition (root
+  namespace - matches the BCL layout so on-device MemberRef resolution by
+  type name + signature succeeds), System.Buffers.ArrayPool<T>,
+  IBufferWriter<T>, ReadOnlySequence<T>, BuffersExtensions, and
+  System.IO.Pipelines (Pipe, PipeReader, PipeWriter, PipeOptions,
+  ReadResult/FlushResult). Memory<T>.Span is built with the
+  MemoryMarshal.CreateSpan/CreateReadOnlySpan intrinsics (the 3-arg
+  Span<T> ctor is not JIT-supported).
+- AssemblyLoader maps System.Memory/System.IO.Pipelines onto korlib for
+  virtual-assembly resolution.
+
+JIT/runtime fixes (all surfaced by the Memory/Pipelines tests):
+1. CompileCall: deferred large-struct argument pointers now include the
+   ABI parity pad (loadArgAlignmentPad). The deferred RCX/RDX LEAs omitted
+   the pad, so large-struct args landed 8 bytes off whenever the
+   eval-stack byte size was not 16-byte aligned (the bulk of the
+   "Equals always false" failures).
+2. CompileCallvirt: the virtual-dispatch path now adjusts 'this' to the
+   box payload (+8) for boxed value types, mirroring the interface path.
+   Without it a JIT-compiled struct override dispatched through a box read
+   the box's MethodTable word as its first field (Memory/eq-obj, GetHashCode
+   crash via _array = MT word).
+3. CompileCallvirt constrained boxing fallback: the receiver box now gets
+   the FULL struct copied (was 4/8 bytes max), so large structs keep their
+   trailing fields (Memory<T>._length stayed 0 otherwise).
+4. Tier0JIT.GetValueTypeSigWithSize: the Nullable<T> layout heuristic is
+   gated to real Nullable<T> (name-resolved). It used to fire for ANY
+   single-type-arg generic struct with a small primitive argument
+   (Memory<byte>, Span<byte>, ArraySegment<byte>...), sizing them 8 instead
+   of 16, which made ldarg/ldarga treat such parameters as small values.
+   This fixed the by-value parameter cases (VirtEq(Memory<byte>,
+   Memory<byte>)).
+5. AssemblyLoader.NormalizeGenericInstDefToken: the generic-instantiation
+   cache is keyed on a normalized definition token, so Memory`1<byte>
+   resolved via different assemblies/token spaces unifies to one
+   MethodTable (box/isinst identity).
+
+Failure visibility + verification:
+- DDK Debug.Report (non-conditional) + JITTest/AppTest FAIL paths report
+  through it, so boot-test failures reach the serial console.
+- JITTest gains the Memory/Pipelines category (30+ assertions): Memory
+  wrap/slice/copyto/toarray, typed + object Equals incl. the boxed
+  virtual dispatch and isinst paths, GetHashCode agreement, Span interplay,
+  ArrayPool rent/return/reuse, ReadOnlySequence segments, Pipe
+  commit/consume, backpressure, 1 MB pump, async state machine + ValueTask
+  awaiter sync completions.
+- build/m2-boot-tests.sh: boots the deploy image with boot tests enabled
+  (virtio-NIC included so AppTest's network checks pass) and reports the
+  JITTest summary.
+
+Verified (plain deploy image):
+- [JITTest] Passed 3005 / Failed 0 (ALL TESTS PASSED); boot reaches the
+  interactive shell.
+- [AppTest] ALL TESTS PASSED (0 failed).
+- p6-ssh-test.sh end-to-end SSH: 7/7 (publickey exec, interactive session,
+  negative auth, password auth), 0 SYSTEM HALTED.

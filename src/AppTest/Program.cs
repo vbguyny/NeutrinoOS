@@ -68,10 +68,10 @@ public static class TestRunner
     private static void Fail(string testName, string reason)
     {
         _failed++;
-        Debug.Write("[AppTest] FAIL: ");
-        Debug.Write(testName);
-        Debug.Write(" - ");
-        Debug.WriteLine(reason);
+        // Report (not the [Conditional] Write/WriteLine): default builds
+        // strip Debug.* call sites entirely, and failures must be visible
+        // in ordinary boot-test runs.
+        Debug.Report("[AppTest] FAIL: " + testName + " - " + reason);
     }
 
     // ===== Proc Filesystem Tests =====

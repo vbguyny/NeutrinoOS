@@ -28,7 +28,7 @@ write) is fixed from M1 onward; only the engine underneath is replaced.
 | Layer | State |
 |---|---|
 | Async runtime | `Task`, `TaskAwaiter`, `ValueTask`, `ValueTaskAwaiter`, `AsyncMethodBuilder`, `AsyncStateMachineAttribute`, `IAsyncStateMachine`, `ConfiguredTaskAwaitable`, `TaskCompletionSource`, `TaskStatus`, `CancellationToken(Source)` all exist in korlib (`src/korlib/System/Threading/Tasks/`). |
-| Memory primitives | `Span<T>`, `ReadOnlySpan<T>`, `Unsafe`, `MemoryMarshal` exist. `Memory<T>`, `ReadOnlyMemory<T>`, `ArrayPool<T>`, `ReadOnlySequence<T>` do **not** yet. |
+| Memory primitives | `Span<T>`, `ReadOnlySpan<T>`, `Unsafe`, `MemoryMarshal`, `Memory<T>`, `ReadOnlyMemory<T>`, `ArrayPool<T>`, `IBufferWriter<T>`, `ReadOnlySequence<T>`/`SequencePosition`, `System.IO.Pipelines` (`Pipe`, `PipeReader`, `PipeWriter`, `PipeOptions`) all exist in korlib (`src/korlib/System/`, `src/korlib/System/Buffers/`, `src/korlib/System/IO/Pipelines/`) and are covered by the on-device `Memory/Pipelines` JITTest category. |
 | Threading | `Thread`, `Monitor`, `Interlocked` via the kernel scheduler (no thread pool). |
 | Sockets | DDK `TcpServer`/`TcpSocket` with cooperative `NetworkPump` (proven by `sshd`, `webhost`, `sampleapi`, `socktest`). Blocking helpers (`Accept(timeoutMs)`, `ReceiveWait`). |
 | HTTP/1.1 server logic | Proven parsers/handlers in `WebService` (plus HTTP/2, HTTP/3, TLS 1.3 for the fallback surface) and in `SampleApi` (request head parse, `Content-Length` body wait, 431/413 limits). |
@@ -64,18 +64,51 @@ write) is fixed from M1 onward; only the engine underneath is replaced.
 
 ### M2 — Pipelines + async transport
 
-1. korlib additions: `System.Memory<T>`/`ReadOnlyMemory<T>`,
-   `System.Buffers.ArrayPool<T>` (+ `MemoryPool<T>` if needed),
-   `System.Buffers.ReadOnlySequence<T>`/`SequencePosition`, then
-   `System.IO.Pipelines` (`Pipe`, `PipeReader`, `PipeWriter`,
-   `PipeOptions`), with synchronous-completing `FlushAsync` first and
-   real async completion once the runtime exercise is trusted.
-2. Transport port in Kestrel's shape: `IConnectionListenerFactory`,
-   `IConnectionListener`, `ConnectionContext` whose `Transport` is an
-   `IDuplexPipe`, implemented over `TcpSocket` + a socket pump loop.
-3. Acceptance: an on-device test drives 1 MB through a `Pipe` and through
-   the listener echo path; `WebHost` is re-implemented on the transport with
-   identical probe results; keep-alive supported.
+**Step 1 DONE (this commit).** korlib now ships the memory/pipeline
+primitives and they are exercised on-device by the `Memory/Pipelines`
+JITTest category (30+ assertions over `Memory<byte>`, `Span` interplay,
+`ArrayPool` rent/return/reuse, `ReadOnlySequence` linked segments, `Pipe`
+commit/consume semantics, backpressure, a 1 MB pump and async-state-machine
+awaiter paths). Getting them trustworthy required fixing four JIT/runtime
+bugs, all in this commit:
+
+- **Large-struct argument pointers are pad-aware** (`ILCompiler.CompileCall`
+deferred RCX/RDX LEAs): the deferred struct-pointer setup omitted the
+`loadArgAlignmentPad` bytes, so every large-struct argument (e.g.
+`Memory<T>`, 16 bytes) landed 8 bytes off whenever the eval-stack byte size
+was not 16-byte aligned. This was the bulk of the "Equals always false"
+saga.
+- **Boxed value-type virtual dispatch adjusts `this` to the box payload**
+(`ILCompiler.CompileCallvirt` virtual-dispatch emission): the
+interface-dispatch path already added +8 for boxed value types (ECMA-335
+boxed-instance convention); the virtual-dispatch path did not, so a
+JIT-compiled struct override invoked through a box read the box's
+MethodTable word as its first field. Mirror of the interface-path logic is
+now in both virtual sub-paths.
+- **Constrained `callvirt` on value types copies the full struct into the
+receiver box** (`ILCompiler` boxing fallback): the fallback boxed only 4/8
+bytes of the receiver, leaving the rest of a large struct zeroed (that is
+how `Memory<T>`'s `_length` stayed 0 and made the boxed receiver compare
+unequal).
+- **`Nullable<T>` layout heuristic is gated to real `Nullable<T>`**
+(`Tier0JIT.GetValueTypeSigWithSize`): ANY single-type-argument generic
+struct with a small primitive argument (`Memory<byte>`, `Span<byte>`,
+`ArraySegment<byte>`, ...) used to be sized as `Nullable<T>` (8/16 bytes),
+so `ldarg`/`ldarga` treated such parameters as small values. The classic
+"Object fallback" trace noise (`ParseType VAR ... -> Object (expected in
+generic def)`) is benign in comparison; the heuristic gate is what fixed
+the parameter-passing cases (`VirtEq(Memory<byte>, Memory<byte>)`).
+
+Also in this commit: `AssemblyLoader.NormalizeGenericInstDefToken` (the
+generic-instantiation cache is now keyed on a normalized definition token,
+so `Memory`1<byte>` created from different assemblies/tokens unifies to one
+MethodTable), the korlib/Debug `Debug.Report` path so JITTest/AppTest
+failures are visible on the serial console, and `build/m2-boot-tests.sh`
+(boot the deploy image with boot tests enabled and report results).
+
+Remaining M2 work: the transport port (items 2-3 below) - `IConnectionListenerFactory`,
+`ConnectionContext`/`IDuplexPipe` over `TcpSocket`, and the `WebHost`
+re-implementation with keep-alive, followed by the acceptance probes.
 
 ### M3 — HTTP/1.1 core
 

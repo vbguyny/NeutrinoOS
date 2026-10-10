@@ -183,6 +183,9 @@ public static class TestRunner
         // Korlib: Interlocked
         RunCategory("Interlocked", InterlockedTests.RunAll);
 
+        // Korlib: Memory<T>/ArrayPool/ReadOnlySequence/Pipelines (Kestrel port M2)
+        RunCategory("Memory/Pipelines", MemoryPipelineTests.RunAll);
+
         // Korlib: String formatting
         RunCategory("StringFormat", StringFormatTests.RunAll);
 

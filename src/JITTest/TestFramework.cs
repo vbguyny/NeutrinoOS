@@ -121,6 +121,13 @@ public static class TestTracker
                 break;
             case TestStatus.Fail:
                 _failCount++;
+                // Report (not the [Conditional] Write/WriteLine): default
+                // builds strip Debug.* call sites entirely, and the failing
+                // test names must be visible in ordinary boot-test runs.
+                if (result.Message != null)
+                    Debug.Report("[JITTest] FAIL " + result.Name + " - " + result.Message);
+                else
+                    Debug.Report("[JITTest] FAIL " + result.Name);
                 Debug.Write("FAIL");
                 if (result.Message != null)
                 {
