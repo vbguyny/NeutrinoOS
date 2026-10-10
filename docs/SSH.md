@@ -154,8 +154,10 @@ key/password checks.
 The original Phase 6 suite `build/p6-ssh-test.sh` is green again as well:
 it boots the *plain* deploy image (boot tests included) and runs exec,
 a piped interactive session, a negative wrong-key check and password
-auth — verified together with JITTest 2780/0 and AppTest 24/0 completing
-in ~13 s.
+auth — verified together with JITTest 2978/0 and AppTest 24/0 completing
+in ~13 s. As of v0.1.119 the SFTP server streams files of any size
+through chunked VFS access (see "Large files" above; previously capped
+at 64 KiB).
 
 > History (resolved, v0.1.104): plain-image boots used to stall forever in
 > the JITTest phase. A `[Conditional("NEUTRINO_TRACE")]` trace call whose
