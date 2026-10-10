@@ -65,7 +65,25 @@ public static unsafe class KernelExportInit
         // Register block device bridge exports (Phase 10 storage tooling)
         RegisterStorageExports();
 
+        // Register chunked file range exports (SSH/SFTP large transfers)
+        RegisterFileRangeExports();
+
         KernelExportRegistry.DebugPrint();
+    }
+
+    /// <summary>
+    /// Chunked (offset-based) boot-volume file I/O bridge consumed by
+    /// the NeutrinoOS.DDK (src/ddk/Kernel/BootFiles.cs). sshd's SFTP
+    /// subsystem streams large files through these; see docs/SSH.md.
+    /// </summary>
+    private static void RegisterFileRangeExports()
+    {
+        byte* n = stackalloc byte[64];
+
+        Reg(n, "Kernel_BootFileReadRange",
+            (void*)(delegate* unmanaged<char*, int, int, byte*, int, int>)&Exports.DDK.FileRangeExports.BootFileReadRange);
+        Reg(n, "Kernel_BootFileWriteRange",
+            (void*)(delegate* unmanaged<char*, int, int, byte*, int, int>)&Exports.DDK.FileRangeExports.BootFileWriteRange);
     }
 
     /// <summary>

@@ -31,7 +31,12 @@ public sealed unsafe class SshConnection
     private const int StConnected = 5;
     private const int StClosed = 6;
 
-    private const int RxCapacity = 32768;
+    // Transport receive buffer. Must fit the largest legal inbound binary
+    // packet: clients may fill the channel data up to the 32768-byte
+    // channel max packet we advertise, which becomes a ~32.9 KB binary
+    // packet once header/padding/MAC are added. At 32 KB that packet
+    // could never complete (upload stall seen with scp >~32 KB).
+    private const int RxCapacity = 65536;
     private const int OutCapacity = 65536;
     private const uint OurWindow = 2 * 1024 * 1024;
 
@@ -100,6 +105,25 @@ public sealed unsafe class SshConnection
     private readonly byte[] _pendingOut = new byte[OutCapacity];
     private int _pendingLen;
 
+    // Transmit tail: fully serialized (encrypted + MAC'd) wire bytes that
+    // the socket did not accept yet. TcpSocket.Send stops at a full send
+    // buffer and returns a short count, so a packet must be retried until
+    // every byte is accepted - truncating one would desynchronize the
+    // client's stream framing (seen as "Corrupted MAC on input").
+    private readonly byte[] _txBuf = new byte[OutCapacity];
+    private int _txLen;
+
+    // Inbound SFTP bytes held while the output stream is congested:
+    // SFTP requests are tiny but their replies are large (32 KiB reads),
+    // and clients pipeline many requests ahead of the channel window, so
+    // replies queue up unsent. Instead of ever dropping output, intake is
+    // paused at this budget and drained as the window opens.
+    private const int SftpOutBudget = 16384;
+    private const int SftpDeferredCap = 512 * 1024;   // abuse guard
+    private byte[][] _deferredSftp = new byte[8][];
+    private int _deferredCount;
+    private int _deferredBytes;
+
     private ulong _lastActivityMs;
 
     /// <summary>True once the connection is finished.</summary>
@@ -134,12 +158,9 @@ public sealed unsafe class SshConnection
         ver[bare.Length + 1] = 0x0A;
         // Pointer overload: the JIT world cannot resolve the implicit
         // byte[] -> ReadOnlySpan<byte> conversion operator.
-        fixed (byte* p = ver)
-        {
-            sock.Send(p, ver.Length);
-        }
+        TxAppend(ver);
+        TryFlushTx();
     }
-
     // ==================== Tick ====================
 
     /// <summary>Run a bounded slice: read available bytes, advance the
@@ -165,7 +186,21 @@ public sealed unsafe class SshConnection
             passes++;
         }
 
+        // Drain the transmit tail first (socket space may have opened),
+        // then queue more output, then push again.
+        TryFlushTx();
         FlushPendingOut();
+        TryFlushTx();
+
+        // Resume parsing requests already buffered inside the SFTP server:
+        // congestion pauses it mid-stream, and without this poke the rest
+        // of the client's pipelined requests would never be answered (the
+        // client sends nothing new while its pipeline is outstanding).
+        if (_sftpMode && _sftp != null && !_sessionDone)
+            _sftp.Resume();
+
+        // Output pressure easing: resume held SFTP request bytes.
+        DrainSftpDeferred();
 
         // Phase 7: reclaim the connection slot as soon as the peer has
         // sent FIN and no buffered input remains, instead of waiting for
@@ -198,6 +233,11 @@ public sealed unsafe class SshConnection
             _sftp.Close();
             _sftp = null;
         }
+        for (int i = 0; i < _deferredCount; i++)
+            _deferredSftp[i] = null;
+        _deferredCount = 0;
+        _deferredBytes = 0;
+        _txLen = 0;
         _sock.Close();
     }
 
@@ -428,12 +468,48 @@ public sealed unsafe class SshConnection
             }
         }
 
-        fixed (byte* p = wire)
-        {
-            _sock.Send(p, wire.Length);
-        }
+        TxAppend(wire);
+        TryFlushTx();
         _outSeq++;
         _lastActivityMs = Timer.GetUptimeMilliseconds();
+    }
+
+    /// <summary>Queue serialized wire bytes for transmission.</summary>
+    private void TxAppend(byte[] wire)
+    {
+        if (_txLen + wire.Length > _txBuf.Length)
+        {
+            // The flush gate keeps this much room for the largest
+            // packet; overflowing would mean silently mangling the
+            // stream, so fail the connection instead.
+            Fail("tx queue overflow");
+            return;
+        }
+        for (int i = 0; i < wire.Length; i++)
+            _txBuf[_txLen + i] = wire[i];
+        _txLen += wire.Length;
+    }
+
+    /// <summary>
+    /// Push queued wire bytes into the socket, keeping any part the send
+    /// buffer did not accept for the next attempt (called every tick).
+    /// </summary>
+    private void TryFlushTx()
+    {
+        while (_txLen > 0)
+        {
+            int n;
+            fixed (byte* p = _txBuf)
+            {
+                n = _sock.Send(p, _txLen);
+            }
+            if (n <= 0)
+                return;   // send buffer full: retry next tick
+            int rest = _txLen - n;
+            for (int i = 0; i < rest; i++)
+                _txBuf[i] = _txBuf[n + i];
+            _txLen = rest;
+        }
     }
 
     private void Fail(string reason)
@@ -954,7 +1030,15 @@ public sealed unsafe class SshConnection
                 if (_sftpMode && _sftp != null)
                 {
                     if (!_sessionDone)
-                        _sftp.Feed(data);
+                    {
+                        // While unsent output is congested, hold request
+                        // bytes and feed them as the window opens (the
+                        // output buffer must never drop SFTP stream data).
+                        if (_deferredCount == 0 && _pendingLen <= SftpOutBudget)
+                            _sftp.Feed(data);
+                        else
+                            DeferSftp(data);
+                    }
                 }
                 else if (_sessionActive && !_execMode && !_sessionDone)
                 {
@@ -1504,11 +1588,22 @@ public sealed unsafe class SshConnection
         SendSessionBytes(data);
     }
 
+    /// <summary>
+    /// True while unsent output sits at its congestion budget. The SFTP
+    /// subsystem must pause consuming requests then: its replies are
+    /// large and a burst of pipelined requests would overflow the
+    /// output buffer (which must never drop stream bytes).
+    /// </summary>
+    public bool OutputCongested => _pendingLen > SftpOutBudget;
+
     private void FlushPendingOut()
     {
         if (!_channelOpen || _sentClose)
             return;
-        while (_pendingLen > 0 && _remoteWindow > 0)
+        // Keep room in the transmit tail for one full-size packet so
+        // TxAppend never has to drop or truncate a chunk.
+        while (_pendingLen > 0 && _remoteWindow > 0 &&
+               _txLen <= _txBuf.Length - 40960)
         {
             int chunk = _pendingLen;
             if (chunk > (int)_remoteWindow)
@@ -1530,6 +1625,45 @@ public sealed unsafe class SshConnection
             for (int i = chunk; i < _pendingLen; i++)
                 _pendingOut[i - chunk] = _pendingOut[i];
             _pendingLen -= chunk;
+        }
+    }
+
+    /// <summary>Hold inbound SFTP bytes while the output is congested.</summary>
+    private void DeferSftp(byte[] data)
+    {
+        if (_deferredCount >= _deferredSftp.Length)
+        {
+            var bigger = new byte[_deferredSftp.Length * 2][];
+            for (int i = 0; i < _deferredCount; i++)
+                bigger[i] = _deferredSftp[i];
+            _deferredSftp = bigger;
+        }
+        _deferredSftp[_deferredCount++] = data;
+        _deferredBytes += data.Length;
+        if (_deferredBytes > SftpDeferredCap)
+        {
+            // Far beyond any legitimate request pipelining.
+            Fail("sftp input overrun");
+        }
+    }
+
+    /// <summary>
+    /// Feed held SFTP request bytes while the unsent output stays within
+    /// the intake budget (called from the tick loop, after flushing).
+    /// </summary>
+    private void DrainSftpDeferred()
+    {
+        while (_deferredCount > 0 && _state != StClosed)
+        {
+            if (_sftp == null || _sessionDone || _pendingLen > SftpOutBudget)
+                return;
+            var seg = _deferredSftp[0];
+            for (int i = 1; i < _deferredCount; i++)
+                _deferredSftp[i - 1] = _deferredSftp[i];
+            _deferredCount--;
+            _deferredSftp[_deferredCount] = null;
+            _deferredBytes -= seg.Length;
+            _sftp.Feed(seg);
         }
     }
 

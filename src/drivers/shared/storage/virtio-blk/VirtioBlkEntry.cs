@@ -920,6 +920,136 @@ public static unsafe class VirtioBlkEntry
     }
 
     /// <summary>
+    /// Read a byte range (chunked read) from a boot (FAT) volume file.
+    /// Returns the number of bytes read (0 at end of file), or a
+    /// negative error code. The file is never loaded into memory, so
+    /// callers can stream files larger than the free heap (used by the
+    /// SSH/SFTP subsystem through the FileBootReadRange export).
+    ///
+    /// The path is a UTF-16 buffer of pathLen chars (see GetBootFileSize).
+    /// </summary>
+    public static int ReadBootFileRange(char* pathBuf, int pathLen, int offset, byte* buffer, int capacity)
+    {
+        if (pathBuf == null || pathLen <= 0 || buffer == null || capacity <= 0 || offset < 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.Open, FileAccess.Read, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+        _pinnedFile = file;
+
+        long length = file.Length;
+        if (offset >= length)
+        {
+            // At (or past) end of file: EOF, no data.
+            file.Dispose();
+            fat.Unmount();
+            fat.Shutdown();
+            return 0;
+        }
+
+        int toRead = capacity;
+        if (toRead > length - offset)
+            toRead = (int)(length - offset);
+
+        file.Position = offset;
+        int bytesRead = file.Read(buffer, toRead);
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+        return bytesRead;
+    }
+
+    /// <summary>
+    /// Write a byte range (chunked write) into a boot (FAT) volume file,
+    /// creating the file when missing and extending it when the range
+    /// reaches past the current end. Returns the number of bytes written,
+    /// or a negative error code. Writes beyond EOF (sparse files) are
+    /// rejected with -5. Used by the SSH/SFTP subsystem through the
+    /// FileBootWriteRange export.
+    ///
+    /// The path is a UTF-16 buffer of pathLen chars (see GetBootFileSize).
+    /// </summary>
+    public static int WriteBootFileRange(char* pathBuf, int pathLen, int offset, byte* data, int count)
+    {
+        if (pathBuf == null || pathLen <= 0 || offset < 0)
+            return -1;
+        if (data == null && count > 0)
+            return -1;
+
+        string path = new string(pathBuf, 0, pathLen);
+        _pinnedBootPath = path;
+
+        var device = _device;
+        if (device == null)
+            return -1;
+
+        var fat = new FatFileSystem();
+        fat.Initialize();
+        _pinnedFat = fat;
+
+        var mountResult = fat.Mount(device, false);
+        if (mountResult != FileResult.Success)
+        {
+            fat.Shutdown();
+            return -2;
+        }
+
+        IFileHandle? file;
+        var openResult = fat.OpenFile(path, FileMode.OpenOrCreate, FileAccess.Write, out file);
+        if (openResult != FileResult.Success || file == null)
+        {
+            fat.Unmount();
+            fat.Shutdown();
+            return -3;
+        }
+        _pinnedFile = file;
+
+        if (offset > file.Length)
+        {
+            // Sparse regions are not supported: only overwrite or append.
+            file.Dispose();
+            fat.Unmount();
+            fat.Shutdown();
+            return -5;
+        }
+
+        file.Position = offset;
+        int written = count > 0 ? file.Write(data, count) : 0;
+        file.Flush();
+        file.Dispose();
+        fat.Unmount();
+        fat.Shutdown();
+
+        if (written != count)
+            return -4;
+        return written;
+    }
+
+    /// <summary>
     /// Write (or append) a buffer to a file on the boot (FAT) volume,
     /// creating the file when missing. Returns the number of bytes
     /// written, or a negative error code. Used by the kernel's System.IO

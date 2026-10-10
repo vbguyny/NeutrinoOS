@@ -1,0 +1,62 @@
+ssh: chunked VFS file I/O - SFTP transfers beyond the 64 KiB cap (v0.1.115)
+
+The SFTP server buffered whole files through the VFS and had to stay
+below the ~64 KiB safe heap size (the LOH free list corrupts live
+objects), so transfers were capped at 64 KiB per file. Files now stream
+through offset-based chunked access:
+
+- drivers (ahci, virtio-blk): ReadBootFileRange / WriteBootFileRange -
+  open at an offset, transfer one chunk, flush per call (mount-per-call
+  as before, GC anchors kept). Writes create when missing, extend when
+  appending, refuse sparse regions; reads clamp to EOF.
+- kernel: FileRangeExports (Kernel_BootFileReadRange / WriteRange)
+  registered in KernelExportInit; FileExports resolves and JIT-compiles
+  the driver helpers lazily like the existing FileBoot* bridge. Paths
+  served by non-root VFS mounts or /dev return -3 for range access.
+- DDK: BootFiles.ReadRange / WriteRange wrappers (DllImport "*").
+- SFTP: files are handled by path (no FileStream); READ/WRITE/STAT use
+  chunked access with 32 KiB buffers, so the guest heap only ever sees
+  LOH-safe allocations. Oversized client WRITE packets (OpenSSH >= 9
+  sends up to 256 KiB per request) bypass the receive buffer and stream
+  to disk through a 32 KiB scratch buffer. Create/truncate reuse the
+  whole-file empty write (driver mode Create). Offsets are int: positions
+  beyond 2 GiB fail with FAILURE (files themselves may be larger).
+
+Fixes found while making 2 MiB transfers actually work (all verified
+end-to-end):
+
+- SshConnection: the transport receive buffer (32 KiB) could not hold a
+  maximal inbound binary packet (~32.9 KB once header/padding/MAC are
+  added for a full 32768-byte channel data chunk), so large uploads
+  stalled forever at the first full-size chunk. Now 64 KiB.
+- SshConnection: output is serialized through a transmit tail buffer and
+  flushed with retries (TcpSocket.Send stops at a full send buffer and
+  returns a short count; the return value used to be ignored, truncating
+  32 KB packets and desynchronizing the client's stream framing -
+  "Corrupted MAC on input").
+- SshConnection/SftpServer: inbound SFTP requests are paced against
+  unsent output (a burst of pipelined requests produced more 32 KiB
+  replies than the output buffer could hold; it used to drop stream
+  bytes), and a Resume() poke now re-parses the requests already
+  buffered in the SFTP server once congestion clears. Without the poke
+  the transfer deadlocked after ~37 replies: the client keeps no further
+  requests in flight while its pipeline is unreplied, so no further
+  channel data arrived to trigger parsing.
+- NetworkStack/TcpConnection: TcpSend ignored the peer-window clamp
+  inside BuildDataPacket and reported the full requested length - bytes
+  clamped off by a momentarily closed TCP window were silently dropped
+  from the sequence space, which corrupted downloads at the exact window
+  boundary (64 KiB with the default client window). It now reports the
+  accepted byte count and callers retry the remainder; pure
+  window-update ACKs (ack == SND.UNA, e.g. the reopen after a zero-window
+  advertisement) now update SND.WND too, which used to leave large
+  downloads stalled forever.
+
+- build/ssh-probe.sh: adds 2 MiB scp upload/download checks (byte
+  identical round-trip) - 21 checks total.
+- docs/SSH.md: documents chunked access, the 2 GiB position bound and
+  the mounted-volume limitation.
+
+Verified: build/ssh-probe.sh PASSED=21 FAILED=0 (image 5988377d);
+build/p6-ssh-test.sh green (JITTest 2978/0, AppTest 24/0, boot tests
+~13.1 s).

@@ -10,10 +10,14 @@
 // through SshConnection.SendChannelBytes. Everything is synchronous and
 // bounded: no threads, no exceptions - failures map to SFTP status codes.
 //
-// SIZE LIMIT: the VFS buffers whole files in memory (korlib FileStream)
-// and the guest heap must stay below the 85000-byte LOH threshold (the
-// LOH free list is known to corrupt live objects), so transfers are
-// capped at 64 KiB per file. Larger files answer FAILURE with a message.
+// SIZE: files stream through chunked (offset-based) boot-volume I/O
+// (DDK/Kernel/BootFiles.cs -> Kernel_BootFileReadRange/WriteRange), so
+// whole files never enter the guest heap and transfers of any size
+// work. Per-request buffers stay at 32 KiB, safely below the
+// 85000-byte LOH threshold; oversized client write packets (OpenSSH
+// >= 9 sends up to 256 KiB per WRITE) are streamed straight to disk.
+// Offsets are int: positions beyond 2 GiB fail with FAILURE (files
+// themselves may be larger).
 //
 // Supported: REALPATH, STAT/LSTAT/FSTAT, OPEN, CLOSE, READ, WRITE,
 // OPENDIR, READDIR, REMOVE, MKDIR, RMDIR, RENAME, SETSTAT/FSETSTAT
@@ -21,6 +25,7 @@
 
 using System;
 using System.IO;
+using NeutrinoOS.DDK.Kernel;
 
 namespace NeutrinoOS.DDK.Services.Ssh;
 
@@ -31,9 +36,6 @@ public sealed class SftpServer
     private const int RxCapacity = 65536;
     private const int ReadChunk = 32768;
     private const int MaxPathDepth = 24;
-
-    /// <summary>Whole-file VFS + LOH constraint: 64 KiB per file.</summary>
-    private const int MaxFileBytes = 64 * 1024;
 
     // SFTP message types.
     private const byte TInit = 1;
@@ -82,9 +84,23 @@ public sealed class SftpServer
     private readonly int[] _hKind = new int[MaxHandles];        // 0 free, 1 file, 2 dir
     private readonly bool[] _hRead = new bool[MaxHandles];
     private readonly bool[] _hWrite = new bool[MaxHandles];
-    private readonly FileStream[] _streams = new FileStream[MaxHandles];
+    private readonly string[] _hPath = new string[MaxHandles];  // path for kind 1
     private readonly string[][] _dirEntries = new string[MaxHandles][];
     private readonly int[] _dirPos = new int[MaxHandles];
+
+    // Streaming state for oversized WRITE packets: modern clients (OpenSSH
+    // >= 9, WinSCP) send up to 256 KiB of file data per WRITE, larger than
+    // the receive buffer. Such packets are consumed straight from the
+    // channel feed and written through a 32 KiB scratch buffer (heap-safe:
+    // stays well below the 85 KB large-object threshold).
+    private bool _big;
+    private uint _bigId;
+    private int _bigSlot;
+    private int _bigRemaining;
+    private int _bigFilePos;
+    private int _bigBufLen;
+    private bool _bigErr;
+    private readonly byte[] _bigBuf = new byte[32768];
 
     /// <summary>Create the subsystem handler for one session channel.</summary>
     public SftpServer(SshConnection conn)
@@ -97,20 +113,69 @@ public sealed class SftpServer
     {
         if (_dead)
             return;
-        for (int i = 0; i < data.Length; i++)
+
+        int i = 0;
+        while (i < data.Length)
         {
-            if (_rxLen >= _rx.Length)
+            // Oversized WRITE in progress: bytes belong to its payload and
+            // go straight to disk instead of the receive buffer.
+            if (_big)
             {
-                // Client sent a stream we cannot frame; drop the connection.
+                int take = data.Length - i;
+                if (take > _bigRemaining)
+                    take = _bigRemaining;
+                BigConsume(data, i, take);
+                i += take;
+                _bigRemaining -= take;
+                if (_bigRemaining == 0)
+                {
+                    FlushBigBuf();
+                    Status(_bigId, _bigErr ? StFailure : StOk, "");
+                    _big = false;
+                }
+                continue;
+            }
+
+            int space = _rx.Length - _rxLen;
+            int n = data.Length - i;
+            if (n > space)
+                n = space;
+            if (n > 0)
+            {
+                Array.Copy(data, i, _rx, _rxLen, n);
+                _rxLen += n;
+                i += n;
+            }
+
+            int passes = 0;
+            while (passes < 16 && !_conn.OutputCongested && ParseOne())
+                passes++;
+            if (_dead)
+                return;
+
+            if (n == 0 && !_big)
+            {
+                // Buffer full without a complete packet: unframeable stream.
                 _dead = true;
                 _conn.Close();
                 return;
             }
-            _rx[_rxLen++] = data[i];
         }
+    }
 
+    /// <summary>
+    /// Resume parsing buffered request bytes once output congestion
+    /// clears. Feed stops mid-stream when replies pile up; without this
+    /// re-poke the remaining pipelined requests sitting in the receive
+    /// buffer would never be answered (deadlock: the client sends no new
+    /// requests while its pipeline is full, so no further Feed arrives).
+    /// </summary>
+    public void Resume()
+    {
+        if (_dead)
+            return;
         int passes = 0;
-        while (passes < 16 && ParseOne())
+        while (passes < 16 && !_conn.OutputCongested && ParseOne())
             passes++;
     }
 
@@ -119,27 +184,32 @@ public sealed class SftpServer
     {
         for (int i = 0; i < MaxHandles; i++)
         {
-            if (_hKind[i] == 1 && _streams[i] != null)
-                _streams[i].Close();
+            // File writes flush per request; there is nothing to close.
             _hKind[i] = 0;
-            _streams[i] = null;
+            _hPath[i] = null;
             _dirEntries[i] = null;
         }
+        _big = false;
+        _bigBufLen = 0;
     }
 
     // ==================== Packet framing ====================
 
     private bool ParseOne()
     {
+        if (_big)
+            return false;
         if (_rxLen < 4)
             return false;
         uint len = ((uint)_rx[0] << 24) | ((uint)_rx[1] << 16) | ((uint)_rx[2] << 8) | _rx[3];
-        if (len < 1 || len > (uint)(RxCapacity - 4))
+        if (len < 1)
         {
             _dead = true;
             _conn.Close();
             return false;
         }
+        if (len > (uint)(RxCapacity - 4))
+            return BeginBig(len);
         int total = (int)len + 4;
         if (_rxLen < total)
             return false;
@@ -152,6 +222,108 @@ public sealed class SftpServer
             _rx[i - total] = _rx[i];
         _rxLen -= total;
         return !_dead;
+    }
+
+    // ==================== Oversized (streamed) WRITE packets ====================
+
+    /// <summary>
+    /// Packet larger than the receive buffer: only WRITE is ever that big
+    /// (up to 256 KiB of file data per request). Parse the fixed header
+    /// (id, handle, offset, data length), then stream the payload straight
+    /// to disk in scratch-buffer chunks; the reply is sent when the last
+    /// payload byte has arrived.
+    /// </summary>
+    private bool BeginBig(uint len)
+    {
+        if (_rxLen < 5)
+            return false;
+        if (_rx[4] != TWrite)
+        {
+            // Nothing else may legitimately exceed the buffer.
+            _dead = true;
+            _conn.Close();
+            return false;
+        }
+        const int Prefix = 29;   // len + type + id + hlen + handle + offset + datalen
+        if (_rxLen < Prefix)
+            return false;
+
+        var r = new SshReader(_rx, 5, Prefix - 5);
+        uint id = r.ReadU32();
+        uint hlen = r.ReadU32();
+        uint hslot = r.ReadU32();
+        ulong offset = r.ReadU64();
+        uint datalen = r.ReadU32();
+
+        if (hlen != 4 || datalen != len - 25 || datalen > 0x7FFFFFFF)
+        {
+            // Framing is inconsistent; we cannot stay in sync.
+            _dead = true;
+            _conn.Close();
+            return false;
+        }
+
+        int slot = (int)hslot;
+        _bigErr = slot < 0 || slot >= MaxHandles || _hKind[slot] != 1
+                  || _hPath[slot] == null || !_hWrite[slot]
+                  || offset > 0x7FFFFFFF || offset + datalen > 0x80000000UL;
+
+        _big = true;
+        _bigId = id;
+        _bigSlot = slot;
+        _bigFilePos = (int)offset;
+        _bigBufLen = 0;
+
+        // Consume whatever payload bytes already arrived; the rest is
+        // streamed by Feed as the channel delivers it.
+        int avail = _rxLen - Prefix;
+        int consumed = 0;
+        if (avail > 0)
+        {
+            consumed = avail;
+            BigConsume(_rx, Prefix, avail);
+        }
+        _rxLen = 0;
+        _bigRemaining = (int)datalen - consumed;
+
+        if (_bigRemaining == 0)
+        {
+            FlushBigBuf();
+            Status(_bigId, _bigErr ? StFailure : StOk, "");
+            _big = false;
+        }
+        return true;
+    }
+
+    /// <summary>Buffers payload bytes, flushing full 32 KiB scratch chunks to disk.</summary>
+    private void BigConsume(byte[] src, int start, int count)
+    {
+        while (count > 0)
+        {
+            int space = _bigBuf.Length - _bigBufLen;
+            int n = count > space ? space : count;
+            Array.Copy(src, start, _bigBuf, _bigBufLen, n);
+            _bigBufLen += n;
+            start += n;
+            count -= n;
+            if (_bigBufLen == _bigBuf.Length)
+                FlushBigBuf();
+        }
+    }
+
+    /// <summary>Writes the pending scratch bytes at the running file position.</summary>
+    private void FlushBigBuf()
+    {
+        if (_bigBufLen == 0)
+            return;
+        if (!_bigErr)
+        {
+            int w = BootFiles.WriteRange(_hPath[_bigSlot], _bigFilePos, _bigBuf, _bigBufLen);
+            if (w != _bigBufLen)
+                _bigErr = true;
+        }
+        _bigFilePos += _bigBufLen;
+        _bigBufLen = 0;
     }
 
     // ==================== Message dispatch ====================
@@ -246,11 +418,6 @@ public sealed class SftpServer
             Status(id, StNoFile, "no such file");
             return;
         }
-        if (exists && !trunc && FileSize(full) > MaxFileBytes)
-        {
-            Status(id, StFailure, "file larger than 64 KiB limit");
-            return;
-        }
         if (creat && !exists && !ParentExists(full))
         {
             Status(id, StNoFile, "no such directory");
@@ -264,22 +431,14 @@ public sealed class SftpServer
             return;
         }
 
-        var access = wantRead && wantWrite ? FileAccess.ReadWrite
-            : (wantWrite || append) ? FileAccess.Write
-            : FileAccess.Read;
-        FileMode mode;
-        if (excl && creat)
-            mode = FileMode.CreateNew;
-        else if (trunc)
-            mode = creat ? FileMode.Create : FileMode.Truncate;
-        else if (append)
-            mode = FileMode.Append;
-        else if (creat)
-            mode = FileMode.OpenOrCreate;
-        else
-            mode = FileMode.Open;
+        // Establish the file on disk: create when missing, truncate when
+        // asked. The empty whole-file write maps to driver mode Create
+        // (= create or truncate) and allocates no data, so it stays
+        // heap-safe (unlike the chunked path, which never truncates).
+        if ((creat && !exists) || (trunc && exists))
+            File.WriteAllBytes(full, new byte[0]);
 
-        _streams[slot] = new FileStream(full, mode, access);
+        _hPath[slot] = full;
         _hKind[slot] = 1;
         _hRead[slot] = wantRead;
         _hWrite[slot] = wantWrite || append;
@@ -299,11 +458,8 @@ public sealed class SftpServer
             Status(id, StFailure, "bad handle");
             return;
         }
-        if (_hKind[slot] == 1 && _streams[slot] != null)
-        {
-            _streams[slot].Close();
-            _streams[slot] = null;
-        }
+        // File writes flush per request; nothing to close for files.
+        _hPath[slot] = null;
         _dirEntries[slot] = null;
         _hKind[slot] = 0;
         Status(id, StOk, "");
@@ -315,9 +471,15 @@ public sealed class SftpServer
         int slot = ReadHandle(r);
         ulong offset = r.ReadU64();
         uint want = r.ReadU32();
-        if (slot < 0 || _hKind[slot] != 1 || _streams[slot] == null || !_hRead[slot])
+        if (slot < 0 || _hKind[slot] != 1 || _hPath[slot] == null || !_hRead[slot])
         {
             Status(id, StFailure, "bad handle");
+            return;
+        }
+        if (offset > 0x7FFFFFFF)
+        {
+            // Chunked offsets are int; past 2 GiB there is no data.
+            Status(id, StEof, "");
             return;
         }
 
@@ -325,9 +487,13 @@ public sealed class SftpServer
         if (n <= 0)
             n = ReadChunk;
         var buf = new byte[n];
-        _streams[slot].Seek((long)offset, SeekOrigin.Begin);
-        int got = _streams[slot].Read(buf, 0, n);
-        if (got <= 0)
+        int got = BootFiles.ReadRange(_hPath[slot], (int)offset, buf, n);
+        if (got < 0)
+        {
+            Status(id, StFailure, "read failed");
+            return;
+        }
+        if (got == 0)
         {
             Status(id, StEof, "");
             return;
@@ -345,20 +511,23 @@ public sealed class SftpServer
         int slot = ReadHandle(r);
         ulong offset = r.ReadU64();
         byte[] data = r.ReadString();
-        if (slot < 0 || _hKind[slot] != 1 || _streams[slot] == null || data == null || !_hWrite[slot])
+        if (slot < 0 || _hKind[slot] != 1 || _hPath[slot] == null || data == null || !_hWrite[slot])
         {
             Status(id, StFailure, "bad handle");
             return;
         }
-        if (offset > (ulong)MaxFileBytes || offset + (ulong)data.Length > (ulong)MaxFileBytes)
+        if (offset > 0x7FFFFFFF || offset + (ulong)data.Length > 0x80000000UL)
         {
-            Status(id, StFailure, "file larger than 64 KiB limit");
+            Status(id, StFailure, "position beyond 2 GiB");
             return;
         }
 
-        _streams[slot].Seek((long)offset, SeekOrigin.Begin);
-        _streams[slot].Write(data, 0, data.Length);
-        _streams[slot].Flush();
+        int written = BootFiles.WriteRange(_hPath[slot], (int)offset, data, data.Length);
+        if (written != data.Length)
+        {
+            Status(id, StFailure, "write failed");
+            return;
+        }
         Status(id, StOk, "");
     }
 
@@ -400,8 +569,8 @@ public sealed class SftpServer
             return;
         }
         var w = Body(TAttrs, id);
-        if (_hKind[slot] == 1 && _streams[slot] != null)
-            WriteAttrs(w, (ulong)_streams[slot].Length, false);
+        if (_hKind[slot] == 1 && _hPath[slot] != null)
+            WriteAttrs(w, File.Exists(_hPath[slot]) ? (ulong)FileSize(_hPath[slot]) : 0, false);
         else if (_hKind[slot] == 2)
             WriteAttrs(w, 0, true);
         else

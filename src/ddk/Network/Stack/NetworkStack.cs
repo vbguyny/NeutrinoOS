@@ -1287,7 +1287,7 @@ public unsafe partial class NetworkStack
         // Build data packet
         int maxTcpLen = TcpHeader.MinSize + length;
         byte* tcpBuffer = stackalloc byte[maxTcpLen];
-        int tcpLen = conn.BuildDataPacket(tcpBuffer, data, length);
+        int tcpLen = conn.BuildDataPacket(tcpBuffer, data, length, out int accepted);
         if (tcpLen == 0)
             return 0;
 
@@ -1306,7 +1306,7 @@ public unsafe partial class NetworkStack
         if (!Quiet)
         {
             Debug.Write("[NetStack] TCP sent ");
-            Debug.WriteDecimal(length);
+            Debug.WriteDecimal(accepted);
             Debug.Write(" bytes to ");
             PrintIP(conn.RemoteEndpoint.IP);
             Debug.Write(":");
@@ -1314,7 +1314,11 @@ public unsafe partial class NetworkStack
             Debug.WriteLine();
         }
 
-        return length;
+        // Report the bytes actually accepted: the peer's window may have
+        // clamped this segment below the requested length, and the caller
+        // must retry the remainder (returning the full length here used
+        // to silently drop bytes from the sequence space).
+        return accepted;
     }
 
     /// <summary>

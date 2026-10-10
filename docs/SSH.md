@@ -18,7 +18,8 @@ covers preparing a VM image, starting the server, and connecting from
 | Robustness | client-initiated rekey, 4 concurrent connections, brute-force lockout |
 
 Limits (by design, see below): no port/agent forwarding, no SFTP symlinks,
-and **file transfers are capped at 64 KiB per file**.
+and file transfers stream in chunks (no size cap; individual file
+positions are bounded to 2 GiB).
 
 ## Quick start (Windows 11 + WSL2 + QEMU)
 
@@ -99,12 +100,19 @@ scp -P 2222 user@127.0.0.1:/home/user/notes.txt .\notes-back.txt
 **WinSCP**: new site → protocol *SFTP*, host `127.0.0.1`, port `2222`,
 user `user`, password `neutrino` (or your key). No known-hosts quirks.
 
-**64 KiB transfer cap.** Files larger than 64 KiB are refused with a
-"file larger than 64 KiB limit" error. The NeutrinoOS VFS buffers whole
-files in memory and the guest heap must stay below the 85 KB large-object
-threshold (the LOH free list is known to corrupt live objects), so the
-SFTP server caps transfers until chunked VFS access exists. Transferring
-larger files is a roadmap item, not a protocol limitation of the client.
+**Large files (chunked VFS access, no size cap).** Transfers stream
+through offset-based file access - `Kernel_BootFileReadRange` /
+`Kernel_BootFileWriteRange` in the kernel (`src/kernel/Exports/DDK/FileRangeExports.cs`),
+wrapped by `BootFiles.ReadRange` / `WriteRange` in the DDK
+(`src/ddk/Kernel/BootFiles.cs`). The file is never loaded whole into
+memory and per-request buffers stay at 32 KiB, safely below the 85 KB
+large-object threshold (the LOH free list is known to corrupt live
+objects), so `sftp`/`scp`/WinSCP transfer files of any size. Individual
+positions are 32-bit, so offsets under 2 GiB work (files may be
+larger); writing past end-of-file is refused (no sparse files).
+Chunked access covers the FAT boot volume; paths served by mounted
+volumes (exFAT sticks) or virtual `/dev` files answer FAILURE for
+range I/O.
 
 ## Configuration
 
@@ -138,9 +146,10 @@ Notes:
 bash build/ssh-probe.sh
 ```
 
-Expected: `PASSED=18 FAILED=0` — exec, interactive shell, cursor editing,
+Expected: `PASSED=21 FAILED=0` — exec, interactive shell, cursor editing,
 history, forced rekey, password auth, `sftp` batch, `scp` round-trips
-(byte-identical), and negative key/password checks.
+(byte-identical), 2 MiB chunked transfers (byte-identical), and negative
+key/password checks.
 
 The original Phase 6 suite `build/p6-ssh-test.sh` is green again as well:
 it boots the *plain* deploy image (boot tests included) and runs exec,
@@ -167,7 +176,7 @@ in ~13 s.
 | Key rejected | public key not in `/home/user/.ssh/authorized_keys` (pass it to `ssh-cli-image.sh`), wrong key perms on the client |
 | Connect times out | guest has no NIC/eth0, or QEMU missing `hostfwd=tcp::2222-:22` |
 | `sftp`/`scp` fail at init | update the client (very old clients need `scp -O`), or a firewall middlebox |
-| Transfer fails >64 KiB | documented cap (see above) |
+| Transfer fails mid-file on a mounted exFAT disk | chunked access covers the boot volume only (see "Large files" above) |
 | After rebuild: no users | re-run `build/ssh-cli-image.sh` |
 
 ## How it is implemented
@@ -181,6 +190,13 @@ in ~13 s.
   bridge (`Kernel_ShellExec`).
 - `src/ddk/Services/Ssh/SftpServer.cs` — the SFTP v3 subsystem over the
   session channel: realpath/stat/open/read/write/close/opendir/readdir/
-  remove/mkdir/rmdir/rename, backed by the VFS (`File`/`Directory`).
+  remove/mkdir/rmdir/rename. File data streams through chunked VFS access
+  (`BootFiles.ReadRange`/`WriteRange`); oversized `WRITE` packets
+  (OpenSSH >= 9 sends up to 256 KiB per request) bypass the receive
+  buffer and stream to disk through a 32 KiB scratch buffer; metadata and
+  directories use the VFS (`File`/`Directory`).
+- `src/ddk/Kernel/BootFiles.cs` + `src/kernel/Exports/DDK/FileRangeExports.cs`
+  — the chunked (offset-based) boot-volume file bridge that lifts the
+  old 64 KiB transfer cap.
 - `build/ssh-cli-image.sh`, `build/ssh-vm.sh` — image prep + launcher.
-- `build/ssh-probe.sh` — the 18-check end-to-end suite used above.
+- `build/ssh-probe.sh` — the 21-check end-to-end suite used above.

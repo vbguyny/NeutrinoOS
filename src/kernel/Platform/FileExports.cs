@@ -32,6 +32,8 @@ public static unsafe class FileExports
     private static void* _fnGetBootFileSize;
     private static void* _fnReadBootFile;
     private static void* _fnWriteBootFile;
+    private static void* _fnReadBootFileRange;
+    private static void* _fnWriteBootFileRange;
     private static void* _fnDeleteBootFile;
     private static void* _fnCreateBootDir;
     private static void* _fnDeleteBootDir;
@@ -229,6 +231,28 @@ public static unsafe class FileExports
             _fnWriteBootFile = r.CodeAddress;
         }
 
+        if (_fnReadBootFileRange == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(asmId, typeToken, "ReadBootFileRange");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(asmId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnReadBootFileRange = r.CodeAddress;
+        }
+
+        if (_fnWriteBootFileRange == null)
+        {
+            uint t = AssemblyLoader.FindMethodDefByName(asmId, typeToken, "WriteBootFileRange");
+            if (t == 0)
+                return false;
+            var r = Tier0JIT.CompileMethod(asmId, t);
+            if (!r.Success || r.CodeAddress == null)
+                return false;
+            _fnWriteBootFileRange = r.CodeAddress;
+        }
+
         if (_fnDeleteBootFile == null)
         {
             uint t = AssemblyLoader.FindMethodDefByName(asmId, typeToken, "DeleteBootFile");
@@ -370,6 +394,58 @@ public static unsafe class FileExports
 
         var readFile = (delegate*<char*, int, byte*, int, int>)_fnReadBootFile;
         return readFile(path, pathLen, buffer, capacity);
+    }
+
+    /// <summary>
+    /// Kernel-callable chunked (offset-based) file read (see the
+    /// Kernel_BootFileReadRange export in Exports/DDK/FileRangeExports.cs).
+    /// Reads up to capacity bytes at offset; returns the count read
+    /// (0 = end of file), or a negative error code. Chunked access is
+    /// required for files bigger than a heap chunk (see docs/SSH.md), so
+    /// it covers the FAT boot volume directly; paths served by virtual
+    /// /dev files or non-root VFS mounts (exFAT, /proc) return -3.
+    /// </summary>
+    public static int KernelBootReadRange(char* path, int pathLen, int offset, byte* buffer, int capacity)
+    {
+        // Chunked access bypasses the whole-file VFS bridge: refuse
+        // paths the other bridge would have served instead.
+        if (VirtualDevices.IsVirtual(path, pathLen))
+            return -3;
+        if (EnsureVfsBridge())
+        {
+            var vfsExists = (delegate*<char*, int, int, int>)_fnVfsExists;
+            if (vfsExists(path, pathLen, 0) != VfsNotHandled)
+                return -3;
+        }
+
+        if (!EnsureDriverHelpers())
+            return -1;
+        var readRange = (delegate*<char*, int, int, byte*, int, int>)_fnReadBootFileRange;
+        return readRange(path, pathLen, offset, buffer, capacity);
+    }
+
+    /// <summary>
+    /// Kernel-callable chunked (offset-based) file write (see the
+    /// Kernel_BootFileWriteRange export in Exports/DDK/FileRangeExports.cs).
+    /// Writes count bytes at offset, creating the file when missing and
+    /// extending it when appending; returns the count written, or a
+    /// negative error code. Same coverage rules as KernelBootReadRange.
+    /// </summary>
+    public static int KernelBootWriteRange(char* path, int pathLen, int offset, byte* data, int count)
+    {
+        if (VirtualDevices.IsVirtual(path, pathLen))
+            return -3;
+        if (EnsureVfsBridge())
+        {
+            var vfsExists = (delegate*<char*, int, int, int>)_fnVfsExists;
+            if (vfsExists(path, pathLen, 0) != VfsNotHandled)
+                return -3;
+        }
+
+        if (!EnsureDriverHelpers())
+            return -1;
+        var writeRange = (delegate*<char*, int, int, byte*, int, int>)_fnWriteBootFileRange;
+        return writeRange(path, pathLen, offset, data, count);
     }
 
     // ==================== System.IO.File exports ====================

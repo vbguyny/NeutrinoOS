@@ -459,6 +459,15 @@ public unsafe class TcpConnection
                 _sendUnack = packet->AckNum;
                 _sendWindow = packet->Window;
             }
+            else if (packet->AckNum == _sendUnack)
+            {
+                // Pure window update: acknowledges nothing new but still
+                // carries the peer's current receive window. Without this
+                // a zero-window advertisement would never be lifted (the
+                // reopen arrives as ack == SND.UNA and used to be
+                // ignored, stalling every large download permanently).
+                _sendWindow = packet->Window;
+            }
         }
 
         // Process incoming data
@@ -601,8 +610,9 @@ public unsafe class TcpConnection
     /// Build a data packet to send.
     /// Returns packet length, or 0 if no data to send.
     /// </summary>
-    public int BuildDataPacket(byte* buffer, byte* data, int dataLength)
+    public int BuildDataPacket(byte* buffer, byte* data, int dataLength, out int accepted)
     {
+        accepted = 0;
         if (_state != TcpState.Established || dataLength <= 0)
             return 0;
 
@@ -619,6 +629,7 @@ public unsafe class TcpConnection
         if (len > 0)
         {
             _sendNext += (uint)sendLen;
+            accepted = sendLen;
         }
 
         return len;

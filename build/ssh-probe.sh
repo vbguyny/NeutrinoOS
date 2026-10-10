@@ -4,8 +4,8 @@
 # sshd, then exercises the full feature set from the WSL host through
 # slirp hostfwd (2222 -> 22): publickey exec, interactive shell with
 # cursor editing + history, password auth, the SFTP subsystem
-# (sftp batch + modern scp), client-initiated rekey, and negative auth.
-# Prints PASS/FAIL per check + summary.
+# (sftp batch + modern scp + 2 MiB chunked transfers), client-initiated
+# rekey, and negative auth. Prints PASS/FAIL per check + summary.
 set -u
 cd /root/neutrino
 echo "image: $(md5sum build/x64/neutrinoos-cli.img | cut -c1-8)"
@@ -110,6 +110,21 @@ rm -f /tmp/ssh-scp-down.txt
 timeout 60 scp -q -P 2222 -i /root/p6key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR user@127.0.0.1:/home/user/scp-up.txt /tmp/ssh-scp-down.txt 2>/tmp/ssh-scp2.log
 [ $? -eq 0 ] && pass "scp download" || fail "scp download: $(tail -2 /tmp/ssh-scp2.log)"
 cmp -s /tmp/ssh-upload.txt /tmp/ssh-scp-down.txt && pass "scp round-trip content identical" || fail "scp round-trip differs"
+
+echo "=== large file transfer (chunked VFS, beyond the old 64 KiB cap) ==="
+dd if=/dev/urandom of=/tmp/ssh-big.bin bs=1024 count=2048 2>/dev/null
+BIGSZ=$(stat -c %s /tmp/ssh-big.bin)
+timeout 240 scp -q -P 2222 -i /root/p6key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR /tmp/ssh-big.bin user@127.0.0.1:/home/user/big-up.bin 2>/tmp/ssh-big1.log
+[ $? -eq 0 ] && pass "scp 2 MiB upload (chunked writes)" || fail "scp 2 MiB upload: $(tail -2 /tmp/ssh-big1.log)"
+rm -f /tmp/ssh-big-down.bin
+timeout 240 scp -q -P 2222 -i /root/p6key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR user@127.0.0.1:/home/user/big-up.bin /tmp/ssh-big-down.bin 2>/tmp/ssh-big2.log
+[ $? -eq 0 ] && pass "scp 2 MiB download (chunked reads)" || fail "scp 2 MiB download: $(tail -2 /tmp/ssh-big2.log)"
+DOWNSZ=$(stat -c %s /tmp/ssh-big-down.bin 2>/dev/null || echo 0)
+if cmp -s /tmp/ssh-big.bin /tmp/ssh-big-down.bin; then
+  pass "2 MiB round-trip byte-identical ($BIGSZ bytes)"
+else
+  fail "2 MiB round-trip differs (down=$DOWNSZ up=$BIGSZ)"
+fi
 
 echo "=== negative auth (kept last: lockout fixture bans after 3) ==="
 if [ ! -f /root/sshbadkey ]; then ssh-keygen -t ed25519 -N "" -f /root/sshbadkey -q; fi
