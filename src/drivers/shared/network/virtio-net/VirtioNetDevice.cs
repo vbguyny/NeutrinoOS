@@ -272,9 +272,15 @@ public unsafe class VirtioNetDevice : VirtioDevice
         // Notify device
         NotifyQueue(TX_QUEUE);
 
-        // Wait for completion (simple polling for now)
-        int timeout = 10000;
-        while (timeout > 0)
+        // Wait for completion with a wall-clock deadline. Iteration-count
+        // spins are calibrated to TCG's emulated speed; under hardware
+        // acceleration (WHPX) 10,000 iterations pass in microseconds of
+        // real time, long before the device completes - and the old
+        // timeout path freed the descriptor while the request was still
+        // in flight, which double-freed it when the used entry eventually
+        // arrived and wedged the transmit path.
+        ulong deadline = Timer.GetUptimeMs() + 1000;
+        while (Timer.GetUptimeMs() < deadline)
         {
             if (queue.HasUsedBuffers())
             {
@@ -286,11 +292,11 @@ public unsafe class VirtioNetDevice : VirtioDevice
                     return true;
                 }
             }
-            timeout--;
         }
 
+        // Descriptor intentionally left to the used ring: a later pop will
+        // reap it. Freeing it here would double-free it.
         Debug.WriteLine("[virtio-net] SendFrame: Timeout waiting for TX completion");
-        queue.FreeDescriptors(descIdx);
         return false;
     }
 

@@ -109,6 +109,32 @@ public unsafe class VirtioBlkDevice : VirtioDevice, IBlockDevice
         }
     }
 
+    // A request that timed out may still be serviced by the device: its
+    // DMA buffer must not be freed until a later completion is reaped,
+    // or the device could DMA into recycled pages. Requests are
+    // serialized, so at most one buffer is ever pending.
+    private static ulong _timedOutBufferPhys;
+    private static ulong _timedOutBufferPages;
+
+    private static void DeferTimedOutBuffer(DMABuffer buffer)
+    {
+        if (_timedOutBufferPhys == 0)
+        {
+            _timedOutBufferPhys = buffer.PhysicalAddress;
+            _timedOutBufferPages = buffer.PageCount;
+        }
+    }
+
+    private static void ReapTimedOutBuffer()
+    {
+        if (_timedOutBufferPhys != 0)
+        {
+            NeutrinoOS.DDK.Kernel.Memory.FreePages(_timedOutBufferPhys, _timedOutBufferPages);
+            _timedOutBufferPhys = 0;
+            _timedOutBufferPages = 0;
+        }
+    }
+
     public int Read(ulong startBlock, uint blockCount, byte* buffer)
     {
         Debug.Write("[VirtioBlkDevice.Read] start=");
@@ -211,22 +237,33 @@ public unsafe class VirtioBlkDevice : VirtioDevice, IBlockDevice
             // Notify device
             NotifyQueue(RequestQueue);
 
-            // Poll for completion
+            // Poll for completion with a wall-clock deadline (iteration
+            // counts expire almost instantly under hardware acceleration;
+            // see VirtioNetDevice.SendFrame).
             Debug.WriteLine("[VirtioBlkDevice.Read] Polling for completion...");
-            int timeout = 10000000;
-            while (!queue.HasUsedBuffers() && --timeout > 0)
+            ulong deadline = Timer.GetUptimeMs() + 1000;
+            bool completed = false;
+            while (Timer.GetUptimeMs() < deadline)
             {
-                // Busy wait
+                if (queue.HasUsedBuffers())
+                {
+                    completed = true;
+                    break;
+                }
             }
 
-            Debug.WriteLine("[VirtioBlkDevice.Read] Poll done, timeout={0}", timeout);
-            if (timeout <= 0)
+            if (!completed)
             {
+                // Leave the descriptor to the used ring (freeing it here
+                // double-frees it later) and defer the buffer free - the
+                // device may still write into it.
                 Debug.WriteLine("[VirtioBlkDevice.Read] Timeout!");
-                queue.FreeDescriptors(descHead);
-                DMA.Free(ref dataBuffer);
+                DeferTimedOutBuffer(dataBuffer);
                 return (int)BlockResult.Timeout;
             }
+            ReapTimedOutBuffer();
+
+            Debug.WriteLine("[VirtioBlkDevice.Read] Poll done");
 
             // Get completion
             uint len;
@@ -378,19 +415,25 @@ public unsafe class VirtioBlkDevice : VirtioDevice, IBlockDevice
             // Notify device
             NotifyQueue(RequestQueue);
 
-            // Poll for completion
-            int timeout = 10000000;
-            while (!queue.HasUsedBuffers() && --timeout > 0)
+            // Poll for completion with a wall-clock deadline (see Read).
+            ulong deadline = Timer.GetUptimeMs() + 1000;
+            bool completed = false;
+            while (Timer.GetUptimeMs() < deadline)
             {
-                // Busy wait
+                if (queue.HasUsedBuffers())
+                {
+                    completed = true;
+                    break;
+                }
             }
 
-            if (timeout <= 0)
+            if (!completed)
             {
-                queue.FreeDescriptors(descHead);
-                DMA.Free(ref dataBuffer);
+                // No free of the descriptor/buffer: see Read's timeout path.
+                DeferTimedOutBuffer(dataBuffer);
                 return (int)BlockResult.Timeout;
             }
+            ReapTimedOutBuffer();
 
             // Get completion
             uint len;
@@ -446,15 +489,24 @@ public unsafe class VirtioBlkDevice : VirtioDevice, IBlockDevice
         queue.SubmitAvailable(descHead);
         NotifyQueue(RequestQueue);
 
-        // Poll for completion
-        int timeout = 10000000;
-        while (!queue.HasUsedBuffers() && --timeout > 0) { }
-
-        if (timeout <= 0)
+        // Poll for completion with a wall-clock deadline (see Read).
+        ulong deadline = Timer.GetUptimeMs() + 1000;
+        bool completed = false;
+        while (Timer.GetUptimeMs() < deadline)
         {
-            queue.FreeDescriptors(descHead);
+            if (queue.HasUsedBuffers())
+            {
+                completed = true;
+                break;
+            }
+        }
+
+        if (!completed)
+        {
+            // No free of the descriptor: see Read's timeout path.
             return BlockResult.Timeout;
         }
+        ReapTimedOutBuffer();
 
         uint len;
         int usedDesc = queue.PopUsed(out len);

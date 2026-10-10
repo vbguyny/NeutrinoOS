@@ -203,9 +203,10 @@ public unsafe class AhciPort : IDisposable
         cmd &= ~(uint)PortCmd.ST;
         WritePort(PortRegs.CMD, cmd);
 
-        // Wait for CR (command list running) to clear
-        int timeout = AhciConst.TIMEOUT_RESET;
-        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.CR) != 0 && --timeout > 0) { }
+        // Wait for CR (command list running) to clear (wall-clock deadline;
+        // each port read is a VM exit under WHPX anyway).
+        ulong deadline = Timer.GetUptimeMs() + 2000;
+        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.CR) != 0 && Timer.GetUptimeMs() < deadline) { }
 
         // Clear FRE (FIS receive enable)
         cmd = ReadPort(PortRegs.CMD);
@@ -213,8 +214,7 @@ public unsafe class AhciPort : IDisposable
         WritePort(PortRegs.CMD, cmd);
 
         // Wait for FR (FIS receive running) to clear
-        timeout = AhciConst.TIMEOUT_RESET;
-        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.FR) != 0 && --timeout > 0) { }
+        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.FR) != 0 && Timer.GetUptimeMs() < deadline) { }
     }
 
     /// <summary>
@@ -222,9 +222,9 @@ public unsafe class AhciPort : IDisposable
     /// </summary>
     private void StartCommandEngine()
     {
-        // Wait for CR to be clear
-        int timeout = AhciConst.TIMEOUT_RESET;
-        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.CR) != 0 && --timeout > 0) { }
+        // Wait for CR to be clear (wall-clock deadline; see above).
+        ulong deadline = Timer.GetUptimeMs() + 2000;
+        while ((ReadPort(PortRegs.CMD) & (uint)PortCmd.CR) != 0 && Timer.GetUptimeMs() < deadline) { }
 
         // Enable FRE first
         uint cmd = ReadPort(PortRegs.CMD);
@@ -244,8 +244,8 @@ public unsafe class AhciPort : IDisposable
     /// </summary>
     private void WaitForDeviceLink()
     {
-        int timeout = AhciConst.TIMEOUT_RESET;
-        while (timeout-- > 0)
+        ulong deadline = Timer.GetUptimeMs() + 2000;
+        while (Timer.GetUptimeMs() < deadline)
         {
             uint ssts = ReadPort(PortRegs.SSTS);
             uint det = ssts & PortSsts.DET_MASK;
@@ -434,9 +434,11 @@ public unsafe class AhciPort : IDisposable
         // Issue command
         WritePort(PortRegs.CI, 1u << slot);
 
-        // Wait for completion
-        int timeout = AhciConst.TIMEOUT_CMD;
-        while (timeout-- > 0)
+        // Wait for completion with a wall-clock deadline: each register
+        // read is a port access (a VM exit under WHPX), so a time bound
+        // beats an iteration count tuned to TCG's emulated speed.
+        ulong deadline = Timer.GetUptimeMs() + 1000;
+        while (Timer.GetUptimeMs() < deadline)
         {
             uint is_reg = ReadPort(PortRegs.IS);
 

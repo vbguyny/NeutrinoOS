@@ -136,6 +136,30 @@ public unsafe class VirtioBlkDriver : VirtioDevice, IBlockDevice, IPciDriver
     // Request tracking
     private DMABuffer _requestBuffer;
 
+    // A request that timed out may still be serviced by the device: its
+    // DMA buffer must not be released until a later completion is reaped.
+    private ulong _timedOutBufferPhys;
+    private ulong _timedOutBufferPages;
+
+    private void DeferTimedOutBuffer(DMABuffer buffer)
+    {
+        if (_timedOutBufferPhys == 0)
+        {
+            _timedOutBufferPhys = buffer.PhysicalAddress;
+            _timedOutBufferPages = buffer.PageCount;
+        }
+    }
+
+    private void ReapTimedOutBuffer()
+    {
+        if (_timedOutBufferPhys != 0)
+        {
+            NeutrinoOS.DDK.Kernel.Memory.FreePages(_timedOutBufferPhys, _timedOutBufferPages);
+            _timedOutBufferPhys = 0;
+            _timedOutBufferPages = 0;
+        }
+    }
+
     #region IDriver Implementation
 
     public string DriverName => "VirtIO Block Driver";
@@ -426,19 +450,29 @@ public unsafe class VirtioBlkDriver : VirtioDevice, IBlockDevice, IPciDriver
             // Notify device
             NotifyQueue(RequestQueueIndex);
 
-            // Wait for completion (polling)
-            int timeout = 1000000; // Arbitrary timeout
-            while (!queue.HasUsedBuffers() && timeout-- > 0)
+            // Wait for completion with a wall-clock deadline (iteration
+            // counts expire almost instantly under hardware acceleration;
+            // see VirtioNetDevice.SendFrame).
+            ulong deadline = Timer.GetUptimeMs() + 1000;
+            bool completed = false;
+            while (Timer.GetUptimeMs() < deadline)
             {
-                // Spin wait
+                if (queue.HasUsedBuffers())
+                {
+                    completed = true;
+                    break;
+                }
             }
 
-            if (timeout <= 0)
+            if (!completed)
             {
-                queue.FreeDescriptors(head);
-                DMA.Free(ref reqBuffer);
+                // Leave the descriptor to the used ring (freeing it here
+                // double-frees it later) and defer the buffer free - the
+                // device may still access it.
+                DeferTimedOutBuffer(reqBuffer);
                 return BlockResult.Timeout;
             }
+            ReapTimedOutBuffer();
 
             // Get result
             uint writtenLen;

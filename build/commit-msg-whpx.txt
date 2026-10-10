@@ -1,0 +1,32 @@
+WHPX acceleration: TSC clock, wall-clock driver waits, VGA display-start scrolling
+
+Running NeutrinoOS under QEMU's WHPX accelerator (Windows) was unusable:
+boot was ~8x slower than TCG, and 2 MiB scp transfers plus ordinary ssh
+commands hung forever. Root causes were all VM-exit pathologies:
+
+- Iteration-count wait loops in the virtio/AHCI drivers expired in
+  microseconds at native speed, so timeout paths fired constantly and
+  freed descriptors/DMA buffers the device still owned (double-free and
+  descriptor chaos, wedging TX). Waits are now wall-clock deadlines
+  (Timer.GetUptimeMs, 1000/2000 ms); nothing is freed on timeout -
+  timed-out buffers are reaped on a later completion.
+
+- Uptime queries read HPET MMIO (a VM exit per call). The kernel now
+  derives uptime from RDTSC against the calibrated TSC base
+  (HPET.FastUptimeNanoseconds), and the DDK Timer wrapper uses it.
+
+- Console scrolling shifted ~4,000 framebuffer cells per scroll (~1.9M
+  MMIO writes per boot = ~6.3 s under WHPX). VgaTextDriver now keeps a
+  200-row ring in VRAM and scrolls via the CRTC display-start register,
+  with an in-place compaction back to the ring base once per ring.
+
+Measured (guest [Boot] timeline, q35/2G/1 vCPU, -vga std):
+  WHPX boot 6640 ms -> 571 ms (virtio-blk), 579 ms (AHCI)
+  TCG  boot  813 ms -> 511 ms
+Transfers stay native-fast under WHPX (2 MiB scp ~2 s, exec ~240 ms)
+and unchanged under TCG. Verified: WSL boot tests (JITTest 2978/0,
+AppTest 24/0), SSH/SFTP acceptance probe 21/21, and headless screendump
+checks of ring scrolling including a ring compaction (seq 1 5000).
+
+Adds build/whpx-bench.ps1 (Windows WHPX/TCG benchmark),
+build/wsl-vga-screendump.sh (visual scroll check) and docs/WHPX.md.

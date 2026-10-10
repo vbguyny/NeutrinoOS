@@ -20,6 +20,15 @@ public static class Timer
     [DllImport("*", EntryPoint = "Kernel_GetUptime")]
     public static extern ulong GetUptimeNanoseconds();
 
+    /// <summary>
+    /// Uptime in milliseconds computed inside the kernel (AOT). Prefer
+    /// this over dividing GetUptimeNanoseconds() in driver code: the
+    /// tier-0 JIT miscompiles 64-bit unsigned division, and this export
+    /// is cheap (RDTSC-based) since the kernel-side TSC calibration.
+    /// </summary>
+    [DllImport("*", EntryPoint = "Kernel_GetUptimeMs")]
+    public static extern ulong GetUptimeMs();
+
     [DllImport("*", EntryPoint = "Kernel_DelayMicroseconds")]
     public static extern void DelayMicroseconds(uint microseconds);
 

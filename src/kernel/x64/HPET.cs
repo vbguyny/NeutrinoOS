@@ -45,6 +45,7 @@ public static unsafe class HPET
     // TSC calibration state
     private static ulong _tscFrequencyHz;   // Calibrated TSC frequency in Hz
     private static bool _tscCalibrated;
+    private static ulong _tscBase;          // TSC at calibration end (uptime zero)
 
     /// <summary>
     /// Whether HPET is initialized and available
@@ -249,9 +250,33 @@ public static unsafe class HPET
         ulong tscCycles = tscEnd - tscStart;
         _tscFrequencyHz = tscCycles * 1_000_000_000 / elapsedNs;
         _tscCalibrated = true;
+        _tscBase = tscEnd;
 
         DebugConsole.Write(" ");
         DebugConsole.WriteDecimal((int)(_tscFrequencyHz / 1_000_000));
         DebugConsole.WriteLine(" MHz");
+    }
+
+    /// <summary>
+    /// Fast monotonic uptime in nanoseconds (RDTSC-based).
+    ///
+    /// The HPET counter lives in MMIO space: every read traps as a VM exit
+    /// under hardware-accelerated hypervisors (WHPX), which makes it far
+    /// too expensive for hot paths (kernel uptime queries, driver wait
+    /// loops). After the one-time boot calibration, RDTSC is a plain
+    /// register read and costs nothing. Falls back to the HPET while the
+    /// TSC is still uncalibrated (very early boot).
+    /// </summary>
+    public static ulong FastUptimeNanoseconds()
+    {
+        if (!_tscCalibrated)
+            return TicksToNanoseconds(ReadCounter());
+
+        ulong delta = CPU.ReadTsc() - _tscBase;
+        // ns = delta * 1e9 / freq, split so each product stays < 2^63:
+        // the remainder is below freq, so rem * 1e9 fits in 64 bits.
+        ulong whole = delta / _tscFrequencyHz;
+        ulong rem = delta % _tscFrequencyHz;
+        return whole * 1_000_000_000UL + rem * 1_000_000_000UL / _tscFrequencyHz;
     }
 }

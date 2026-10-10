@@ -142,11 +142,13 @@ public unsafe class AhciController : IDisposable
         ghc |= (uint)HbaGhc.HR;
         WriteHba(HbaRegs.GHC, ghc);
 
-        // Wait for HR to clear (reset complete)
-        int timeout = AhciConst.TIMEOUT_RESET;
-        while ((ReadHba(HbaRegs.GHC) & (uint)HbaGhc.HR) != 0 && --timeout > 0) { }
+        // Wait for HR to clear (reset complete) with a wall-clock
+        // deadline: iteration counts expire almost instantly under
+        // hardware acceleration (WHPX).
+        ulong deadline = Timer.GetUptimeMs() + 2000;
+        while ((ReadHba(HbaRegs.GHC) & (uint)HbaGhc.HR) != 0 && Timer.GetUptimeMs() < deadline) { }
 
-        if (timeout <= 0)
+        if ((ReadHba(HbaRegs.GHC) & (uint)HbaGhc.HR) != 0)
             return false;
 
         // Re-enable AHCI mode after reset

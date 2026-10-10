@@ -8,7 +8,7 @@
 // Responsibilities:
 //   - Character/attribute cell access (byte pair per cell)
 //   - Hardware cursor via CRTC registers 0x0E/0x0F
-//   - Scrolling (memmove-style row shift + blank bottom row)
+//   - Scrolling via the CRTC display-start register (VRAM ring buffer)
 //   - 80x50 mode setup via CRTC/sequencer programming (8x8 font that the
 //     firmware VGA BIOS already loaded into plane 2 - no font embedding)
 //   - Attribute-controller blink enable/disable (for bright backgrounds)
@@ -61,6 +61,19 @@ public static unsafe class VgaTextDriver
     private static bool _initialized;
     private static bool _mode80x50;
     private static bool _blinkEnabled = true;
+
+    /// <summary>
+    /// Scroll ring size in rows: the full 32 KiB text window (16,000
+    /// cells). Scrolling advances the CRTC display-start register instead
+    /// of shifting ~4,000 framebuffer cells. Framebuffer accesses trap as
+    /// VM exits on hardware-accelerated hypervisors (WHPX under Windows,
+    /// NEM under VirtualBox), where the old row-shift made console
+    /// scrolling the dominant boot cost (~6 s of a WHPX boot).
+    /// </summary>
+    private const int RingRows = 200;
+
+    /// <summary>Cell index of the first visible row within the ring.</summary>
+    private static int _scrollTop;
 
     /// <summary>
     /// Delayed-wrap state (standard terminal behavior): after writing the
@@ -122,6 +135,7 @@ public static unsafe class VgaTextDriver
         _attribute = DefaultAttribute;
         _blinkEnabled = true;
         _wrapPending = false;
+        _scrollTop = 0;          // ProgramTextMode programmed start 0x0000
         LoadFonts();
         Clear();
         Uart16550.Write("[VGA-c]");
@@ -347,13 +361,16 @@ public static unsafe class VgaTextDriver
 
     // ==================== Cell access ====================
 
+    /// <summary>Byte pointer to the ring cell for screen position (x, y).</summary>
+    private static byte* CellAt(int x, int y) =>
+        Buffer + ((_scrollTop + y * _columns + x) * 2);
+
     /// <summary>Writes a character with the current attribute at a cell.</summary>
     public static void PutChar(int x, int y, byte ch, byte attribute)
     {
         if ((uint)x >= (uint)_columns || (uint)y >= (uint)_rows)
             return;
-        int offset = (y * _columns + x) * 2;
-        byte* p = Buffer + offset;
+        byte* p = CellAt(x, y);
         p[0] = ch;
         p[1] = attribute;
     }
@@ -363,7 +380,7 @@ public static unsafe class VgaTextDriver
     {
         if ((uint)x >= (uint)_columns || (uint)y >= (uint)_rows)
             return 0;
-        return Buffer[(y * _columns + x) * 2];
+        return CellAt(x, y)[0];
     }
 
     /// <summary>Reads the attribute byte of a cell (0 if out of range).</summary>
@@ -371,7 +388,7 @@ public static unsafe class VgaTextDriver
     {
         if ((uint)x >= (uint)_columns || (uint)y >= (uint)_rows)
             return 0;
-        return Buffer[(y * _columns + x) * 2 + 1];
+        return CellAt(x, y)[1];
     }
 
     // ==================== Screen operations ====================
@@ -413,7 +430,7 @@ public static unsafe class VgaTextDriver
     private static void BlankRange(int startCell, int count)
     {
         byte attr = _attribute;
-        byte* p = Buffer;
+        byte* p = Buffer + (_scrollTop * 2);
         for (int i = startCell; i < startCell + count; i++)
         {
             p[i * 2] = 0x20;
@@ -421,27 +438,50 @@ public static unsafe class VgaTextDriver
         }
     }
 
-    /// <summary>Scrolls the screen up one row (bottom row blanked).</summary>
+    /// <summary>
+    /// Scrolls the screen up one row by advancing the CRTC display-start
+    /// address into the VRAM ring. Two port writes replace the old
+    /// ~4,000-cell framebuffer shift (each cell access is a VM exit under
+    /// WHPX/NEM). The ring is compacted back to the base once per full
+    /// ring - amortized ~20 writes per scroll - so the visible window
+    /// never wraps mid-screen.
+    /// </summary>
     public static void ScrollUp()
     {
-        int cells = _columns * _rows;
         int rowCells = _columns;
-        byte* p = Buffer;
+        int cells = _rows * rowCells;
 
-        // Shift rows 1.._rows-1 up by one row (word copies: char+attr).
-        for (int i = 0; i < cells - rowCells; i++)
+        _scrollTop += rowCells;
+        if (_scrollTop + cells > RingRows * MaxColumns)
         {
-            p[i * 2] = p[(i + rowCells) * 2];
-            p[i * 2 + 1] = p[(i + rowCells) * 2 + 1];
+            // Compact: move the visible rows back to the ring base, then
+            // reset the display start. Once per ~150-175 scrolls.
+            byte* p = Buffer;
+            for (int i = 0; i < cells; i++)
+            {
+                p[i * 2] = p[(_scrollTop + i) * 2];
+                p[i * 2 + 1] = p[(_scrollTop + i) * 2 + 1];
+            }
+            _scrollTop = 0;
         }
 
-        // Blank the last row.
+        // Blank the row that has come into view at the bottom.
         byte attr = _attribute;
-        for (int i = cells - rowCells; i < cells; i++)
+        byte* bottom = Buffer + ((_scrollTop + cells - rowCells) * 2);
+        for (int i = 0; i < rowCells; i++)
         {
-            p[i * 2] = 0x20;
-            p[i * 2 + 1] = attr;
+            bottom[i * 2] = 0x20;
+            bottom[i * 2 + 1] = attr;
         }
+
+        SetDisplayStart(_scrollTop);
+    }
+
+    /// <summary>Programs the CRTC display-start address (in cells).</summary>
+    private static void SetDisplayStart(int cell)
+    {
+        CrtcWrite(0x0C, (byte)(cell >> 8));
+        CrtcWrite(0x0D, (byte)cell);
     }
 
     // ==================== Cursor ====================
@@ -473,7 +513,7 @@ public static unsafe class VgaTextDriver
     /// <summary>Writes the cursor position to the CRTC (registers 0x0E/0x0F).</summary>
     public static void UpdateHardwareCursor()
     {
-        ushort pos = (ushort)(_cursorY * _columns + _cursorX);
+        ushort pos = (ushort)(_scrollTop + _cursorY * _columns + _cursorX);
         CrtcWrite(0x0E, (byte)(pos >> 8));
         CrtcWrite(0x0F, (byte)(pos & 0xFF));
     }

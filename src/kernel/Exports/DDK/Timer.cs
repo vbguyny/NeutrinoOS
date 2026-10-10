@@ -31,11 +31,14 @@ public static class TimerExports
 
     /// <summary>
     /// Get system uptime in nanoseconds.
+    /// TSC-based after boot calibration: an HPET counter read is an MMIO
+    /// access that traps as a VM exit under WHPX and similar hypervisors,
+    /// and this export is called on hot paths.
     /// </summary>
     [UnmanagedCallersOnly(EntryPoint = "Kernel_GetUptime")]
     public static ulong GetUptimeNanoseconds()
     {
-        return HPET.TicksToNanoseconds(HPET.ReadCounter());
+        return HPET.FastUptimeNanoseconds();
     }
 
     /// <summary>
@@ -46,7 +49,7 @@ public static class TimerExports
     [UnmanagedCallersOnly(EntryPoint = "Kernel_GetUptimeMs")]
     public static ulong GetUptimeMilliseconds()
     {
-        return HPET.TicksToNanoseconds(HPET.ReadCounter()) / 1_000_000;
+        return HPET.FastUptimeNanoseconds() / 1_000_000;
     }
 
     /// <summary>
@@ -57,7 +60,7 @@ public static class TimerExports
     [UnmanagedCallersOnly(EntryPoint = "Kernel_GetUptimeSec")]
     public static ulong GetUptimeSeconds()
     {
-        return HPET.TicksToNanoseconds(HPET.ReadCounter()) / 1_000_000_000;
+        return HPET.FastUptimeNanoseconds() / 1_000_000_000;
     }
 
     /// <summary>
