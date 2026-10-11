@@ -1,0 +1,22 @@
+M3 step 1: byte-level HttpParser + chunked bodies + Expect: 100-continue (v0.1.188)
+
+- src/ddk/Web/HttpParser.cs (new): the Kestrel-shaped request-head parser
+  scanning raw bytes with byte[] + index arithmetic (no per-header strings;
+  span parameters avoided on the every-request path - Tier-0 passes them as
+  16-byte structs). One linear rescan per tick over the bounded 4 KiB
+  request buffer; flags return as an int bitmask (M2 out-bool hazard),
+  positions as out ints. Replaces WebHost's string-scanning ParseHead and
+  the CharsOf/IndexOfStr/NameEq/ContainsToken/FindHeaderEnd helpers.
+- Chunked request bodies: incremental TryDecodeChunked into a per-connection
+  char scratch; 413 on overflow (raw buffer full or decoded > cap), 400 on
+  bad framing; one trailer line supported.
+- Expect: 100-continue: the engine writes the interim "HTTP/1.1 100
+  Continue" through the output pipe once per request when the body is not
+  fully buffered yet, then runs the normal body path.
+- IHttpRequestFeature/IHttpResponseFeature subset implemented by
+  HttpRequest/HttpResponse, exposed as ctx.RequestFeature/ResponseFeature.
+- build/m3-http-check.py (new): raw TCP client checks (chunked POST;
+  staged 100-continue exchange that waits for the interim response before
+  sending the body). webapi-probe.sh grew to 31 checks.
+- Verification: JITTest 3005/0, AppTest 25/25 (1 MB echo rcvd=1048576),
+  webapi-probe 31/31, sampleapi-probe 28/28.

@@ -22,6 +22,50 @@ namespace NeutrinoOS.DDK.Web;
 /// <summary>A request handler (the M1 synchronous subset of RequestDelegate).</summary>
 public delegate void RequestHandler(HttpContext context);
 
+/// <summary>
+/// The M3 slice of Kestrel's <c>IHttpRequestFeature</c>
+/// (Microsoft.AspNetCore.Http.Features.IHttpRequestFeature): the pieces the
+/// engine fills in before a handler runs. Handlers keep using the concrete
+/// HttpRequest; this is the feature-shaped view (and the port target for
+/// M4's feature collection).
+/// </summary>
+public interface IHttpRequestFeature
+{
+    /// <summary>HTTP method, e.g. "GET".</summary>
+    string Method { get; set; }
+
+    /// <summary>Path only (query string removed).</summary>
+    string Path { get; set; }
+
+    /// <summary>Raw query string without '?', or "".</summary>
+    string QueryString { get; set; }
+
+    /// <summary>Request body decoded as Latin-1 text ("" when absent).</summary>
+    string Body { get; set; }
+}
+
+/// <summary>
+/// The M3 slice of Kestrel's <c>IHttpResponseFeature</c>: status + the
+/// write-side surface handlers already use (Write/Json/Text).
+/// </summary>
+public interface IHttpResponseFeature
+{
+    /// <summary>Status code; defaults to 200.</summary>
+    int StatusCode { get; set; }
+
+    /// <summary>Content-Type header; defaults to text/plain.</summary>
+    string ContentType { get; set; }
+
+    /// <summary>The accumulated body ("" when nothing was written).</summary>
+    string Body { get; }
+
+    /// <summary>Append a chunk to the body.</summary>
+    void Write(string text);
+
+    /// <summary>Set the body to a JSON document and Content-Type to application/json.</summary>
+    void Json(string json);
+}
+
 /// <summary>One HTTP request/response pair handed to a route handler.</summary>
 public sealed class HttpContext
 {
@@ -37,10 +81,22 @@ public sealed class HttpContext
         Request = new HttpRequest();
         Response = new HttpResponse();
     }
+
+    /// <summary>The request as an IHttpRequestFeature (feature-shaped view).</summary>
+    public IHttpRequestFeature RequestFeature
+    {
+        get { return Request; }
+    }
+
+    /// <summary>The response as an IHttpResponseFeature (feature-shaped view).</summary>
+    public IHttpResponseFeature ResponseFeature
+    {
+        get { return Response; }
+    }
 }
 
 /// <summary>The inbound request as seen by a handler.</summary>
-public sealed class HttpRequest
+public sealed class HttpRequest : IHttpRequestFeature
 {
     /// <summary>HTTP method, e.g. "GET" (always uppercase from clients).</summary>
     public string Method;
@@ -117,10 +173,36 @@ public sealed class HttpRequest
         }
         return null;
     }
+
+    // ---- IHttpRequestFeature (explicit: handlers keep using the fields) ----
+
+    string IHttpRequestFeature.Method
+    {
+        get { return Method; }
+        set { Method = value; }
+    }
+
+    string IHttpRequestFeature.Path
+    {
+        get { return Path; }
+        set { Path = value; }
+    }
+
+    string IHttpRequestFeature.QueryString
+    {
+        get { return QueryString; }
+        set { QueryString = value; }
+    }
+
+    string IHttpRequestFeature.Body
+    {
+        get { return Body; }
+        set { Body = value; }
+    }
 }
 
 /// <summary>The outbound response a handler fills in.</summary>
-public sealed class HttpResponse
+public sealed class HttpResponse : IHttpResponseFeature
 {
     /// <summary>Status code; defaults to 200.</summary>
     public int StatusCode;
@@ -166,6 +248,35 @@ public sealed class HttpResponse
     public void Status(int code)
     {
         StatusCode = code;
+    }
+
+    // ---- IHttpResponseFeature (explicit: handlers keep using the members) ----
+
+    int IHttpResponseFeature.StatusCode
+    {
+        get { return StatusCode; }
+        set { StatusCode = value; }
+    }
+
+    string IHttpResponseFeature.ContentType
+    {
+        get { return ContentType; }
+        set { ContentType = value; }
+    }
+
+    string IHttpResponseFeature.Body
+    {
+        get { return Body; }
+    }
+
+    void IHttpResponseFeature.Write(string text)
+    {
+        Write(text);
+    }
+
+    void IHttpResponseFeature.Json(string json)
+    {
+        Json(json);
     }
 }
 

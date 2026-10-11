@@ -123,7 +123,8 @@ HTTP/1.0, `Connection: close`, protocol errors, or the per-connection
 request cap). Verification on the current image: `JITTest` 3005/0,
 `AppTest` 25/25 (incl. the 1 MB echo, `rcvd=1048576`),
 `build/webapi-probe.sh` **29/29 PASS** on the M2 engine (echo, CRUD,
-keep-alive bursts, parallel requests, guest start/stop/restart),
+keep-alive bursts, parallel requests, guest start/stop/restart) - the probe
+has since grown to 31 checks with the M3 raw-client additions below;
 `build/sampleapi-probe.sh` 28/28.
 
 Bring-up bugs found while landing step 2 (worth knowing for M3+):
@@ -151,13 +152,42 @@ Bring-up bugs found while landing step 2 (worth knowing for M3+):
 
 ### M3 — HTTP/1.1 core
 
-- Port the shape of Kestrel's `HttpParser`/`Http1Connection` request
-  processing onto the M2 pipelines: header parsing (span-based),
-  `Content-Length` + chunked bodies, `Expect: 100-continue`,
-  request/response feature collection (`IHttpRequestFeature`,
-  `IHttpResponseFeature` subset), `RequestDelegate` becomes async.
-- Body handling must reuse the M1 semantics (413/431 limits) so all probes
-  keep passing unchanged.
+**Step 1 DONE (this commit) - parser + framing.**
+
+- `src/ddk/Web/HttpParser.cs`: the Kestrel-shaped request-high parser,
+  scanning the raw bytes with `byte[]` + index arithmetic (no per-header
+  strings; span parameters avoided because Tier-0 passes them as 16-byte
+  structs on this every-request path). One linear rescan per tick over the
+  bounded 4 KiB request buffer replaces the M1/M2 string-scanning
+  `ParseHead`: request line + `Content-Length`, `Connection` token,
+  `Transfer-Encoding: chunked`, `Expect: 100-continue`. Flags return as an
+  `int` bitmask (the M2 out-bool hazard), positions as out ints.
+- **Chunked request bodies** (`TryDecodeChunked`): incremental decode into
+  the per-connection char scratch; `413` on overflow (raw buffer full or
+  decoded larger than the cap), `400` on bad framing. One trailer line
+  supported; chunk extensions not (both documented in the file).
+- **`Expect: 100-continue`**: the engine writes the interim
+  `HTTP/1.1 100 Continue` through the output pipe once per request when the
+  body is not yet fully buffered, then keeps the normal body path.
+- **Feature subset**: `IHttpRequestFeature`/`IHttpResponseFeature`
+  (method/path/query/body; status/content-type/body + write surface) are
+  implemented by `HttpRequest`/`HttpResponse` and exposed as
+  `ctx.RequestFeature`/`ctx.ResponseFeature`.
+- Verification: `JITTest` 3005/0, `AppTest` 25/25 (1 MB echo),
+  `webapi-probe` **31/31** (29 + `build/m3-http-check.py` raw-client
+  checks: chunked POST and a staged 100-continue exchange),
+  `sampleapi-probe` 28/28.
+
+Remaining M3 work:
+
+- `RequestDelegate` becomes async (`ValueTask` handler form; the dispatcher
+  defers response writing until the task completes on a later tick).
+- Full request/response feature collection (`IFeatureCollection` shape) -
+  lands with the M4 DI shim so it can be shared.
+- `Expect:` edge semantics (417 on unsatisfiable, `100-continue` flood
+  bounding) and chunked trailers beyond one line.
+- Body handling must keep reusing the M1 semantics (413/431 limits) so all
+  probes keep passing unchanged.
 
 ### M4 — Hosting layer
 

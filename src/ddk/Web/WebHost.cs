@@ -201,6 +201,7 @@ public sealed class WebHost
     {
         public readonly SocketConnectionContext Context;
         public readonly byte[] Buffer = new byte[MaxRequestBytes];
+        public readonly char[] BodyChars = new char[MaxRequestBytes];
         public int Length;
         public ulong LastActivity;
         public bool Done;        // response written and closing; pump out, then release
@@ -208,12 +209,28 @@ public sealed class WebHost
         public bool InputClosed; // peer EOF seen
         public int Requests;     // served on this connection (keep-alive cap)
         public int GraceTicks;
+        public bool Sent100;     // initial "100 Continue" sent for the current request
 
         public Connection(SocketConnectionContext context)
         {
             Context = context;
             LastActivity = Timer.GetUptimeMilliseconds();
         }
+    }
+
+    /// <summary>Send "100 Continue" once per request when the client asked.</summary>
+    private static void SendContinueIfExpected(Connection conn, bool expected)
+    {
+        if (!expected || conn.Sent100)
+            return;
+        PipeWriter writer = conn.Context.OutputWriter;
+        string interim = "HTTP/1.1 100 Continue\r\n\r\n";
+        Span<byte> span = writer.GetSpan(interim.Length);
+        for (int i = 0; i < interim.Length; i++)
+            span[i] = (byte)interim[i];
+        writer.Advance(interim.Length);
+        writer.FlushAsync();
+        conn.Sent100 = true;
     }
 
     private void ServiceConnection(Connection conn, ulong now)
@@ -268,8 +285,14 @@ public sealed class WebHost
         // Serve every complete request currently buffered (keep-alive loop).
         while (!conn.Done)
         {
-            int headerEnd = FindHeaderEnd(conn.Buffer, conn.Length);
-            if (headerEnd < 0)
+            string method;
+            string target;
+            int contentLength;
+            int headEnd;
+            int flags;
+            int parsed = HttpParser.ParseRequestHead(conn.Buffer, conn.Length,
+                out method, out target, out contentLength, out headEnd, out flags);
+            if (parsed == HttpParser.ResultIncomplete)
             {
                 if (conn.Length >= conn.Buffer.Length)
                     RespondAndFinish(conn, 431, "text/plain", "request too large\n");
@@ -277,35 +300,68 @@ public sealed class WebHost
                     conn.Released = true;   // EOF between/inside requests
                 return;
             }
-
-            string head = CharsOf(conn.Buffer, 0, headerEnd);
-            string method;
-            string path;
-            int contentLength;
-            int flags = ParseHead(head, out method, out path, out contentLength);
-            bool http11 = (flags & 1) != 0;
-            bool connClose = (flags & 2) != 0;
-            if (method == null)
+            if (parsed == HttpParser.ResultBad)
             {
                 RespondAndFinish(conn, 400, "text/plain", "bad request\n");
                 return;
             }
 
-            int total = headerEnd + 4 + contentLength;
-            if (total > conn.Buffer.Length)
-            {
-                RespondAndFinish(conn, 413, "text/plain", "body too large\n");
-                return;
-            }
-            if (conn.Length < total)
-                return;   // keep waiting for the rest of the body
+            bool http11 = (flags & HttpParser.FlagHttp11) != 0;
+            bool connClose = (flags & HttpParser.FlagConnClose) != 0;
+            bool chunked = (flags & HttpParser.FlagChunked) != 0;
+            bool expectContinue = (flags & HttpParser.FlagExpectContinue) != 0;
 
             string reqBody = "";
-            if (contentLength > 0)
-                reqBody = CharsOf(conn.Buffer, headerEnd + 4, contentLength);
+            int total;   // bytes of this request currently in the buffer
+            if (chunked)
+            {
+                int bodyLen;
+                int consumed = HttpParser.TryDecodeChunked(conn.Buffer, headEnd,
+                    conn.Length - headEnd, conn.BodyChars, out bodyLen);
+                if (consumed == HttpParser.DecodeIncomplete)
+                {
+                    SendContinueIfExpected(conn, expectContinue);
+                    if (conn.Length >= conn.Buffer.Length)
+                    {
+                        RespondAndFinish(conn, 413, "text/plain", "body too large\n");
+                        return;
+                    }
+                    return;   // keep waiting for more chunks
+                }
+                if (consumed == HttpParser.DecodeMalformed)
+                {
+                    RespondAndFinish(conn, 400, "text/plain", "bad chunked body\n");
+                    return;
+                }
+                if (consumed == HttpParser.DecodeTooLarge)
+                {
+                    RespondAndFinish(conn, 413, "text/plain", "body too large\n");
+                    return;
+                }
+                total = headEnd + consumed;
+                if (bodyLen > 0)
+                    reqBody = HttpParser.StrOf(conn.BodyChars, bodyLen);
+            }
+            else
+            {
+                total = headEnd + contentLength;
+                if (total > conn.Buffer.Length)
+                {
+                    RespondAndFinish(conn, 413, "text/plain", "body too large\n");
+                    return;
+                }
+                if (conn.Length < total)
+                {
+                    SendContinueIfExpected(conn, expectContinue);
+                    return;   // keep waiting for the rest of the body
+                }
+                if (contentLength > 0)
+                    reqBody = HttpParser.CharsOf(conn.Buffer, headEnd, contentLength);
+            }
 
             bool keepAlive = http11 && !connClose && conn.Requests < MaxRequestsPerConnection;
-            Dispatch(conn, method, path, reqBody, keepAlive);
+            Dispatch(conn, method, target, reqBody, keepAlive);
+            conn.Sent100 = false;
 
             // Consume the request; keep any pipelined remainder.
             int left = conn.Length - total;
@@ -457,88 +513,6 @@ public sealed class WebHost
         }
     }
 
-    /// <summary>First line + header lines (chars [off..off+len)).
-    /// Returns flags: bit0 = HTTP/1.1, bit1 = Connection: close.
-    /// (Out bool params miscompiled in Tier-0 - see the M2 notes; the
-    /// int return + caller-side bit tests are the proven-safe shape.)</summary>
-    private static int ParseHead(string head, out string method, out string path, out int contentLength)
-    {
-        method = null;
-        path = null;
-        contentLength = 0;
-        int flags = 0;
-
-        int lineEnd = IndexOfStr(head, "\r\n", 0);
-        if (lineEnd < 0)
-            return 0;
-        string line = head.Substring(0, lineEnd);
-        int sp1 = WebService.IndexOfChar(line, ' ');
-        if (sp1 <= 0)
-            return 0;
-        int sp2 = WebService.IndexOfChar2(line, ' ', sp1 + 1);
-        if (sp2 <= 0)
-            return 0;
-        method = line.Substring(0, sp1);
-        path = line.Substring(sp1 + 1, sp2 - sp1 - 1);
-        // Version token, e.g. "HTTP/1.1" (persistent by default).
-        if (line.Length == sp2 + 9 &&
-            line[sp2 + 1] == 'H' && line[sp2 + 6] == '1' && line[sp2 + 8] == '1')
-            flags |= 1;
-
-        int pos = lineEnd + 2;
-        while (pos < head.Length)
-        {
-            int end = IndexOfStr(head, "\r\n", pos);
-            if (end < 0)
-                end = head.Length;   // final header: its CRLF is outside head
-            string h = head.Substring(pos, end - pos);
-            if (h.Length == 0)
-                break;
-            int colon = WebService.IndexOfChar(h, ':');
-            if (colon > 0)
-            {
-                string name = WebService.TrimStr(h.Substring(0, colon));
-                string value = WebService.TrimStr(h.Substring(colon + 1, h.Length - colon - 1));
-                if (NameEq(name, "content-length"))
-                {
-                    contentLength = WebService.ParseInt(value, 0) & 0xFFFFF;
-                }
-                else if (NameEq(name, "connection"))
-                {
-                    if (ContainsToken(value, "close"))
-                        flags |= 2;
-                }
-            }
-            pos = end + 2;
-        }
-        return flags;
-    }
-
-    /// <summary>Case-insensitive token search (e.g. "close" in a Connection value).</summary>
-    private static bool ContainsToken(string s, string token)
-    {
-        if (s == null || token == null || token.Length == 0 || s.Length < token.Length)
-            return false;
-        for (int i = 0; i + token.Length <= s.Length; i++)
-        {
-            bool ok = true;
-            for (int j = 0; j < token.Length; j++)
-            {
-                char c = s[i + j];
-                if (c >= 'A' && c <= 'Z')
-                    c = (char)(c + 32);
-                if (c != token[j])
-                {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok)
-                return true;
-        }
-        return false;
-    }
-
     /// <summary>Split "/a/b/{id}" into ["a","b","{id}"] ('/' alone = 0 segments).</summary>
     private static void SplitPath(string s, string[] segs, out int count)
     {
@@ -563,59 +537,5 @@ public sealed class WebHost
             }
             i++;
         }
-    }
-
-    /// <summary>Index of CRLFCRLF in the buffer, or -1.</summary>
-    private static int FindHeaderEnd(byte[] buf, int len)
-    {
-        for (int i = 0; i + 3 < len; i++)
-        {
-            if (buf[i] == 13 && buf[i + 1] == 10 && buf[i + 2] == 13 && buf[i + 3] == 10)
-                return i;
-        }
-        return -1;
-    }
-
-    private static string CharsOf(byte[] buf, int off, int len)
-    {
-        var chars = new char[len];
-        for (int i = 0; i < len; i++)
-            chars[i] = (char)buf[off + i];
-        return new string(chars);
-    }
-
-    private static int IndexOfStr(string s, string needle, int start)
-    {
-        for (int i = start; i + needle.Length <= s.Length; i++)
-        {
-            bool ok = true;
-            for (int j = 0; j < needle.Length; j++)
-            {
-                if (s[i + j] != needle[j])
-                {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok)
-                return i;
-        }
-        return -1;
-    }
-
-    private static bool NameEq(string a, string b)
-    {
-        if (a == null || b == null || a.Length != b.Length)
-            return false;
-        for (int i = 0; i < a.Length; i++)
-        {
-            char ca = a[i];
-            char cb = b[i];
-            if (ca >= 'A' && ca <= 'Z')
-                ca = (char)(ca + 32);
-            if (ca != cb)
-                return false;
-        }
-        return true;
     }
 }

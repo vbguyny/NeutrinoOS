@@ -78,6 +78,18 @@ r=$(body -X DELETE $B/api/v1/tasks/1)
 [ "$(code $B/no/such/route)" = 404 ] && pass "unknown route -> 404" || fail "unknown route"
 [ "$(code $B/api/v1/tasks/abc)" = 404 ] && pass "non-numeric id -> 404 (app validation)" || fail "non-numeric id"
 
+echo "=== M3: chunked + 100-continue (raw client) ==="
+if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py chunked > /tmp/m3-chunked.out 2>&1; then
+  pass "chunked POST body (Transfer-Encoding)"
+else
+  fail "chunked POST ($(tail -1 /tmp/m3-chunked.out))"
+fi
+if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py continue > /tmp/m3-continue.out 2>&1; then
+  pass "Expect: 100-continue interim response"
+else
+  fail "100-continue ($(tail -1 /tmp/m3-continue.out))"
+fi
+
 echo "=== concurrency + counters ==="
 curl -sS -m 15 -o /dev/null $B/api/v1/info 2>/dev/null &
 P1=$!
