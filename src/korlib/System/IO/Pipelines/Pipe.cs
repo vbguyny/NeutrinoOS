@@ -18,11 +18,12 @@ using System.Threading.Tasks;
 namespace System.IO.Pipelines
 {
     /// <summary>A pooled byte-buffer segment presented as a sequence segment.</summary>
+    /// <remarks>
+    /// Data/Length are inherited from the base (single-level layout - see the
+    /// note on ReadOnlySequenceSegment); this class must not add fields.
+    /// </remarks>
     internal sealed class PipeSegment : ReadOnlySequenceSegment<byte>
     {
-        internal byte[] Data;
-        internal int Length;                 // bytes written (committed at flush time)
-
         internal PipeSegment(byte[] data)
         {
             Data = data;
@@ -33,7 +34,8 @@ namespace System.IO.Pipelines
         internal void SetRunningIndex(long value) => RunningIndex = value;
 
         /// <summary>Publishes the committed extent (0..Length) to sequence consumers.</summary>
-        internal void RefreshMemory() => Memory = new ReadOnlyMemory<byte>(Data, 0, Length);
+        internal void RefreshMemory() =>
+            _memory = new ReadOnlyMemory<byte>(Data, 0, Length);
     }
 
     public class Pipe
@@ -64,6 +66,16 @@ namespace System.IO.Pipelines
         private bool _writerCompleted;
         private bool _readerCompleted;
         private bool _cancelReadPending;
+
+        // ---- Temporary M2 bring-up diagnostics (monotonic counters) ----
+        public int DebugTryReadTrue;
+        public int DebugAdvCalls;
+        public int DebugAdvNullSeg;
+        public int DebugAdvNegDelta;
+        public int DebugAdvZero;
+        public long DebugLastDelta;
+        public long DebugConsumedBytes => _consumedBytes;
+        public long DebugCommittedBytes => _committedBytes;
 
         public Pipe() : this(PipeOptions.Default)
         {
@@ -99,6 +111,17 @@ namespace System.IO.Pipelines
                 {
                     seg.SetNextSegment(next);
                     next.SetRunningIndex(seg.RunningIndex + seg.Data.Length);
+
+                    // Late-append normalization: if the reader cursor sat
+                    // exactly at the end of the previous tail segment, move
+                    // it to the fresh segment. Otherwise reader sequences
+                    // would start on an exhausted segment and First would
+                    // report an empty head despite pending data.
+                    if (ReferenceEquals(_consumedSegment, seg) && _consumedIndex >= seg.Length)
+                    {
+                        _consumedSegment = next;
+                        _consumedIndex = 0;
+                    }
                 }
                 else
                 {
@@ -184,6 +207,7 @@ namespace System.IO.Pipelines
         {
             if (_readTailSegment != null && _committedBytes > _consumedBytes)
             {
+                DebugTryReadTrue++;
                 result = MakeReadResult(false);
                 return true;
             }
@@ -214,19 +238,47 @@ namespace System.IO.Pipelines
             return new ValueTask<ReadResult>(_readerWaiting.Task);
         }
 
-        private void AdvanceToCore(SequencePosition consumed, SequencePosition examined)
+        private void AdvanceToCore(SequencePosition consumed)
         {
+            DebugAdvCalls++;
             if (_consumedSegment == null || _readTailSegment == null)
+            {
+                DebugAdvNullSeg++;
                 return;
+            }
 
             var cSeg = consumed.GetObject() as PipeSegment;
             int cIdx = consumed.GetInteger();
             if (cSeg == null)
+            {
+                DebugAdvNullSeg++;
                 return;
+            }
 
             long delta = Distance(_consumedSegment, _consumedIndex, cSeg, cIdx);
+            DebugLastDelta = delta;
             if (delta < 0)
+            {
+                DebugAdvNegDelta++;
                 return;                            // stale/foreign position: ignore
+            }
+            if (delta == 0)
+                DebugAdvZero++;
+
+            // Normalize: if the cursor lands exactly at the end of a segment
+            // and more segments follow, move it to the start of the next one.
+            // Reader sequences then never begin on an exhausted segment
+            // (First on that state slices a zero-remainder memory view, which
+            // is unnecessarily fragile during M2 bring-up).
+            if (cIdx >= cSeg.Length)
+            {
+                var nextSeg = cSeg.Next as PipeSegment;
+                if (nextSeg != null)
+                {
+                    cSeg = nextSeg;
+                    cIdx = 0;
+                }
+            }
 
             _consumedBytes += delta;
             _consumedSegment = cSeg;
@@ -285,8 +337,7 @@ namespace System.IO.Pipelines
         public void Reset()
         {
             if (_committedBytes > _consumedBytes)
-                throw new InvalidOperationException("Cannot reset a pipe with unread data");
-            FreeAll();
+                throw new InvalidOperationException("Cannot reset a pipe with unread data");            FreeAll();
             _writerCompleted = false;
             _readerCompleted = false;
             _cancelReadPending = false;
@@ -394,10 +445,10 @@ namespace System.IO.Pipelines
 
             public override bool TryRead(out ReadResult result) => _pipe.TryReadCore(out result);
 
-            public override void AdvanceTo(SequencePosition consumed) => _pipe.AdvanceToCore(consumed, consumed);
+            public override void AdvanceTo(SequencePosition consumed) => _pipe.AdvanceToCore(consumed);
 
             public override void AdvanceTo(SequencePosition consumed, SequencePosition examined) =>
-                _pipe.AdvanceToCore(consumed, examined);
+                _pipe.AdvanceToCore(consumed);
 
             public override void CancelPendingRead() => _pipe.CancelPendingReadCore();
 

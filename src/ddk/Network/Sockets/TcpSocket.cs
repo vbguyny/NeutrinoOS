@@ -164,7 +164,13 @@ public unsafe class TcpSocket
 
         if (_stack != null && _connectionIndex >= 0)
         {
-            return _stack.TcpReceive(_connectionIndex, buffer, maxLength);
+            int read = _stack.TcpReceive(_connectionIndex, buffer, maxLength);
+            // Draining the ring reopens the advertised window; flush the
+            // pure ACK here so the peer can send again even if our own
+            // sends are blocked by its (possibly zero) window.
+            if (_stack.TcpFlushWindowUpdate(_connectionIndex) > 0)
+                NetworkPump.FlushTx(_stack);
+            return read;
         }
 
         // For accepted connections, read directly from connection

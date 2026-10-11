@@ -1,0 +1,34 @@
+M2 transport: 1 MB echo acceptance passing over the socket connection transport (v0.1.177)
+
+DDK - Kestrel-shaped transport over the TCP stack:
+- SocketConnectionListener/Factory, SocketConnectionContext (cooperative Tick),
+  ConnectionContext, IConnectionListener, ConnectionEndPoint, ConnectionAbortedException.
+- PumpInput/PumpOutput over System.IO.Pipelines with backpressure; no retransmission exists,
+  so the receive window is now authoritative: ACKs advertise the real free ring space, Read()
+  refreshes it and arms a pending update, BuildPendingWindowUpdate + NetworkStack.TcpFlushWindowUpdate
+  + TcpSocket.Receive flush a pure window-update ACK even while data sends are blocked
+  (fixes the zero-window deadlock that stalled the echo after the first 8 KB).
+
+korlib - Pipe/ReadOnlySequence hardening:
+- Field-layout flattening: Data/Length moved from PipeSegment into the generic base segment
+  class. The Tier-0 JIT overlaps fields declared on a class derived from a generic base with
+  the base's fields (Length increments landed in _memory's packed qword and poisoned _index).
+- Cursor normalization: AdvanceTo skips exhausted segments and GetMemoryCore moves the consume
+  cursor to a fresh segment on late append, so reader sequences never start on a dead segment.
+- IDuplexPipe added for the transport surface.
+
+Kernel JIT fixes (crash-hunting fallout):
+- >16-byte struct returns through cross-assembly virtual dispatch now classify the return kind
+  and ReturnStructSize in the abstract-resolution path (fixes the boot crash on Pipe.Writer
+  FlushAsync through PipeWriter's abstract surface).
+- ILCompiler callvirt ensure/fallback paths handle the hidden-return-buffer ABI.
+
+AppTest/JITTest:
+- ConnectionEcho1MB: full-duplex 1 MB echo through the real transport with pattern
+  verification (rcvd=1048576, mm=0).
+- Duplex coverage added to the Memory/Pipelines JITTest category.
+- Known Tier-0 JIT issues found during bring-up are documented in-code with workarounds
+  (large string[] stelem.ref miscompile, generic-instantiation `as` casts, cross-assembly
+  enumerator returns, const/local-compare stale-slot family, derived-field layout).
+
+Verified: JITTest 3005/0, AppTest 25/25, boot to shell ~13 s.

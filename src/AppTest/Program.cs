@@ -2,6 +2,9 @@
 // Tests application-level libraries like HTTP after drivers are loaded
 
 using System;
+using System.Buffers;
+using System.IO.Pipelines;
+using NeutrinoOS.DDK.Connections;
 using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Network.Stack;
 using NeutrinoOS.DDK.Network.Sockets;
@@ -514,6 +517,7 @@ public static class TestRunner
         TestTcpSocketNotConnected();
         TestMultipleListeners();
         TestDuplicatePortRejection();
+        TestConnectionEcho1MB();
     }
 
     private static unsafe void TestTcpListenerCreation()
@@ -675,6 +679,297 @@ public static class TestRunner
             Pass("TcpDuplicatePortRejection");
         else
             Fail("TcpDuplicatePortRejection", "duplicate port accepted");
+    }
+
+    /// <summary>
+    /// M2 transport acceptance: drives 1 MB through the Kestrel-shaped
+    /// listener echo path (SocketConnectionListener + SocketConnectionContext
+    /// over a TcpSocket, via the IDuplexPipe transport). Runs on a synthetic
+    /// stack - NetworkPump delivers frames addressed to our own IP straight
+    /// back into the stack, so no NIC is needed.
+    /// </summary>
+    private static unsafe void TestConnectionEcho1MB()
+    {
+        // Mini pipe sanity probe (BCL-visible operations only): isolates the
+        // pipe mechanics from the transport, step by step.
+        {
+            var tp = new Pipe();
+            var tw = tp.Writer;
+            var tr = tp.Reader;
+            Debug.Report("[AppTest] mini1");
+            Span<byte> span = tw.GetSpan(100);
+            span[0] = 42;
+            tw.Advance(100);
+            Debug.Report("[AppTest] mini2 spanAdvance");
+            var fl = tw.FlushAsync();
+            Debug.Report("[AppTest] mini3 flush=" + (fl.IsCompleted ? "done" : "pending"));
+            bool first = tr.TryRead(out ReadResult mr1);
+            Debug.Report("[AppTest] mini4 tryread=" + (first ? "Y" : "N"));
+            if (first)
+            {
+                int len1 = (int)mr1.Buffer.Length;
+                Debug.Report("[AppTest] mini5 len=" + len1.ToString());
+                var end = mr1.Buffer.End;
+                object? obj = end.GetObject();
+                int endInt = end.GetInteger();
+                Debug.Report("[AppTest] mini6 end ok=" + (obj != null ? "Y" : "N") +
+                    " int=" + endInt.ToString());
+                tr.AdvanceTo(end);
+                Debug.Report("[AppTest] mini7 advanced");
+                bool again = tr.TryRead(out ReadResult mr2);
+                int len2 = again ? (int)mr2.Buffer.Length : -1;
+                Debug.Report("[AppTest] mini8 again=" + (again ? "Y" : "N") +
+                    " len2=" + len2.ToString());
+                tr.Complete();
+            }
+
+            // TryGet probe on a fresh pipe (the echo copy loop depends on it).
+            var tp2 = new Pipe();
+            var tw2 = tp2.Writer;
+            var tr2 = tp2.Reader;
+            Span<byte> s2 = tw2.GetSpan(64);
+            s2[0] = 7;
+            tw2.Advance(64);
+            tw2.FlushAsync();
+            if (tr2.TryRead(out ReadResult rr))
+            {
+                int n = 0;
+                foreach (ReadOnlyMemory<byte> mem in rr.Buffer)
+                    n += mem.Length;
+                var en = rr.Buffer.GetEnumerator();
+                bool mv = en.MoveNext();
+                int curLen = mv ? en.Current.Length : -1;
+                int firstLen = rr.Buffer.First.Length;
+                int gpInt = rr.Buffer.GetPosition(firstLen).GetInteger();
+                Debug.Report("[AppTest] mini9 foreach len=" + n.ToString() +
+                    " mv=" + (mv ? "Y" : "N") + " cur=" + curLen.ToString());
+                Debug.Report("[AppTest] mini10 first=" + firstLen.ToString() +
+                    " gpInt=" + gpInt.ToString());
+                tr2.AdvanceTo(rr.Buffer.End);
+                tr2.Complete();
+            }
+            else
+            {
+                Debug.Report("[AppTest] mini9 tryread2=N");
+            }
+        }
+
+        byte* macAddr = stackalloc byte[6];
+        macAddr[0] = 0x52; macAddr[1] = 0x54; macAddr[2] = 0x00;
+        macAddr[3] = 0x12; macAddr[4] = 0x34; macAddr[5] = 0x56;
+
+        var stack = new NetworkStack(macAddr);
+        stack.Configure(0xC0A80164, 0xFFFFFF00, 0xC0A80101);   // 192.168.1.100/24
+
+        IConnectionListener listener;
+        try
+        {
+            var factory = new SocketConnectionListenerFactory(stack);
+            listener = factory.BindAsync(new ConnectionEndPoint(8099)).GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            Fail("ConnectionEcho1MB", "BindAsync failed");
+            return;
+        }
+
+        var sockListener = listener as SocketConnectionListener;
+        if (sockListener == null)
+        {
+            Fail("ConnectionEcho1MB", "unexpected listener type");
+            return;
+        }
+
+        var client = new TcpSocket(stack);
+        if (!client.Connect(0xC0A80164, 8099))
+        {
+            Fail("ConnectionEcho1MB", "TcpSocket.Connect failed");
+            listener.DisposeAsync();
+            return;
+        }
+
+        // Drive the handshake + accept (loopback frames move inside Tick).
+        SocketConnectionContext? serverConn = null;
+        int spin = 0;
+        while (spin < 4000 && (serverConn == null || !client.Connected))
+        {
+            sockListener.Tick();
+            if (serverConn == null && sockListener.TryAccept(out SocketConnectionContext? accepted))
+                serverConn = accepted;
+            spin++;
+        }
+        if (serverConn == null || !client.Connected)
+        {
+            Fail("ConnectionEcho1MB", "connect/accept timed out");
+            client.Close();
+            listener.DisposeAsync();
+            return;
+        }
+
+        // Echo 1 MB: client -> socket -> transport input pipe -> transport
+        // output pipe -> socket -> client. Exercises both pipe directions
+        // through the real backpressure machinery.
+        const int Total = 1024 * 1024;
+        var sendBuf = new byte[16 * 1024];
+        var recvBuf = new byte[16 * 1024];
+        int sent = 0;
+        int received = 0;
+        int mismatches = 0;
+        bool anyMismatch = false;
+        int idleSpin = 0;
+        int ticksDone = 0;
+        int readHits = 0;
+        int readBytes = 0;
+        ulong startMs = NeutrinoOS.DDK.Kernel.Timer.GetUptimeMilliseconds();
+
+        PipeReader reader = serverConn.InputReader;
+        PipeWriter writer = serverConn.OutputWriter;
+        ValueTask<FlushResult> pendingFlush = default;
+        bool flushPending = false;
+
+        while (received < Total && idleSpin < 200000)
+        {
+            if (NeutrinoOS.DDK.Kernel.Timer.GetUptimeMilliseconds() - startMs > 30000)
+                break;
+
+            bool progressed = false;
+
+            // Transport slice: stack pump + socket <-> pipe moves.
+            sockListener.Tick();
+            serverConn.Tick();
+            ticksDone++;
+
+            // Server echo step (input pipe -> output pipe, backpressure aware).
+            if (flushPending && pendingFlush.IsCompleted)
+                flushPending = false;
+            if (!flushPending && reader.TryRead(out ReadResult result))
+            {
+                var buffer = result.Buffer;
+                readHits++;
+                readBytes += (int)buffer.Length;
+                if (!buffer.IsEmpty)
+                {
+                    // Copy only the first memory of the buffer and advance the
+                    // reader by exactly the consumed amount. Full segment
+                    // iteration (TryGet / Slice / enumerator) is still affected
+                    // by Tier-0 JIT cast bugs during M2 bring-up; the next
+                    // TryRead surfaces the remainder without any slicing.
+                    ReadOnlyMemory<byte> fmem = buffer.First;
+                    if (fmem.Length > 0)
+                    {
+                        ReadOnlySpan<byte> fs = fmem.Span;
+                        Span<byte> ws = writer.GetSpan(fs.Length);
+                        for (int i = 0; i < fs.Length; i++)
+                            ws[i] = fs[i];
+                        writer.Advance(fs.Length);
+                        try
+                        {
+                            if ((long)fs.Length < buffer.Length)
+                                reader.AdvanceTo(buffer.GetPosition(fs.Length));
+                            else
+                                reader.AdvanceTo(buffer.End);
+                        }
+                        catch (Exception advEx)
+                        {
+                            // M2 bring-up diagnostic: the pipe signals consume
+                            // anomalies; surface the message and stop the loop.
+                            Debug.Report("[AppTest] advance exception: " + advEx.Message);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // Empty first memory although the buffer is not:
+                        // leave the position untouched - advancing past it
+                        // would silently drop the pending data (the pipe's
+                        // append-time normalization prevents this state).
+                    }
+                    progressed = true;
+                }
+                if (result.IsCompleted)
+                    writer.Complete();
+                pendingFlush = writer.FlushAsync();
+                flushPending = !pendingFlush.IsCompleted;
+            }
+
+            // Client: push the next chunk (partial sends retry next pass).
+            if (sent < Total)
+            {
+                int chunk = Total - sent;
+                if (chunk > sendBuf.Length)
+                    chunk = sendBuf.Length;
+                for (int i = 0; i < chunk; i++)
+                    sendBuf[i] = (byte)(((sent + i) * 7 + 3) & 0xFF);
+                int n;
+                fixed (byte* p = sendBuf)
+                {
+                    n = client.Send(p, chunk);
+                }
+                if (n > 0)
+                {
+                    sent += n;
+                    progressed = true;
+                }
+            }
+
+            // Client: drain echoed bytes and verify the pattern.
+            int got;
+            fixed (byte* p = recvBuf)
+            {
+                got = client.Receive(p, recvBuf.Length);
+            }
+            if (got > 0)
+            {
+                for (int i = 0; i < got; i++)
+                {
+                    byte expected = (byte)(((received + i) * 7 + 3) & 0xFF);
+                    if (recvBuf[i] != expected)
+                    {
+                        mismatches++;
+                        if (!anyMismatch)
+                        {
+                            anyMismatch = true;
+                            Debug.Report("[AppTest] first echo mismatch at offset " +
+                                (received + i).ToString());
+                        }
+                    }
+                }
+                received += got;
+                progressed = true;
+            }
+
+            if (progressed)
+                idleSpin = 0;
+            else
+                idleSpin++;
+        }
+
+        // Capture connection state before cleanup for the failure diagnostic.
+        TcpState clientState = client.State;
+        bool peerClosed = serverConn.PeerClosed;
+
+        client.Close();
+        serverConn.Abort();
+        listener.DisposeAsync();
+
+        // NOTE: the verdict runs in a small helper on purpose: the Tier-0
+        // JIT was observed mis-evaluating local-vs-const comparisons at the
+        // end of this large method (the branch was taken as if the values
+        // differed while the printed values were equal - stale-slot family).
+        Debug.Report("[AppTest] echo end mm=" + mismatches.ToString());
+        int totalForVerdict = Total;
+        EchoVerdict(received, totalForVerdict, anyMismatch);
+    }
+
+    /// <summary>Echo verdict in a small method (see call-site NOTE).</summary>
+    private static void EchoVerdict(int received, int total, bool anyMismatch)
+    {
+        Debug.Report("[AppTest] echo verdict rcvd=" + received.ToString() +
+            " total=" + total.ToString());
+        if (received == total && !anyMismatch)
+            Pass("ConnectionEcho1MB");
+        else
+            Fail("ConnectionEcho1MB", "echo verification failed");
     }
 
     /// <summary>

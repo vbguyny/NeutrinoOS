@@ -7764,6 +7764,55 @@ public unsafe struct ILCompiler
                 // Save RBX first (we'll use it to hold the method address)
                 X64Emitter.Push(ref _code, VReg.R7);  // Save original RBX
 
+                if (needsHiddenBuffer)
+                {
+                    // Hidden-return-buffer convention: the physical args are
+                    // [RCX=buffer, RDX=this, R8=arg1, R9=arg2, stack...].
+                    // Save every physical arg register (the ensure stub may clobber
+                    // RCX/RDX/R8/R9), then restore them after the lookup. The
+                    // boxed-VT adjust applies to 'this' (RDX in this convention).
+                    if (totalArgs >= 3)
+                        X64Emitter.Push(ref _code, VReg.R4);  // Push R9 (arg2)
+                    if (totalArgs >= 2)
+                        X64Emitter.Push(ref _code, VReg.R3);  // Push R8 (arg1)
+                    X64Emitter.Push(ref _code, VReg.R2);      // Push RDX (this)
+                    X64Emitter.Push(ref _code, VReg.R1);      // Push RCX (buffer)
+
+                    // The ensure lookup needs the OBJECT in RCX; it currently
+                    // holds the hidden buffer, so move 'this' from RDX into RCX.
+                    X64Emitter.MovRR(ref _code, VReg.R1, VReg.R2);
+                    X64Emitter.MovRI32(ref _code, VReg.R2, method.VtableSlot);
+
+                    X64Emitter.SubRI(ref _code, VReg.SP, 32);  // Shadow space
+                    X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)_ensureVtableSlotCompiled);
+                    X64Emitter.CallR(ref _code, VReg.R0);
+                    X64Emitter.AddRI(ref _code, VReg.SP, 32);  // Remove shadow space
+
+                    X64Emitter.MovRR(ref _code, VReg.R7, VReg.R0);  // RBX = method address
+
+                    // Restore physical args (reverse of push order)
+                    X64Emitter.Pop(ref _code, VReg.R1);       // RCX = buffer
+                    X64Emitter.Pop(ref _code, VReg.R2);       // RDX = this
+                    if (totalArgs >= 2)
+                        X64Emitter.Pop(ref _code, VReg.R3);   // R8 = arg1
+                    if (totalArgs >= 3)
+                        X64Emitter.Pop(ref _code, VReg.R4);   // R9 = arg2
+
+                    // Boxed value types: adjust 'this' (RDX) to the value data.
+                    X64Emitter.MovRM(ref _code, VReg.R0, VReg.R2, 0);   // RAX = [RDX] = MethodTable*
+                    X64Emitter.MovRM16(ref _code, VReg.R0, VReg.R0, 2); // RAX = MT->_usFlags
+                    X64Emitter.AndImm(ref _code, VReg.R0, 0x0020);      // IsValueType flag?
+                    int skipVTAdjustHB = X64Emitter.Je(ref _code);
+                    X64Emitter.AddRI(ref _code, VReg.R2, 8);            // RDX = &value data
+                    X64Emitter.PatchJump(ref _code, skipVTAdjustHB, _code.Position);
+
+                    // Move method address to RAX and call
+                    X64Emitter.MovRR(ref _code, VReg.R0, VReg.R7);  // RAX = RBX (method address)
+                    X64Emitter.Pop(ref _code, VReg.R7);  // Restore RBX
+                    X64Emitter.CallR(ref _code, VReg.R0);  // call RAX
+                }
+                else
+                {
                 // Save args to stack (we need them after the stub call)
                 // Stack layout: [RBX_orig][arg3][arg2][arg1][this] <- RSP points to this
                 if (totalArgs >= 4)
@@ -7821,12 +7870,17 @@ public unsafe struct ILCompiler
 
                 // Call through the method address (now in RAX)
                 X64Emitter.CallR(ref _code, VReg.R0);  // call RAX
+                }
             }
             else
             {
                 // Fallback: load from vtable directly (used when stub is not available)
-                // 1. Load MethodTable* from [RCX] (object header is the MT pointer)
-                X64Emitter.MovRM(ref _code, VReg.R0, VReg.R1, 0);  // RAX = *this = MethodTable*
+                // With a hidden return buffer the object sits in RDX (RCX holds the
+                // buffer), otherwise 'this' is in RCX.
+                VReg vtObjReg = needsHiddenBuffer ? VReg.R2 : VReg.R1;
+
+                // 1. Load MethodTable* from [obj] (object header is the MT pointer)
+                X64Emitter.MovRM(ref _code, VReg.R0, vtObjReg, 0);  // RAX = *obj = MethodTable*
 
                 // 2. Load vtable slot at offset HeaderSize + slot*8
                 // MethodTable.HeaderSize = 24 bytes, each vtable slot is 8 bytes
@@ -7837,7 +7891,7 @@ public unsafe struct ILCompiler
                 X64Emitter.MovRM16(ref _code, VReg.R0, VReg.R0, 2); // RAX = MT->_usFlags
                 X64Emitter.AndImm(ref _code, VReg.R0, 0x0020);      // IsValueType flag?
                 int skipVTAdjustFallback = X64Emitter.Je(ref _code);
-                X64Emitter.AddRI(ref _code, VReg.R1, 8);            // RCX = &value data
+                X64Emitter.AddRI(ref _code, vtObjReg, 8);           // obj = &value data
                 X64Emitter.PatchJump(ref _code, skipVTAdjustFallback, _code.Position);
 
                 // 4. Call through the vtable slot

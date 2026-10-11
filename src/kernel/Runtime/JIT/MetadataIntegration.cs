@@ -3575,6 +3575,7 @@ public static unsafe class MetadataIntegration
                     byte argCount = 0;
                     bool hasThis = true;  // Instance method
                     ReturnKind retKind = ReturnKind.IntPtr;  // Default
+                    ushort returnStructSize = 0;
 
                     if (sigBlob != null && sigLen > 0)
                     {
@@ -3599,13 +3600,35 @@ public static unsafe class MetadataIntegration
                             paramCount = (uint)(((b & 0x3F) << 8) | sigBlob[sigPos++]);
                         argCount = (byte)paramCount;
 
-                        byte retType = sigBlob[sigPos];
-                        retKind = (retType == 0x01) ? ReturnKind.Void : ReturnKind.IntPtr;
+                        // Classify the return type with the SAME helpers the
+                        // method compile path uses (Tier0JIT.CompileMethod).
+                        // The old byte check (Void vs IntPtr only) classified
+                        // value-type generic returns such as
+                        // ValueTask<FlushResult> as IntPtr with size 0, so this
+                        // call site emitted the register-return ABI while the
+                        // compiled override expected the hidden-return-buffer
+                        // ABI (RCX=buffer, RDX=this). The first virtual call to
+                        // such a method then dereferenced RDX (0) as 'this'.
+                        if (SignatureReader.ReadMethodSignature(sigBlob, sigLen, out var absSig))
+                        {
+                            retKind = Tier0JIT.GetReturnKind(ref absSig.ReturnType);
+                            if (retKind == ReturnKind.Struct)
+                            {
+                                bool absIsValueType;
+                                Tier0JIT.ParseMethodSigReturnType(sigBlob, sigLen, out absIsValueType, out returnStructSize);
+                            }
+                        }
+                        else
+                        {
+                            byte retType = sigBlob[sigPos];
+                            retKind = (retType == 0x01) ? ReturnKind.Void : ReturnKind.IntPtr;
+                        }
                     }
 
                     result.NativeCode = null;  // No code - will be resolved via vtable dispatch
                     result.ArgCount = argCount;
                     result.ReturnKind = retKind;
+                    result.ReturnStructSize = returnStructSize;
                     result.HasThis = hasThis;
                     result.IsValid = true;
                     result.IsVirtual = true;

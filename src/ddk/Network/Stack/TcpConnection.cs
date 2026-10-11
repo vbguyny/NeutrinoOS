@@ -46,6 +46,7 @@ public unsafe class TcpConnection
     private uint _sendWindow;    // Send window size (SND.WND)
     private uint _recvNext;      // Next expected sequence number (RCV.NXT)
     private ushort _recvWindow;  // Receive window size (RCV.WND)
+    private bool _windowUpdatePending;  // Advertised window changed: pure ACK owed
 
     // Initial sequence numbers (for connection setup)
     private uint _iss;           // Initial send sequence number
@@ -479,6 +480,12 @@ public unsafe class TcpConnection
                 int copied = CopyToRecvBuffer(packet->Payload, packet->PayloadLength);
                 _recvNext += (uint)copied;
 
+                // Advertise the real remaining ring space (0 when full).
+                // Without this the peer stays clamped to the initial
+                // window and an overrun (copied == 0) is dropped without
+                // ever being retransmitted - a permanent stall.
+                _recvWindow = (ushort)(RecvBufferSize - _recvCount);
+
                 // Send ACK
                 return BuildAckHere(responseBuffer);
             }
@@ -543,6 +550,7 @@ public unsafe class TcpConnection
         {
             int copied = CopyToRecvBuffer(packet->Payload, packet->PayloadLength);
             _recvNext += (uint)copied;
+            _recvWindow = (ushort)(RecvBufferSize - _recvCount);
             return BuildAckHere(responseBuffer);
         }
 
@@ -654,6 +662,20 @@ public unsafe class TcpConnection
         }
 
         _recvCount -= read;
+
+        // The app drained the ring: refresh the advertised window and arm a
+        // pure window-update ACK. The update may ride on the next outgoing
+        // segment, but it can also be flushed explicitly (see
+        // BuildPendingWindowUpdate) - otherwise two connections whose rings
+        // are simultaneously full deadlock: each side's transmit is blocked
+        // by the other's stale zero window, so no segment ever carries the
+        // reopened window.
+        ushort newWindow = (ushort)(RecvBufferSize - _recvCount);
+        if (newWindow != _recvWindow)
+        {
+            _recvWindow = newWindow;
+            _windowUpdatePending = true;
+        }
         return read;
     }
 
@@ -726,6 +748,20 @@ public unsafe class TcpConnection
     /// <summary>Plain ACK with the connection's current sequence state.</summary>
     private int BuildAckHere(byte* buffer)
     {
+        return BuildSegment(buffer, _sendNext, _recvNext, TcpFlags.ACK, _recvWindow, null, 0);
+    }
+
+    /// <summary>
+    /// Build a pure window-update ACK when the app drained the receive
+    /// ring since the last outgoing segment (ack == SND.NXT, window =
+    /// current free space). Returns the segment length, or 0 when no
+    /// update is pending / not established.
+    /// </summary>
+    public int BuildPendingWindowUpdate(byte* buffer)
+    {
+        if (!_windowUpdatePending || _state != TcpState.Established)
+            return 0;
+        _windowUpdatePending = false;
         return BuildSegment(buffer, _sendNext, _recvNext, TcpFlags.ACK, _recvWindow, null, 0);
     }
 

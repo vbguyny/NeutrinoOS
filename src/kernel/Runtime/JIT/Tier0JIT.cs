@@ -1501,7 +1501,7 @@ public static unsafe class Tier0JIT
     /// <summary>
     /// Parse the return type from a method signature and determine if it's a value type and its size.
     /// </summary>
-    private static void ParseMethodSigReturnType(byte* sigBlob, uint sigLen,
+    internal static void ParseMethodSigReturnType(byte* sigBlob, uint sigLen,
                                                   out bool isValueType, out ushort typeSize)
     {
         isValueType = false;
@@ -2132,7 +2132,7 @@ public static unsafe class Tier0JIT
     /// <summary>
     /// Convert a TypeSig to a ReturnKind for calling convention purposes.
     /// </summary>
-    private static ReturnKind GetReturnKind(ref TypeSig typeSig)
+    internal static ReturnKind GetReturnKind(ref TypeSig typeSig)
     {
         byte elemType = typeSig.ElementType;
 
@@ -2283,6 +2283,7 @@ public static unsafe class Tier0JIT
         byte* sigBlob = MetadataReader.GetBlob(ref assembly->Metadata, sigIdx, out uint sigLen);
         int argCount = 0;
         ReturnKind returnKind = ReturnKind.Void;
+        ushort returnStructSize = 0;
         bool hasThis = true;  // Abstract methods are always instance methods
         if (sigBlob != null && sigLen > 0)
         {
@@ -2291,6 +2292,18 @@ public static unsafe class Tier0JIT
                 argCount = (int)methodSig.ParamCount;
                 hasThis = methodSig.HasThis;
                 returnKind = GetReturnKind(ref methodSig.ReturnType);
+            }
+            // Parse the struct return size EXACTLY like the method compile path
+            // (CompileMethod in this file). Callers resolve the call ABI from
+            // this registration: a size > 16 selects the hidden-return-buffer
+            // convention ([RCX=buffer, RDX=this, R8=arg1, ...]). If the abstract
+            // declaration leaves the size at 0 while the compiled override uses
+            // the buffer convention, the call passes 'this' in RCX and the
+            // override dereferences RDX (0) as 'this' -> #PF at boot.
+            if (returnKind == ReturnKind.Struct)
+            {
+                bool isValueType;
+                ParseMethodSigReturnType(sigBlob, sigLen, out isValueType, out returnStructSize);
             }
         }
 
@@ -2307,11 +2320,13 @@ public static unsafe class Tier0JIT
 
         JitTrace.Write("[Tier0JIT] Abstract method vtable slot=");
         JitTrace.WriteDecimal((uint)vtableSlot);
+        JitTrace.Write(" retSize=");
+        JitTrace.WriteDecimal(returnStructSize);
         JitTrace.WriteLine();
 
         // Register as a virtual method (no native code - dispatch is via vtable at runtime)
         CompiledMethodRegistry.RegisterVirtual(
-            methodToken, null, (byte)argCount, returnKind, hasThis, true, vtableSlot, assemblyId);
+            methodToken, null, (byte)argCount, returnKind, hasThis, true, vtableSlot, assemblyId, returnStructSize);
 
         // Return success with null code - callvirt will use vtable dispatch
         return JitResult.Ok(null, 0);

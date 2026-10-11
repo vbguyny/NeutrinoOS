@@ -1349,6 +1349,33 @@ public unsafe partial class NetworkStack
     }
 
     /// <summary>
+    /// Transmit a pure window-update ACK when the app drained the receive
+    /// ring since the last outgoing segment. Called after socket receives
+    /// so a zero window can reopen even while the peer's window blocks all
+    /// data sends (otherwise full-ring pairs deadlock - no retransmission
+    /// exists in this stack). Returns the segment bytes sent (0 = none).
+    /// </summary>
+    public int TcpFlushWindowUpdate(int connIndex)
+    {
+        var conn = GetTcpConnection(connIndex);
+        if (conn == null || !conn.IsConnected)
+            return 0;
+
+        byte* segBuffer = stackalloc byte[TcpHeader.MinSize];
+        int segLen = conn.BuildPendingWindowUpdate(segBuffer);
+        if (segLen == 0)
+            return 0;
+
+        int frameLen = BuildIPv4Frame(conn.RemoteEndpoint.IP, TCP.ProtocolNumber, segBuffer, segLen);
+        if (frameLen == 0)
+            return 0;
+
+        _pendingTxLen = frameLen;
+        _tcpSent++;
+        return segLen;
+    }
+
+    /// <summary>
     /// Close a TCP connection.
     /// </summary>
     /// <param name="connIndex">Connection index from TcpConnect.</param>

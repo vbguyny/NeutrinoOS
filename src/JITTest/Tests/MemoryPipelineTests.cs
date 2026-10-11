@@ -26,6 +26,7 @@ public static class MemoryPipelineTests
         TestPipePump1MB();
         TestPipeBackpressure();
         TestPipeAsyncAwaitSyncCompletion();
+        TestDuplexPipe();
     }
 
     // ==================== Memory ====================
@@ -334,5 +335,30 @@ public static class MemoryPipelineTests
 
         pipe.Reader.Complete();
         pipe.Writer.Complete();
+    }
+
+    // IDuplexPipe is the Kestrel-shaped transport view the M2 socket listener
+    // hands to the HTTP layer: Input/Output must round-trip to the pipe ends.
+    private static void TestDuplexPipe()
+    {
+        var pipe = new Pipe();
+        IDuplexPipe duplex = new TestDuplex(pipe.Reader, pipe.Writer);
+        TestTracker.Record("Pipelines/duplex-input", ReferenceEquals(duplex.Input, pipe.Reader));
+        TestTracker.Record("Pipelines/duplex-output", ReferenceEquals(duplex.Output, pipe.Writer));
+
+        pipe.Reader.Complete();
+        pipe.Writer.Complete();
+    }
+
+    private sealed class TestDuplex : IDuplexPipe
+    {
+        public TestDuplex(PipeReader input, PipeWriter output)
+        {
+            Input = input;
+            Output = output;
+        }
+
+        public PipeReader Input { get; }
+        public PipeWriter Output { get; }
     }
 }

@@ -345,7 +345,7 @@ public static unsafe class CompiledMethodRegistry
     /// <param name="isVirtual">True if this is a virtual method.</param>
     /// <param name="vtableSlot">Vtable slot index for virtual methods (-1 if not virtual).</param>
     public static bool RegisterVirtual(uint token, void* code, byte argCount, ReturnKind returnKind,
-        bool hasThis, bool isVirtual, int vtableSlot)
+        bool hasThis, bool isVirtual, int vtableSlot, ushort returnStructSize = 0)
     {
         if (!_initialized)
             Initialize();
@@ -372,6 +372,7 @@ public static unsafe class CompiledMethodRegistry
                 existing->NativeCode = code;
                 existing->ArgCount = argCount;
                 existing->ReturnKind = returnKind;
+                existing->ReturnStructSize = returnStructSize;
                 existing->HasThis = hasThis;
                 existing->IsCompiled = true;
                 existing->IsVirtual = isVirtual;
@@ -403,6 +404,7 @@ public static unsafe class CompiledMethodRegistry
         entry->NativeCode = code;
         entry->ArgCount = argCount;
         entry->ReturnKind = returnKind;
+        entry->ReturnStructSize = returnStructSize;
         entry->HasThis = hasThis;
         entry->IsCompiled = true;
         entry->IsVirtual = isVirtual;
@@ -426,7 +428,7 @@ public static unsafe class CompiledMethodRegistry
     /// Overload for abstract methods that need assembly-aware lookup.
     /// </summary>
     public static bool RegisterVirtual(uint token, void* code, byte argCount, ReturnKind returnKind,
-        bool hasThis, bool isVirtual, int vtableSlot, uint assemblyId)
+        bool hasThis, bool isVirtual, int vtableSlot, uint assemblyId, ushort returnStructSize = 0)
     {
         if (!_initialized)
             Initialize();
@@ -444,6 +446,7 @@ public static unsafe class CompiledMethodRegistry
             existing->NativeCode = code;
             existing->ArgCount = argCount;
             existing->ReturnKind = returnKind;
+            existing->ReturnStructSize = returnStructSize;
             existing->HasThis = hasThis;
             existing->IsCompiled = true;
             existing->IsVirtual = isVirtual;
@@ -474,6 +477,7 @@ public static unsafe class CompiledMethodRegistry
         entry->NativeCode = code;
         entry->ArgCount = argCount;
         entry->ReturnKind = returnKind;
+        entry->ReturnStructSize = returnStructSize;
         entry->HasThis = hasThis;
         entry->IsCompiled = true;
         entry->IsVirtual = isVirtual;

@@ -18,11 +18,34 @@ namespace System.Buffers
 
     public abstract class ReadOnlySequenceSegment<T>
     {
-        public ReadOnlyMemory<T> Memory { get; protected set; }
+        /// <summary>
+        /// Backing store for <see cref="Memory"/>. Protected so pipeline
+        /// segments can store the value with a direct field store: during M2
+        /// bring-up the Tier-0 JIT miscompiled the 16-byte struct argument
+        /// path of the property setter in one code shape (the stored _index
+        /// became the Length), which later tripped ReadOnlyMemory ctor
+        /// validation in Slice and trapped.
+        /// </summary>
+        protected ReadOnlyMemory<T> _memory;
+
+        public ReadOnlyMemory<T> Memory
+        {
+            get => _memory;
+            protected set => _memory = value;
+        }
 
         public ReadOnlySequenceSegment<T>? Next { get; protected set; }
 
         public long RunningIndex { get; protected set; }
+
+        // NOTE: payload fields live on the GENERIC BASE on purpose: the Tier-0
+        // JIT mis-lays-out fields declared on a class derived from a generic
+        // base (they collide with the base's fields - observed: a
+        // PipeSegment.Length increment landing in the low dword of the base's
+        // _memory qword, poisoning its _index). Keeping every field on one
+        // level avoids the bug; unused for segment kinds without a payload.
+        internal T[]? Data;
+        internal int Length;
     }
 
     public readonly struct ReadOnlySequence<T> : IEquatable<ReadOnlySequence<T>>
@@ -211,7 +234,15 @@ namespace System.Buffers
 
             var seg = position.GetObject() as ReadOnlySequenceSegment<T>;
             if (seg == null)
+            {
+                // NOTE: the Tier-0 JIT currently mis-resolves casts to generic
+                // instantiations whose type argument is the enclosing generic's
+                // parameter (object as ReadOnlySequenceSegment<T> fails even for
+                // a PipeSegment instance). Until the JIT cast is fixed, callers
+                // that need segment iteration should use the sequence enumerator
+                // (ReadOnlySequence<T>.Enumerator walks typed fields directly).
                 return false;
+            }
             int si = position.GetInteger();
             int end = ReferenceEquals(seg, _endSegment) ? _endIndex : seg.Memory.Length;
             if (si < 0 || si > end)
