@@ -1,0 +1,18 @@
+M2 step 2: WebHost on the socket connection transport + keep-alive (v0.1.186)
+
+- WebHost engine rewritten on the M2 transport (SocketConnectionListener,
+  ConnectionContext with IDuplexPipe): requests are read from the input
+  pipe, responses written through the output pipe; the pumps stay
+  cooperative (kernel idle tick).
+- HTTP/1.1 keep-alive: persistent by default; Connection: close, HTTP/1.0,
+  protocol errors and the per-connection request cap close the connection.
+- SocketConnectionContext: peer-FIN detection now includes TimeWait so
+  server-FIN-first closes (Connection: close responses) surface IsFinished
+  without waiting for the 400-tick grace; keep-alive connections take the
+  CloseWait path and release in the same tick.
+- WebHost.ParseHead returns an int flags bitmask instead of out bools -
+  out-bool parameters miscompile in Tier-0 (stale-slot family: never-stored
+  true surfaced at the call site); HTTP/1.1 sniff also fixed (was checking
+  the '/' and '.' positions of the version token).
+- Verification: JITTest 3005/0, AppTest 25/25 (1 MB echo rcvd=1048576),
+  webapi-probe 29/29 on the M2 engine, sampleapi-probe 28/28.

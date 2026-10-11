@@ -1,35 +1,39 @@
-// NeutrinoOS Web - Kestrel port Milestone 1: the host engine.
+// NeutrinoOS Web - Kestrel port milestone M2: the host engine on the
+// socket connection transport.
 //
-// WebHost owns a TcpServer listener plus a small pool of connection slots
-// and drives them from the cooperative service Tick() (kernel idle hook):
-// no threads, no async yet. It is the M1 stand-in for KestrelServer /
-// Kestrel's HttpConnection; the route table and request/response surface
-// in front of it are the shapes the real port will keep.
+// WebHost owns a SocketConnectionListener plus a small pool of connection
+// slots and drives them from the cooperative service Tick() (kernel idle
+// hook): no threads, no async yet. Requests are read from each connection's
+// input pipe (socket -> app) and responses are written to its output pipe
+// (app -> socket); the transport pumps move bytes on the same Tick.
 //
-// The request path handling (head parse, Content-Length body wait, 431/413
-// limits, one request per connection, Connection: close) is the proven
-// logic from src/ddk/Services/SampleApi.cs, generalized with a route table.
+// HTTP/1.1 keep-alive: persistent by default; a request with
+// `Connection: close` (or HTTP/1.0, or a protocol error, or the
+// per-connection request cap) closes the connection after the response.
+// Pipelined requests in the same read are served in order.
 //
-// See docs/KESTREL-PORT.md for the milestone plan (M2 moves this onto
-// System.IO.Pipelines + the async runtime; M3 replaces it with the real
-// Kestrel Core sources).
+// See docs/KESTREL-PORT.md for the milestone plan (M3 replaces the
+// hand-rolled head parse with the Kestrel HttpParser shape).
 
 using System;
+using System.Buffers;
+using System.IO.Pipelines;
+using NeutrinoOS.DDK.Connections;
 using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Network;
-using NeutrinoOS.DDK.Network.Sockets;
 using NeutrinoOS.DDK.Network.Stack;
 using NeutrinoOS.DDK.Services;   // WebService's proven string helpers (same assembly)
 
 namespace NeutrinoOS.DDK.Web;
 
-/// <summary>The M1 HTTP/1.1 host engine (cooperative, one request per connection).</summary>
+/// <summary>The HTTP/1.1 host engine on the socket connection transport.</summary>
 public sealed class WebHost
 {
     private const int MaxConnections = 4;
     private const int MaxRequestBytes = 4096;   // head + body must fit
     private const int MaxRoutes = 32;
     private const int MaxPathSegments = 8;      // per pattern/path
+    private const int MaxRequestsPerConnection = 100;
     private const ulong IdleTimeoutMs = 10000;
 
     /// <summary>Log prefix, e.g. "webapi" (prints as [webapi] ...).</summary>
@@ -38,7 +42,7 @@ public sealed class WebHost
     /// <summary>TCP port to bind (default set by WebApplication: 8080).</summary>
     public ushort Port;
 
-    private TcpServer _listener;
+    private SocketConnectionListener _listener;
     private NetworkStack _stack;
     private readonly Connection[] _connections = new Connection[MaxConnections];
     private bool _active;
@@ -92,7 +96,7 @@ public sealed class WebHost
         }
         _stack = eth.Stack;
 
-        _listener = new TcpServer(_stack, Port, true);
+        _listener = new SocketConnectionListener(_stack, new ConnectionEndPoint(Port));
         if (!_listener.Start())
         {
             _listener = null;
@@ -120,13 +124,14 @@ public sealed class WebHost
             var conn = _connections[i];
             if (conn != null)
             {
-                conn.Socket.Close();
+                conn.Context.Abort();
                 _connections[i] = null;
             }
         }
         if (_listener != null)
         {
-            _listener.Stop();
+            _listener.UnbindAsync();
+            _listener.DisposeAsync();
             _listener = null;
         }
         _active = false;
@@ -139,14 +144,11 @@ public sealed class WebHost
         if (!_active)
             return;
 
-        // Drive the network stack (receive + transmit) cooperatively.
-        NetworkPump.Pump(_stack, 4);
-
-        // Accept up to the whole pool of new connections per slice.
-        while (_listener.Pending())
+        // Accept new connections (stack pump + pending accepts).
+        _listener.Tick();
+        while (_listener.TryAccept(out SocketConnectionContext? accepted))
         {
-            var sock = _listener.Accept();
-            if (sock == null)
+            if (accepted == null)
                 break;
             int slot = -1;
             for (int i = 0; i < MaxConnections; i++)
@@ -159,13 +161,13 @@ public sealed class WebHost
             }
             if (slot < 0)
             {
-                sock.Close();   // pool full: drop
+                accepted.Abort();   // pool full: drop
                 continue;
             }
-            _connections[slot] = new Connection(sock);
+            _connections[slot] = new Connection(accepted);
         }
 
-        // Service each connection: read, route, respond, close.
+        // Service each connection: pump the transport, then HTTP.
         ulong now = Timer.GetUptimeMilliseconds();
         for (int i = 0; i < MaxConnections; i++)
         {
@@ -173,104 +175,158 @@ public sealed class WebHost
             if (conn == null)
                 continue;
             ServiceConnection(conn, now);
+
+            // A closing connection keeps pumping until the transport is
+            // finished (response drained + FIN), with a bounded grace.
+            if (!conn.Released && conn.Done)
+            {
+                conn.GraceTicks++;
+                if (conn.Context.IsFinished || conn.GraceTicks > 400)
+                    conn.Released = true;
+            }
             if (conn.Released)
             {
-                conn.Socket.Close();
+                conn.Context.Abort();
                 _connections[i] = null;
             }
         }
-
-        // Flush queued responses even when no inbound frame arrived.
-        NetworkPump.FlushTx(_stack);
     }
 
     // ====================================================================
     // Connection handling
     // ====================================================================
 
-    /// <summary>One connection slot: socket + request buffer + state.</summary>
+    /// <summary>One connection slot: transport + request buffer + state.</summary>
     private sealed class Connection
     {
-        public readonly TcpSocket Socket;
+        public readonly SocketConnectionContext Context;
         public readonly byte[] Buffer = new byte[MaxRequestBytes];
         public int Length;
         public ulong LastActivity;
-        public bool Done;        // response written; close on the next step
-        public bool Released;    // socket closed; slot can be reused
+        public bool Done;        // response written and closing; pump out, then release
+        public bool Released;    // context finished; slot can be reused
+        public bool InputClosed; // peer EOF seen
+        public int Requests;     // served on this connection (keep-alive cap)
+        public int GraceTicks;
 
-        public Connection(TcpSocket socket)
+        public Connection(SocketConnectionContext context)
         {
-            Socket = socket;
+            Context = context;
             LastActivity = Timer.GetUptimeMilliseconds();
         }
     }
 
-    private unsafe void ServiceConnection(Connection conn, ulong now)
+    private void ServiceConnection(Connection conn, ulong now)
     {
-        if (now - conn.LastActivity > IdleTimeoutMs)
+        if (!conn.Done && now - conn.LastActivity > IdleTimeoutMs)
         {
             conn.Released = true;
             return;
         }
+
+        // Pump the transport (socket <-> pipes) first.
+        conn.Context.Tick();
         if (conn.Done)
-        {
-            conn.Released = true;
-            return;
-        }
+            return;   // keep pumping above until IsFinished / grace expiry
 
-        // Non-blocking read; whatever arrives accumulates in the buffer.
-        if (conn.Length < conn.Buffer.Length)
+        // Drain readable bytes from the input pipe into the request buffer.
+        PipeReader reader = conn.Context.InputReader;
+        while (conn.Length < conn.Buffer.Length && reader.TryRead(out ReadResult result))
         {
-            int got;
-            fixed (byte* p = conn.Buffer)
+            ReadOnlySequence<byte> buffer = result.Buffer;
+            long total = buffer.Length;
+            if (!buffer.IsEmpty)
             {
-                got = conn.Socket.Receive(p + conn.Length, conn.Buffer.Length - conn.Length);
+                // First-memory copy (segment iteration is avoided on purpose
+                // during M2 bring-up - see Pipe/korlib notes).
+                ReadOnlyMemory<byte> mem = buffer.First;
+                ReadOnlySpan<byte> src = mem.Span;
+                int space = conn.Buffer.Length - conn.Length;
+                int copy = src.Length < space ? src.Length : space;
+                for (int i = 0; i < copy; i++)
+                    conn.Buffer[conn.Length + i] = src[i];
+                conn.Length += copy;
+                if (copy > 0)
+                    conn.LastActivity = now;
+                if (copy == (int)total)
+                    reader.AdvanceTo(buffer.End);
+                else
+                    reader.AdvanceTo(buffer.GetPosition(copy));
+                if (result.IsCompleted)
+                    conn.InputClosed = true;
+                if (copy < src.Length)
+                    break;      // request buffer full: handled below
             }
-            if (got > 0)
+            else
             {
-                conn.Length += got;
-                conn.LastActivity = now;
+                if (result.IsCompleted)
+                    conn.InputClosed = true;
+                break;
             }
         }
 
-        int headerEnd = FindHeaderEnd(conn.Buffer, conn.Length);
-        if (headerEnd < 0)
+        // Serve every complete request currently buffered (keep-alive loop).
+        while (!conn.Done)
         {
-            // No complete head yet. If the buffer is full it never will be.
-            if (conn.Length >= conn.Buffer.Length)
-                RespondRaw(conn, 431, "text/plain", "request too large\n");
-            return;
+            int headerEnd = FindHeaderEnd(conn.Buffer, conn.Length);
+            if (headerEnd < 0)
+            {
+                if (conn.Length >= conn.Buffer.Length)
+                    RespondAndFinish(conn, 431, "text/plain", "request too large\n");
+                else if (conn.InputClosed)
+                    conn.Released = true;   // EOF between/inside requests
+                return;
+            }
+
+            string head = CharsOf(conn.Buffer, 0, headerEnd);
+            string method;
+            string path;
+            int contentLength;
+            int flags = ParseHead(head, out method, out path, out contentLength);
+            bool http11 = (flags & 1) != 0;
+            bool connClose = (flags & 2) != 0;
+            if (method == null)
+            {
+                RespondAndFinish(conn, 400, "text/plain", "bad request\n");
+                return;
+            }
+
+            int total = headerEnd + 4 + contentLength;
+            if (total > conn.Buffer.Length)
+            {
+                RespondAndFinish(conn, 413, "text/plain", "body too large\n");
+                return;
+            }
+            if (conn.Length < total)
+                return;   // keep waiting for the rest of the body
+
+            string reqBody = "";
+            if (contentLength > 0)
+                reqBody = CharsOf(conn.Buffer, headerEnd + 4, contentLength);
+
+            bool keepAlive = http11 && !connClose && conn.Requests < MaxRequestsPerConnection;
+            Dispatch(conn, method, path, reqBody, keepAlive);
+
+            // Consume the request; keep any pipelined remainder.
+            int left = conn.Length - total;
+            for (int i = 0; i < left; i++)
+                conn.Buffer[i] = conn.Buffer[total + i];
+            conn.Length = left;
+            conn.Requests++;
+            conn.LastActivity = now;
+
+            if (!keepAlive)
+            {
+                conn.Done = true;
+                return;
+            }
+            if (conn.Length == 0)
+                return;   // wait for the next request
         }
-
-        string head = CharsOf(conn.Buffer, 0, headerEnd);
-        string method;
-        string path;
-        int contentLength;
-        ParseHead(head, out method, out path, out contentLength);
-        if (method == null)
-        {
-            RespondRaw(conn, 400, "text/plain", "bad request\n");
-            return;
-        }
-
-        int total = headerEnd + 4 + contentLength;
-        if (total > conn.Buffer.Length)
-        {
-            RespondRaw(conn, 413, "text/plain", "body too large\n");
-            return;
-        }
-        if (conn.Length < total)
-            return;   // keep waiting for the rest of the body
-
-        string reqBody = "";
-        if (contentLength > 0)
-            reqBody = CharsOf(conn.Buffer, headerEnd + 4, contentLength);
-
-        Dispatch(conn, method, path, reqBody);
     }
 
     /// <summary>Route one complete request and write the response.</summary>
-    private void Dispatch(Connection conn, string method, string target, string reqBody)
+    private void Dispatch(Connection conn, string method, string target, string reqBody, bool keepAlive)
     {
         _requests++;
 
@@ -338,9 +394,9 @@ public sealed class WebHost
         if (matched < 0)
         {
             if (pathMatched)
-                RespondRaw(conn, 405, "text/plain", "method not allowed\n");
+                RespondAndFinish(conn, 405, "text/plain", "method not allowed\n");
             else
-                RespondRaw(conn, 404, "application/json", "{\"error\":\"not found\"}\n");
+                RespondAndFinish(conn, 404, "application/json", "{\"error\":\"not found\"}\n");
             return;
         }
 
@@ -353,15 +409,25 @@ public sealed class WebHost
 
         _routeHandlers[matched](ctx);
 
-        RespondRaw(conn, ctx.Response.StatusCode, ctx.Response.ContentType, ctx.Response.Body);
+        WriteResponse(conn, ctx.Response.StatusCode, ctx.Response.ContentType, ctx.Response.Body, keepAlive);
+        if (!keepAlive)
+            conn.Done = true;
     }
 
     // ====================================================================
-    // HTTP I/O helpers (proven logic from SampleApi.cs)
+    // HTTP I/O helpers (proven logic from SampleApi.cs; M2 writes through
+    // the connection's output pipe instead of the raw socket)
     // ====================================================================
 
-    /// <summary>Write a complete response and mark the connection done.</summary>
-    private static unsafe void RespondRaw(Connection conn, int status, string contentType, string body)
+    /// <summary>Write a complete response and close the connection after it.</summary>
+    private static void RespondAndFinish(Connection conn, int status, string contentType, string body)
+    {
+        WriteResponse(conn, status, contentType, body, false);
+        conn.Done = true;
+    }
+
+    /// <summary>Queue a complete response on the connection's output pipe.</summary>
+    private static void WriteResponse(Connection conn, int status, string contentType, string body, bool keepAlive)
     {
         if (contentType == null || contentType.Length == 0)
             contentType = "text/plain";
@@ -372,47 +438,52 @@ public sealed class WebHost
             "Content-Type: " + contentType + "\r\n" +
             "Content-Length: " + WebService.IntToStr(body.Length) + "\r\n" +
             "Server: NeutrinoOS\r\n" +
-            "Connection: close\r\n\r\n";
-        var bytes = new byte[head.Length + body.Length];
-        for (int i = 0; i < head.Length; i++)
-            bytes[i] = (byte)head[i];
-        for (int i = 0; i < body.Length; i++)
-            bytes[head.Length + i] = (byte)body[i];
+            "Connection: " + (keepAlive ? "keep-alive" : "close") + "\r\n\r\n";
 
-        int sent = 0;
-        while (sent < bytes.Length)
+        PipeWriter writer = conn.Context.OutputWriter;
+        Span<byte> span = writer.GetSpan(head.Length + body.Length);
+        for (int i = 0; i < head.Length; i++)
+            span[i] = (byte)head[i];
+        for (int i = 0; i < body.Length; i++)
+            span[head.Length + i] = (byte)body[i];
+        writer.Advance(head.Length + body.Length);
+        writer.FlushAsync();
+
+        if (!keepAlive)
         {
-            int got;
-            fixed (byte* p = bytes)
-            {
-                got = conn.Socket.Send(p + sent, bytes.Length - sent);
-            }
-            if (got <= 0)
-                break;
-            sent += got;
+            // Completing signals EOF: the transport drains the response and
+            // then shuts the send side (FIN).
+            writer.Complete();
         }
-        conn.Done = true;
     }
 
-    /// <summary>First line + header lines (chars [off..off+len)).</summary>
-    private static void ParseHead(string head, out string method, out string path, out int contentLength)
+    /// <summary>First line + header lines (chars [off..off+len)).
+    /// Returns flags: bit0 = HTTP/1.1, bit1 = Connection: close.
+    /// (Out bool params miscompiled in Tier-0 - see the M2 notes; the
+    /// int return + caller-side bit tests are the proven-safe shape.)</summary>
+    private static int ParseHead(string head, out string method, out string path, out int contentLength)
     {
         method = null;
         path = null;
         contentLength = 0;
+        int flags = 0;
 
         int lineEnd = IndexOfStr(head, "\r\n", 0);
         if (lineEnd < 0)
-            return;
+            return 0;
         string line = head.Substring(0, lineEnd);
         int sp1 = WebService.IndexOfChar(line, ' ');
         if (sp1 <= 0)
-            return;
+            return 0;
         int sp2 = WebService.IndexOfChar2(line, ' ', sp1 + 1);
         if (sp2 <= 0)
-            return;
+            return 0;
         method = line.Substring(0, sp1);
         path = line.Substring(sp1 + 1, sp2 - sp1 - 1);
+        // Version token, e.g. "HTTP/1.1" (persistent by default).
+        if (line.Length == sp2 + 9 &&
+            line[sp2 + 1] == 'H' && line[sp2 + 6] == '1' && line[sp2 + 8] == '1')
+            flags |= 1;
 
         int pos = lineEnd + 2;
         while (pos < head.Length)
@@ -427,14 +498,45 @@ public sealed class WebHost
             if (colon > 0)
             {
                 string name = WebService.TrimStr(h.Substring(0, colon));
+                string value = WebService.TrimStr(h.Substring(colon + 1, h.Length - colon - 1));
                 if (NameEq(name, "content-length"))
                 {
-                    string value = WebService.TrimStr(h.Substring(colon + 1, h.Length - colon - 1));
                     contentLength = WebService.ParseInt(value, 0) & 0xFFFFF;
+                }
+                else if (NameEq(name, "connection"))
+                {
+                    if (ContainsToken(value, "close"))
+                        flags |= 2;
                 }
             }
             pos = end + 2;
         }
+        return flags;
+    }
+
+    /// <summary>Case-insensitive token search (e.g. "close" in a Connection value).</summary>
+    private static bool ContainsToken(string s, string token)
+    {
+        if (s == null || token == null || token.Length == 0 || s.Length < token.Length)
+            return false;
+        for (int i = 0; i + token.Length <= s.Length; i++)
+        {
+            bool ok = true;
+            for (int j = 0; j < token.Length; j++)
+            {
+                char c = s[i + j];
+                if (c >= 'A' && c <= 'Z')
+                    c = (char)(c + 32);
+                if (c != token[j])
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Split "/a/b/{id}" into ["a","b","{id}"] ('/' alone = 0 segments).</summary>

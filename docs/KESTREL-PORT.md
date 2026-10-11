@@ -59,8 +59,10 @@ write) is fixed from M1 onward; only the engine underneath is replaced.
   `sampleapi` regression 28/28, HTTP checks from the host through
   `hostfwd 18080 -> 8080`.
 - Honest limits (documented in the sample README): synchronous handlers
-  only, no keep-alive, no `app.Run()` blocking loop (the kernel drives
-  `Tick()`), no DI/logging surface yet.
+  only, no `app.Run()` blocking loop (the kernel drives `Tick()`), no
+  DI/logging surface yet. (Keep-alive arrived with the M2 `WebHost`
+  engine for the `webapi` sample; the M1 `SampleApi`/`sampleapi` path
+  still closes every response.)
 
 ### M2 — Pipelines + async transport
 
@@ -106,9 +108,46 @@ MethodTable), the korlib/Debug `Debug.Report` path so JITTest/AppTest
 failures are visible on the serial console, and `build/m2-boot-tests.sh`
 (boot the deploy image with boot tests enabled and report results).
 
-Remaining M2 work: the transport port (items 2-3 below) - `IConnectionListenerFactory`,
-`ConnectionContext`/`IDuplexPipe` over `TcpSocket`, and the `WebHost`
-re-implementation with keep-alive, followed by the acceptance probes.
+**Step 2 DONE - socket connection transport + the `WebHost` keep-alive
+engine.** `src/ddk/Connections/` ships the Kestrel-shaped surface over
+`TcpSocket`: `IConnectionListener`/`SocketConnectionListener` (+ factory),
+`ConnectionContext` exposing `Transport` as an `IDuplexPipe`
+(`InputReader`/`OutputWriter`), `ConnectionEndPoint` and
+`ConnectionAbortedException`. The pumps stay cooperative (driven by the
+owner's `Tick()`): socket->app respects Pipe backpressure, app->socket
+respects the TCP send window (short sends are re-driven next tick).
+`WebHost` now runs entirely on the transport - accepts via the listener,
+reads requests from the input pipe, writes responses through the output
+pipe with **HTTP/1.1 keep-alive** (persistent by default; `close` for
+HTTP/1.0, `Connection: close`, protocol errors, or the per-connection
+request cap). Verification on the current image: `JITTest` 3005/0,
+`AppTest` 25/25 (incl. the 1 MB echo, `rcvd=1048576`),
+`build/webapi-probe.sh` **29/29 PASS** on the M2 engine (echo, CRUD,
+keep-alive bursts, parallel requests, guest start/stop/restart),
+`build/sampleapi-probe.sh` 28/28.
+
+Bring-up bugs found while landing step 2 (worth knowing for M3+):
+
+- **Out `bool` parameters miscompile in Tier-0** (stale-slot family): a
+  callee that never stored `true` into an `out bool` could have the call
+  site read `true` back - every response went out `Connection: close`
+  even for clean HTTP/1.1 requests. `WebHost.ParseHead` now returns an
+  `int` flags bitmask (bit0 HTTP/1.1, bit1 `Connection: close`) instead
+  of two `out bool`s. Keep new inter-method contracts on ints/strings.
+- **Server-initiated closes land in `TimeWait`, not `CloseWait`**: the
+  transport's peer-FIN detection only covered
+  `CloseWait/Closed/Closing/LastAck`, so a `Connection: close` response
+  (server FIN first) never set `IsFinished`; connection slots recycled
+  only via the 400-tick grace timer, and a burst of >4 sequential
+  requests exhausted the 4 slots (accept-then-abort, curl `52`).
+  `TimeWait` is now a peer-FIN state; keep-alive connections take the
+  `CloseWait` path and release in the same tick.
+- **HTTP/1.1 version sniff was off by one** (`line[sp2+5]` is `/`, not
+  `1`), silently forcing every response to `close`.
+- Pipe/`ReadOnlySequence` layout + cursor normalizations found earlier in
+  this milestone are documented at the code sites
+  (`PipeSegment` has no fields of its own; `Data`/`Length` live on the
+  generic base).
 
 ### M3 — HTTP/1.1 core
 

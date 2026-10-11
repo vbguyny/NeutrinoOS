@@ -152,8 +152,14 @@ public sealed class SocketConnectionContext : ConnectionContext
         while (moved < budget)
         {
             TcpState state = _socket.State;
+            // States in which the peer's FIN has been received (recv side
+            // closed): CloseWait (peer FIN first), Closing (simultaneous),
+            // LastAck (our FIN first, peer FIN + its ACK), TimeWait (our
+            // Connection: close FIN went first, peer FIN followed - the
+            // common curl pattern), and Closed.
             bool peerGone = state == TcpState.CloseWait || state == TcpState.Closed ||
-                            state == TcpState.Closing || state == TcpState.LastAck;
+                            state == TcpState.Closing || state == TcpState.LastAck ||
+                            state == TcpState.TimeWait;
             if (peerGone && _socket.Available == 0)
             {
                 // FIN seen and everything buffered is moved: EOF.
@@ -216,8 +222,6 @@ public sealed class SocketConnectionContext : ConnectionContext
             if (!_output.Reader.TryRead(out ReadResult result))
                 return;
             DebugOutTryReads++;
-            if (DebugOutTryReads <= 2)
-                Debug.Report("[TR] outTry len=" + ((int)result.Buffer.Length).ToString());
 
             ReadOnlySequence<byte> buffer = result.Buffer;
             bool fullyConsumed = buffer.IsEmpty;
