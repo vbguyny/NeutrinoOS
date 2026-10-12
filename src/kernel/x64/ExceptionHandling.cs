@@ -1209,7 +1209,7 @@ public static unsafe class ExceptionHandling
             void* exPtr = System.Runtime.CompilerServices.Unsafe.AsPointer(ref exceptionObj);
             exPtr = *(void**)exPtr;  // Dereference to get actual object address
 
-            bool handled = DispatchNativeAotException(exPtr, &context);
+            bool handled = DispatchNativeAotException(exPtr, &context, true);
             if (handled)
             {
                 // Exception was handled, update frame and continue
@@ -1975,6 +1975,18 @@ public static unsafe class ExceptionHandling
                     {
                         // catch { } or catch (Exception) where type wasn't resolved
                         typeMatches = true;
+                        // Verbose EH tracing: a clause with no catch type
+                        // matches silently - make it visible under VerboseJit.
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[EHMatch0] off=0x");
+                            DebugConsole.WriteHex(offsetInFunction);
+                            DebugConsole.Write(" try=[0x");
+                            DebugConsole.WriteHex(tryStart);
+                            DebugConsole.Write(",0x");
+                            DebugConsole.WriteHex(tryEnd);
+                            DebugConsole.WriteLine("]");
+                        }
                     }
                     else if (exceptionObject != 0)
                     {
@@ -1984,6 +1996,25 @@ public static unsafe class ExceptionHandling
 
                         // Use IsAssignableTo to check if exception type is compatible with catch type
                         typeMatches = TypeHelpers.IsAssignableTo(exceptionMT, catchMT);
+
+                        // Verbose EH tracing (JitDiag.VerboseJit): typed clause
+                        // match inputs. A handful of lines per exception.
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[EHMatch] off=0x");
+                            DebugConsole.WriteHex(offsetInFunction);
+                            DebugConsole.Write(" try=[0x");
+                            DebugConsole.WriteHex(tryStart);
+                            DebugConsole.Write(",0x");
+                            DebugConsole.WriteHex(tryEnd);
+                            DebugConsole.Write("] emt=0x");
+                            DebugConsole.WriteHex((ulong)exceptionMT);
+                            DebugConsole.Write(" cmt=0x");
+                            DebugConsole.WriteHex((ulong)catchMT);
+                            DebugConsole.Write(" m=");
+                            DebugConsole.Write(typeMatches ? "Y" : "N");
+                            DebugConsole.WriteLine();
+                        }
                     }
 
                     if (typeMatches)
@@ -2165,8 +2196,45 @@ public static unsafe class ExceptionHandling
     /// <param name="context">Context at the point of throw</param>
     /// <returns>True if exception was handled, false if unhandled</returns>
     public static bool DispatchNativeAotException(void* exceptionObject, ExceptionContext* context)
+        => DispatchNativeAotException(exceptionObject, context, false);
+
+    /// <summary>
+    /// Dispatch a .NET exception using NativeAOT EH tables.
+    /// </summary>
+    /// <param name="exceptionObject">The exception object being thrown</param>
+    /// <param name="context">Context at the point of throw</param>
+    /// <param name="fromFaultFrame">True when the context was captured by the
+    /// IDT fault path (hardware exception): the CPU interrupt frame sits just
+    /// below context->Rsp, so the catch transfer must anchor its funclet entry
+    /// elsewhere. False for software throws reusing a call-site context.</param>
+    /// <returns>True if exception was handled, false if unhandled</returns>
+    public static bool DispatchNativeAotException(void* exceptionObject, ExceptionContext* context, bool fromFaultFrame)
     {
         if (!_initialized) Init();
+
+        // Verbose EH tracing (JitDiag.VerboseJit): log dispatch entries
+        // (object type + fault site) so the transfer/return path can be
+        // traced from the serial log when debugging HW-trap handling.
+        ulong dispMt = exceptionObject != null ? *(ulong*)exceptionObject : 0;
+        if (JitDiag.VerboseJit &&
+            (context->Rip >= 0x200000000 || dispMt == 0x8005278))
+        {
+            DebugConsole.Write("[EHDisp] mt=0x");
+            DebugConsole.WriteHex(dispMt);
+            DebugConsole.Write(" rip=0x");
+            DebugConsole.WriteHex(context->Rip);
+            DebugConsole.Write(" rsp=0x");
+            DebugConsole.WriteHex(context->Rsp);
+            DebugConsole.Write(" rbp=0x");
+            DebugConsole.WriteHex(context->Rbp);
+            DebugConsole.Write(" cs=0x");
+            DebugConsole.WriteHex(context->Cs);
+            DebugConsole.Write(" ss=0x");
+            DebugConsole.WriteHex(context->Ss);
+            DebugConsole.Write(" fl=0x");
+            DebugConsole.WriteHex(context->Rflags);
+            DebugConsole.WriteLine();
+        }
 
         // Clear any stale exception state from previous exceptions.
         // This is important when handling multiple sequential exceptions -
@@ -2386,17 +2454,40 @@ public static unsafe class ExceptionHandling
                     // ISR-saved value, funclet's RET then jumped into the stack).
                     CPU.DisableInterrupts();
                     ulong handlerAddr = catchImageBase + catchFuncEntry->BeginAddress + clause.HandlerOffset;
-                    // Enter the funclet the CoreCLR way: the establisher frame is
-                    // the parent's RSP at the throw call site, and the funclet is
-                    // "called" there - the call-push slot holds the exit
-                    // trampoline. The funclet's prologue reserves its own locals
-                    // below, and its epilogue RET pops the trampoline, so the
-                    // continuation resumes with RSP exactly as the normal leave
-                    // path would have it. Anchoring the entry anywhere else
-                    // (RBP-0x100, RSP-margin below the dispatcher frame) breaks
-                    // that contract: the continuation then reads the wrong frame
-                    // and jumps to garbage (observed RIP=3 / stack NX faults).
-                    ulong targetRsp = catchSearchContext.Rsp - 8;
+                    // Enter the funclet the way the Tier-0 JIT expects: the
+                    // catch funclets keep RBP = the parent frame pointer (set
+                    // from RDX) and are entered with the resume slot on the
+                    // stack; the funclet's epilogue RET pops it. Hardware-fault
+                    // contexts must NOT write at [Rsp-8] (interrupt SS slot),
+                    // and software-throw contexts keep the historical
+                    // [Rsp-8] anchor that the rest of the suite relies on.
+                    ulong targetRsp;
+                    if (fromFaultFrame)
+                    {
+                        // IDT-fault context: the CPU's five-slot interrupt
+                        // frame (RIP,CS,RFLAGS,RSP,SS) sits just below
+                        // context->Rsp, so [Rsp-8] is the frame's SS slot -
+                        // writing the resume there makes the iretq load a
+                        // bogus SS selector and #GP at the iretq itself
+                        // (observed: every hardware-trap catch in a JIT
+                        // frame "escaped" as a spurious NRE). Use the
+                        // Tier-0 JIT's documented funclet entry anchor
+                        // instead (see ILCompiler catch-funclet prologue):
+                        // RSP = parentRbp - 0x108, below all parent locals
+                        // for the no-reserve case and matching the
+                        // _funcletFrameReserve arithmetic otherwise. The
+                        // -0x108 (not -0x100) matters: the entry parity must
+                        // be 8 mod 16 so the funclet's call sites stay
+                        // ABI-aligned (a plain -0x100 entry was observed
+                        // crashing with RIP=3 decades ago).
+                        targetRsp = catchSearchContext.Rbp - 0x108;
+                    }
+                    else
+                    {
+                        // Software-throw context: Rsp is the JIT call site's
+                        // stack pointer; one slot below it is free.
+                        targetRsp = catchSearchContext.Rsp - 8;
+                    }
 
                     context->Rip = handlerAddr;
                     context->Rsp = targetRsp;
@@ -2411,6 +2502,22 @@ public static unsafe class ExceptionHandling
                         ? FuncletExitTrampolineAddress()
                         : catchImageBase + catchFuncEntry->BeginAddress + clause.LeaveTargetOffset;
                     *(ulong*)(context->Rsp) = resumeAddr;
+
+                    // Verbose EH tracing (JitDiag.VerboseJit): JIT catch
+                    // transfers (handler entry + resume slot) so a broken
+                    // entry/return contract is visible from the serial log.
+                    if (JitDiag.VerboseJit && catchImageBase >= 0x200000000)
+                    {
+                        DebugConsole.Write("[EHXfer] h=0x");
+                        DebugConsole.WriteHex(handlerAddr);
+                        DebugConsole.Write(" entryRsp=0x");
+                        DebugConsole.WriteHex(targetRsp);
+                        DebugConsole.Write(" resume=0x");
+                        DebugConsole.WriteHex(resumeAddr);
+                        DebugConsole.Write(" prbp=0x");
+                        DebugConsole.WriteHex(catchSearchContext.Rbp);
+                        DebugConsole.WriteLine();
+                    }
 
                     // Set current exception info for rethrow support
                     SetCurrentException(exceptionObject);

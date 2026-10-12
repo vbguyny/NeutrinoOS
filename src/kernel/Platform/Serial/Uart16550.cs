@@ -448,6 +448,19 @@ public static unsafe class Uart16550
 
         if (_interruptsEnabled)
         {
+            // Exception-dispatch contexts run with interrupts masked (the EH
+            // dispatcher closes the interrupt window before transferring to a
+            // handler). The TX-drain THRE interrupt can never run in such a
+            // context, so enqueueing into a full ring would spin the full
+            // 100M-iteration budget - ~minutes of port I/O per byte - which
+            // looked like a wedged console mid-line during an
+            // escaping-overflow print. Poll THRE directly there instead.
+            if (!CPU.AreInterruptsEnabled())
+            {
+                PolledWriteByte(b);
+                return;
+            }
+
             int spins = 0;
             while (!TryEnqueueTx(b))
             {

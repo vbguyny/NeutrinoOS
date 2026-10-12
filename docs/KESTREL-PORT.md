@@ -238,11 +238,30 @@ its ReadOnlySequence test):**
 - `RunCategory` used to swallow category exceptions via `Debug.Write` (which
   is compiled out of default builds); it now reports + records them, and
   `MemoryPipelineTests.RunAll` wraps each step in `RunStep` so one throwing
-  test no longer kills the rest of the category. Current boot: 3030 passed,
-  5 remaining failures: `category/Overflow` (NRE), `Seq/enumerate-checksum`,
-  `step/readonly-sequence` (NRE in the slice enumerator), `step/pipe-read-wake`
-  (InvalidOperationException out of the ValueTask awaiter copy), and
-  `step/pipe-async-sync`.
+  test no longer kills the rest of the category.
+- FIXED (this commit): **hardware-trap catch transfers clobbered the CPU
+  interrupt frame.** The dispatcher wrote the catch-funclet's resume address
+  at `[context->Rsp - 8]`; for an IDT-fault context that slot is the SS field
+  of the five-slot interrupt frame (RIP,CS,RFLAGS,RSP,SS), so the returning
+  `iretq` loaded a bogus SS selector and #GP'd AT the iretq itself - every
+  catch of a hardware trap (`int 4` overflow, #DE, ...) surfaced as a spurious
+  NullReferenceException escaping to the outer wrapper. `category/Overflow`
+  and `step/readonly-sequence` were permanently red because of this.
+  Hardware-fault dispatches now anchor the catch-funclet entry at the Tier-0
+  JIT's documented `parentRbp - 0x108` (below all parent locals; parity
+  8 mod 16 keeps the funclet's call sites ABI-aligned); software throws keep
+  the historical `[Rsp-8]` anchor (their context was captured at a call site,
+  not an interrupt frame, and the rest of the suite exercises that path).
+- Current boot: `JITTest` **3046 passed / 11 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining reds: `Seq/enumerate-checksum` (+ its local-span
+  probe; per-segment sums show a read-stride problem, not a caching one),
+  `step/pipe-read-wake` / `step/pipe-async-sync` (`InvalidOperationException:
+  ValueTask not initialized` out of the awaiter copy - the 24-byte
+  struct-copy family), the new instrumentation probes (`vt/copy24`,
+  `vt-awaiter/copy`, `seq/getpos`, `Seq/single`, `Pipe/awaiter-copy-sees-
+  completion`), and `hw/nullderef-catch` - a new probe that observes a
+  silent resume-past-the-#PF with no dispatch trace at all (separate,
+  still-open bug).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0

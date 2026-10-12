@@ -24,10 +24,17 @@ public static class MemoryPipelineTests
         RunStep("vt/pending-flags", ProbePending);
         RunStep("vt/complete", ProbeComplete);
         RunStep("vt/done-flags", ProbeDone);
+        RunStep("vt/return24", TestReturn24);
+        RunStep("vt/copy24", TestCopy24);
+        RunStep("vt-awaiter/copy", ProbeAwaiterCopy);
         RunStep("step/memory", TestMemoryBasics);
         RunStep("step/memory-span", TestMemorySpan);
         RunStep("step/array-pool", TestArrayPool);
-        RunStep("step/readonly-sequence", TestReadOnlySequence);
+        RunStep("seq/build-length-first", TestSeqBuildLengthFirst);
+        RunStep("seq/slice", TestSeqSlice);
+        RunStep("seq/checksum", TestSeqChecksum);
+        RunStep("seq/getpos", TestSeqGetPos);
+        RunStep("seq/single-empty", TestSeqSingleEmpty);
         RunStep("step/pipe-read-wake", TestPipeReaderAsyncWake);
         RunStep("step/pipe-pump-1mb", TestPipePump1MB);
         RunStep("step/pipe-backpressure", TestPipeBackpressure);
@@ -45,25 +52,25 @@ public static class MemoryPipelineTests
         {
             step();
         }
-        catch (ArgumentOutOfRangeException)
+        catch (ArgumentOutOfRangeException ex)
         {
-            TestTracker.Record(name, false, "ArgumentOutOfRangeException");
+            TestTracker.Record(name, false, "ArgumentOutOfRangeException: " + ex.Message);
         }
-        catch (ArgumentNullException)
+        catch (ArgumentNullException ex)
         {
-            TestTracker.Record(name, false, "ArgumentNullException");
+            TestTracker.Record(name, false, "ArgumentNullException: " + ex.Message);
         }
-        catch (NullReferenceException)
+        catch (NullReferenceException ex)
         {
-            TestTracker.Record(name, false, "NullReferenceException");
+            TestTracker.Record(name, false, "NullReferenceException: " + ex.Message);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
-            TestTracker.Record(name, false, "InvalidOperationException");
+            TestTracker.Record(name, false, "InvalidOperationException: " + ex.Message);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            TestTracker.Record(name, false, "Exception (other type)");
+            TestTracker.Record(name, false, "Exception: " + ex.Message);
         }
     }
 
@@ -210,6 +217,64 @@ public static class MemoryPipelineTests
         TestTracker.Record("VT/large-result-read-ok", r.IsCompleted);
     }
 
+    // ---- 24-byte struct copy probes: the >=24B struct return goes through
+    // the hidden-buffer path; ReadOnlySequence (48B) copies through this path
+    // were observed to garble, so isolate the return leg (return24) and the
+    // by-value arg + return leg (copy24) separately. ----
+    private struct Triple24
+    {
+        public long a;
+        public long b;
+        public long c;
+    }
+
+    private static Triple24 MakeTriple24(long a, long b, long c)
+    {
+        var t = default(Triple24);
+        t.a = a;
+        t.b = b;
+        t.c = c;
+        return t;
+    }
+
+    private static Triple24 CopyTriple24(Triple24 v)
+    {
+        return v;
+    }
+
+    private static void TestReturn24()
+    {
+        var p = MakeTriple24(11, 22, 33);   // 24B struct return (hidden buffer)
+        TestTracker.Record("VT/return24", p.a == 11 && p.b == 22 && p.c == 33,
+            "a=" + p.a.ToString() + " b=" + p.b.ToString() + " c=" + p.c.ToString());
+    }
+
+    private static void TestCopy24()
+    {
+        var v = default(Triple24);
+        v.a = 7;
+        v.b = 8;
+        v.c = 9;
+        var w = CopyTriple24(v);            // 24B by-value arg + 24B return
+        TestTracker.Record("VT/copy24", w.a == 7 && w.b == 8 && w.c == 9,
+            "a=" + w.a.ToString() + " b=" + w.b.ToString() + " c=" + w.c.ToString());
+    }
+
+    // ---- ValueTask<ReadResult> (24B) awaiter copy probe: GetAwaiter returns
+    // the 24B awaiter BY VALUE (hidden buffer), and the await path copies it
+    // into a state machine local. Both pipe failures go through this shape. ----
+    private static void ProbeAwaiterCopy()
+    {
+        var tcs = new TaskCompletionSource<ReadResult>();
+        var vt = new ValueTask<ReadResult>(tcs.Task);
+        var aw = vt.GetAwaiter();           // 24B awaiter value copy
+        TestTracker.Record("vt-awaiter/pending-copy", !aw.IsCompleted);
+        tcs.TrySetResult(new ReadResult(default, false, true));
+        TestTracker.Record("vt-awaiter/copy-sees-completion", aw.IsCompleted);
+        var r = aw.GetResult();
+        TestTracker.Record("vt-awaiter/getresult-ok", r.IsCompleted);
+    }
+
     // ==================== ReadOnlySequence ====================
 
     // NOTE on object->ReadOnlySequenceSegment<T> coercion: probed on-device
@@ -236,7 +301,13 @@ public static class MemoryPipelineTests
         }
     }
 
-    private static void TestReadOnlySequence()
+    // The sequence checks are split into RunStep-able methods so a throwing
+    // block pinpoints itself in the failure list instead of aborting the whole
+    // category at its first fault (the old single "step/readonly-sequence"
+    // step hid which of the five blocks threw).
+    private static ReadOnlySequence<int> _seq;
+
+    private static void TestSeqBuildLengthFirst()
     {
         var s1 = new int[] { 1, 2, 3, 4 };
         var s2 = new int[] { 5, 6, 7 };
@@ -255,11 +326,14 @@ public static class MemoryPipelineTests
         seg2.SetRunningIndex(seg1.RunningIndex + s1.Length);
         seg3.SetRunningIndex(seg2.RunningIndex + s2.Length);
 
-        var seq = new ReadOnlySequence<int>(seg1, 0, seg3, 2);
-        TestTracker.Record("Seq/multi-length", Assert.AreEqual((long)9, seq.Length), "len=" + seq.Length.ToString());
-        TestTracker.Record("Seq/multi-first", Assert.AreEqual(1, seq.First.Span[0]) && Assert.AreEqual(4, seq.First.Length));
+        _seq = new ReadOnlySequence<int>(seg1, 0, seg3, 2);
+        TestTracker.Record("Seq/multi-length", Assert.AreEqual((long)9, _seq.Length), "len=" + _seq.Length.ToString());
+        TestTracker.Record("Seq/multi-first", Assert.AreEqual(1, _seq.First.Span[0]) && Assert.AreEqual(4, _seq.First.Length));
+    }
 
-        var slice = seq.Slice(3, 4);             // elements 4,5,6,7
+    private static void TestSeqSlice()
+    {
+        var slice = _seq.Slice(3, 4);            // elements 4,5,6,7
         TestTracker.Record("Seq/slice-length", Assert.AreEqual((long)4, slice.Length));
         int segs = 0;
         long segLen = 0;
@@ -273,26 +347,50 @@ public static class MemoryPipelineTests
         var arr = slice.ToArray();
         TestTracker.Record("Seq/slice-content", arr.Length == 4 && arr[0] == 4 && arr[3] == 7,
             "n=" + arr.Length.ToString());
+    }
 
-        NeutrinoOS.DDK.Kernel.Debug.Report("[JITTest] seq-e");
-
+    private static void TestSeqChecksum()
+    {
         long total = 0;
-        int checksum = 0;
-        foreach (var segmentMem in seq)
+        int checksum = 0;          // direct .Span[i] on the foreach variable
+        int localChecksum = 0;     // span copied to a local first
+        int s0 = 0, s1 = 0, s2 = 0;
+        int segNo = 0;
+        foreach (var segmentMem in _seq)
         {
             total += segmentMem.Length;
+            var sp = segmentMem.Span;
+            int segLocal = 0;
+            for (int i = 0; i < sp.Length; i++)
+                segLocal += sp[i];
             for (int i = 0; i < segmentMem.Length; i++)
                 checksum += segmentMem.Span[i];
+            localChecksum += segLocal;
+            if (segNo == 0) s0 = segLocal;
+            else if (segNo == 1) s1 = segLocal;
+            else if (segNo == 2) s2 = segLocal;
+            segNo++;
         }
         TestTracker.Record("Seq/enumerate-total", total == 9, "total=" + total.ToString());
-        TestTracker.Record("Seq/enumerate-checksum", checksum == 45);
+        TestTracker.Record("Seq/enumerate-checksum", checksum == 45,
+            "sum=" + checksum.ToString()
+            + " lsum=" + localChecksum.ToString()
+            + " segL=" + s0.ToString() + "," + s1.ToString() + "," + s2.ToString());
+        TestTracker.Record("Seq/enumerate-checksum-local-span", localChecksum == 45,
+            "lsum=" + localChecksum.ToString());
+    }
 
-        var pos = seq.GetPosition(5);            // element index 5 => value 6
-        var viaSlice = seq.Slice(pos);
+    private static void TestSeqGetPos()
+    {
+        var pos = _seq.GetPosition(5);           // element index 5 => value 6
+        var viaSlice = _seq.Slice(pos);
         var viaArr = viaSlice.ToArray();
         TestTracker.Record("Seq/get-position", viaArr.Length == 4 && viaArr[0] == 6,
             "n=" + viaArr.Length.ToString());
+    }
 
+    private static void TestSeqSingleEmpty()
+    {
         var single = new ReadOnlySequence<int>(new int[] { 10, 11, 12 });
         TestTracker.Record("Seq/single", single.Length == 3 && single.First.Span[1] == 11 && single.IsSingleSegment);
         TestTracker.Record("Seq/empty", new ReadOnlySequence<int>().IsEmpty);
@@ -314,7 +412,9 @@ public static class MemoryPipelineTests
 
         TestTracker.Record("Pipe/read-async-woken-by-flush", readTask.IsCompleted);
 
-        var result = readTask.GetAwaiter().GetResult();
+        var awaiter = readTask.GetAwaiter();     // 24B awaiter value copy (probe)
+        TestTracker.Record("Pipe/awaiter-copy-sees-completion", awaiter.IsCompleted);
+        var result = awaiter.GetResult();
         int n = 0;
         foreach (var segmentMem in result.Buffer)
             n += segmentMem.Length;
