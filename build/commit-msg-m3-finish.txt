@@ -1,0 +1,31 @@
+M3 done: feature collection + Expect: 417 + chunked trailers, Type.op_Equality AOT fix (v0.1.220)
+
+Completes the M3 roadmap (docs/KESTREL-PORT.md):
+
+- HttpFeatureCollection: the IFeatureCollection shape (TFeature? Get<TFeature>() /
+  void Set<TFeature>(TFeature?)) on HttpContext.Features; token-compared lookups
+  with guarded casts. Pinned on-device by the new Web/Features JITTest category
+  (6 records - Get/Set round-trips, clear-to-null, write-through to the concrete
+  request/response).
+- Expect: edge semantics - HTTP/1.1 requests with an unsatisfiable Expect token
+  get an immediate 417 Expectation Failed (flags bit FlagExpectUnsupported);
+  100-continue interim handling unchanged.
+- Chunked trailers: up to 16 trailer lines after the 0 chunk are consumed and
+  discarded (MaxTrailerLines bound); malformed framing still 400.
+
+Tier-0 JIT fix (the blocker): typeof(TFeature) == typeof(IHttpRequestFeature) in
+the dispatch compiles to `call System.Type::op_Equality`, which the AOT method
+registry did not know - compiling the DDK Get body failed, the MethodSpec became
+unresolvable, `ldftn` failed and the whole JITTest assembly aborted
+(`[JITTest] ERROR: JIT compilation failed`). Registered Type.op_Equality /
+op_Inequality in AotMethodRegistry.RegisterTypeMethods() against a handle-based
+helper (typeof creates a fresh RuntimeType wrapper per call; the MethodTable
+handle is the type identity). `ldtoken !0` needs no change - it is a TypeSpec
+whose MVAR resolves from the live MethodSpec type-argument context.
+
+Verification: JITTest 3030 passed / 5 known failures (was 3024/5; +6 = all
+feature records), AppTest 25/25 (1 MB echo), webapi-probe 34/34 (+expect417,
++trailers raw-client checks in build/m3-http-check.py), sampleapi-probe 28/28.
+
+Also adds build/iltool - a scratch IL/MethodSpec inspection tool used to
+diagnose the failure (MethodSpec decode + method IL dump with token resolution).

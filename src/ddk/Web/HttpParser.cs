@@ -40,6 +40,10 @@ internal static class HttpParser
     public const int FlagConnClose = 2;
     public const int FlagExpectContinue = 4;
     public const int FlagChunked = 8;
+    public const int FlagExpectUnsupported = 16;   // Expect present, not 100-continue
+
+    /// <summary>Trailer lines accepted after the last chunk (ignored).</summary>
+    private const int MaxTrailerLines = 16;
 
     /// <summary>
     /// Parses "METHOD SP TARGET SP HTTP/x.y CRLF *(header CRLF) CRLF" from
@@ -103,6 +107,8 @@ internal static class HttpParser
                 {
                     if (TokenIn(buf, valStart, valEnd, "100-continue"))
                         flags |= FlagExpectContinue;
+                    else
+                        flags |= FlagExpectUnsupported;
                 }
             }
             pos = end + 2;
@@ -135,18 +141,20 @@ internal static class HttpParser
             pos = lineEnd + 2;
             if (size == 0)
             {
-                // Last chunk: optional trailers, then the blank line.
-                int t1 = FindCrlf(buf, pos, end);
-                if (t1 < 0)
+                // Last chunk: any number of trailer lines (bounded), then the
+                // blank line. Trailer content is ignored.
+                int trailers = 0;
+                int t = FindCrlf(buf, pos, end);
+                while (t > pos)
+                {
+                    if (++trailers > MaxTrailerLines)
+                        return DecodeMalformed;
+                    pos = t + 2;
+                    t = FindCrlf(buf, pos, end);
+                }
+                if (t < 0)
                     return DecodeIncomplete;
-                if (t1 == pos)
-                    return pos + 2 - start;       // "0\r\n\r\n"
-                int t2 = FindCrlf(buf, t1 + 2, end);
-                if (t2 < 0)
-                    return DecodeIncomplete;
-                if (t2 == t1 + 2)
-                    return t2 + 2 - start;        // trailers, then "\r\n"
-                return DecodeMalformed;           // (one trailer line supported)
+                return t + 2 - start;             // t == pos: the blank line
             }
             if (size > body.Length - bodyLen)
                 return DecodeTooLarge;

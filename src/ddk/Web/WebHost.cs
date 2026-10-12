@@ -346,7 +346,16 @@ public sealed class WebHost
             bool http11 = (flags & HttpParser.FlagHttp11) != 0;
             bool connClose = (flags & HttpParser.FlagConnClose) != 0;
             bool chunked = (flags & HttpParser.FlagChunked) != 0;
-            bool expectContinue = (flags & HttpParser.FlagExpectContinue) != 0;
+            // Expect: 100-continue is HTTP/1.1-only (RFC 7231: a 1.0 client's
+            // expectation is ignored); any other expectation is unsatisfiable.
+            // The per-request cap plus this single interim send bound the
+            // 100-continue traffic on a connection.
+            bool expectContinue = http11 && (flags & HttpParser.FlagExpectContinue) != 0;
+            if (http11 && (flags & HttpParser.FlagExpectUnsupported) != 0)
+            {
+                RespondAndFinish(conn, 417, "text/plain", "expectation failed\n");
+                return;
+            }
 
             string reqBody = "";
             int total;   // bytes of this request currently in the buffer

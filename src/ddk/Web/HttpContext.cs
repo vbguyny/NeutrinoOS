@@ -75,6 +75,60 @@ public interface IHttpResponseFeature
     void Json(string json);
 }
 
+/// <summary>
+/// Kestrel-shaped feature source (the Microsoft.AspNetCore.Http.Features.
+/// IFeatureCollection subset the M3 engine needs). Lookups compare the Type
+/// token first and cast the stored reference only after the token matched;
+/// the round-trip is pinned on-device by the Web/Features JITTest category
+/// before anything in the web layer depends on it.
+/// </summary>
+public interface IFeatureCollection
+{
+    /// <summary>Gets the feature instance for TFeature, or null.</summary>
+    TFeature? Get<TFeature>() where TFeature : class;
+
+    /// <summary>Sets (or clears, with null) the feature instance for TFeature.</summary>
+    void Set<TFeature>(TFeature? instance) where TFeature : class;
+}
+
+/// <summary>
+/// Fixed-slot feature collection for the M3 subset (request + response).
+/// </summary>
+public sealed class HttpFeatureCollection : IFeatureCollection
+{
+    private IHttpRequestFeature _request;
+    private IHttpResponseFeature _response;
+
+    /// <summary>Creates the collection over a context's request/response pair.</summary>
+    public HttpFeatureCollection(IHttpRequestFeature request, IHttpResponseFeature response)
+    {
+        _request = request;
+        _response = response;
+    }
+
+    /// <inheritdoc/>
+    public TFeature? Get<TFeature>() where TFeature : class
+    {
+        if (typeof(TFeature) == typeof(IHttpRequestFeature) && _request != null)
+            return (TFeature)(object)_request;
+        if (typeof(TFeature) == typeof(IHttpResponseFeature) && _response != null)
+            return (TFeature)(object)_response;
+        return null;
+    }
+
+    /// <inheritdoc/>
+    public void Set<TFeature>(TFeature? instance) where TFeature : class
+    {
+        if (typeof(TFeature) == typeof(IHttpRequestFeature))
+        {
+            _request = (IHttpRequestFeature?)(object?)instance;
+            return;
+        }
+        if (typeof(TFeature) == typeof(IHttpResponseFeature))
+            _response = (IHttpResponseFeature?)(object?)instance;
+    }
+}
+
 /// <summary>One HTTP request/response pair handed to a route handler.</summary>
 public sealed class HttpContext
 {
@@ -84,11 +138,15 @@ public sealed class HttpContext
     /// <summary>The outbound response (write to it in the handler).</summary>
     public readonly HttpResponse Response;
 
+    /// <summary>The request/response feature collection (Kestrel-shaped).</summary>
+    public readonly HttpFeatureCollection Features;
+
     /// <summary>Creates the context; hosts build this per request.</summary>
     public HttpContext()
     {
         Request = new HttpRequest();
         Response = new HttpResponse();
+        Features = new HttpFeatureCollection(Request, Response);
     }
 
     /// <summary>The request as an IHttpRequestFeature (feature-shaped view).</summary>
@@ -309,6 +367,7 @@ public static class WebStatus
         if (code == 409) return "Conflict";
         if (code == 413) return "Payload Too Large";
         if (code == 415) return "Unsupported Media Type";
+        if (code == 417) return "Expectation Failed";
         if (code == 422) return "Unprocessable Entity";
         if (code == 431) return "Request Header Fields Too Large";
         if (code == 500) return "Internal Server Error";

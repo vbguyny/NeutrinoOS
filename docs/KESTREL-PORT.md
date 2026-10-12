@@ -198,14 +198,38 @@ backing task when it was materialized. JITTest gained
 `Task/suspended-before-signal`-style coverage (`TestTaskSuspension`, the
 first on-device test of a Task that suspends and is completed later).
 
-Remaining M3 work:
+**Step 3 DONE - feature collection + `Expect:` edge semantics + chunked trailers.**
 
-- Full request/response feature collection (`IFeatureCollection` shape) -
-  lands with the M4 DI shim so it can be shared.
-- `Expect:` edge semantics (417 on unsatisfiable, `100-continue` flood
-  bounding) and chunked trailers beyond one line.
-- Body handling must keep reusing the M1 semantics (413/431 limits) so all
-  probes keep passing unchanged.
+- `HttpFeatureCollection` (the `IFeatureCollection` shape: `TFeature? Get<TFeature>()`
+  / `void Set<TFeature>(TFeature?)`) now hangs off `HttpContext.Features`; lookups
+  compare Type tokens (`typeof`) and cast only after the token matched. The shape
+  is pinned on-device by the new `Web/Features` JITTest category - 6 records:
+  Get/Set round-trips for both features, clear-to-null via
+  `Set<IHttpResponseFeature>(null)`, and write-through from the feature view to
+  the concrete request/response objects.
+- `Expect:` semantics: an HTTP/1.1 request with an unsatisfiable `Expect` token
+  (anything other than `100-continue`) now gets an immediate
+  `417 Expectation Failed`; the `100-continue` interim path is unchanged (one
+  interim per request, written only while the body is still pending).
+- Chunked trailers: up to 16 trailer lines after the `0` chunk are consumed and
+  discarded (parser-side `MaxTrailerLines` bound; content ignored); malformed
+  trailer framing still yields `400`.
+- Verification: `JITTest` **3030 passed** / 5 known failures (all feature records
+  green), `AppTest` 25/25 (1 MB echo), `webapi-probe` **34/34** (32 +
+  `expect417` + `trailers` raw-client checks in `build/m3-http-check.py`),
+  `sampleapi-probe` 28/28.
+
+Bring-up note (Tier-0): the dispatch's `typeof(TFeature) == typeof(IHttpRequestFeature)`
+compiles to a `call System.Type::op_Equality` MemberRef - which was NOT in the AOT
+method registry, so compiling the DDK `Get` body failed and the failure cascaded
+(`Unknown opcode 0x28` in the DDK compile -> MethodSpec unresolvable ->
+`ldftn: failed to resolve token` -> the whole JITTest assembly aborted). Fixed
+kernel-side: `Type.op_Equality`/`op_Inequality` are registered in
+`AotMethodRegistry.RegisterTypeMethods()` against a handle-based helper - `typeof`
+assembles a fresh `RuntimeType` wrapper per call, so the underlying MethodTable
+handle (not the wrapper reference) is the type identity. The `ldtoken !0` side
+needs no extra work: Roslyn encodes it as a TypeSpec whose MVAR is answered from
+the live MethodSpec type-argument context during resolution.
 
 **Known issues (made VISIBLE by the JITTest honesty fix below - these were
 silently skipped since M2 because the Memory/Pipelines category aborted at
@@ -214,7 +238,7 @@ its ReadOnlySequence test):**
 - `RunCategory` used to swallow category exceptions via `Debug.Write` (which
   is compiled out of default builds); it now reports + records them, and
   `MemoryPipelineTests.RunAll` wraps each step in `RunStep` so one throwing
-  test no longer kills the rest of the category. Current boot: 3024 passed,
+  test no longer kills the rest of the category. Current boot: 3030 passed,
   5 remaining failures: `category/Overflow` (NRE), `Seq/enumerate-checksum`,
   `step/readonly-sequence` (NRE in the slice enumerator), `step/pipe-read-wake`
   (InvalidOperationException out of the ValueTask awaiter copy), and

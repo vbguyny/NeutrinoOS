@@ -94,6 +94,16 @@ if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py async > /tmp/m
 else
   fail "async handler ($(tail -1 /tmp/m3-async.out))"
 fi
+if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py expect417 > /tmp/m3-417.out 2>&1; then
+  pass "unsatisfiable Expect -> 417"
+else
+  fail "expect 417 ($(tail -1 /tmp/m3-417.out))"
+fi
+if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py trailers > /tmp/m3-trailers.out 2>&1; then
+  pass "chunked trailers accepted"
+else
+  fail "trailers ($(tail -1 /tmp/m3-trailers.out))"
+fi
 
 echo "=== concurrency + counters ==="
 curl -sS -m 15 -o /dev/null $B/api/v1/info 2>/dev/null &

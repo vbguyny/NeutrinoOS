@@ -186,6 +186,9 @@ public static class TestRunner
         // Korlib: Memory<T>/ArrayPool/ReadOnlySequence/Pipelines (Kestrel port M2)
         RunCategory("Memory/Pipelines", MemoryPipelineTests.RunAll);
 
+        // Web layer: Kestrel-port feature collection (M3)
+        RunCategory("Web/Features", WebFeatureTests.RunAll);
+
         // Korlib: String formatting
         RunCategory("StringFormat", StringFormatTests.RunAll);
 

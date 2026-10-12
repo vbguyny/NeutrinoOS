@@ -1184,6 +1184,22 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<Type, string?, System.Reflection.FieldInfo?>)&TypeMethodHelpers.GetField,
             1, ReturnKind.IntPtr, true, true);
 
+        // Type.op_Equality - static; compares the underlying MethodTable (handle),
+        // because typeof() creates a FRESH RuntimeType wrapper on every call, so
+        // wrapper reference equality would be wrong. Roslyn emits a call to this
+        // operator for `typeof(T) == typeof(X)` (e.g. feature-collection dispatch),
+        // so without this entry any such comparison is a JIT compile failure.
+        Register(
+            "System.Type", "op_Equality",
+            (nint)(delegate*<Type?, Type?, bool>)&ReflectionHelpers.TypeEquals,
+            2, ReturnKind.Int32, false, false);
+
+        // Type.op_Inequality - static; mirror of op_Equality.
+        Register(
+            "System.Type", "op_Inequality",
+            (nint)(delegate*<Type?, Type?, bool>)&ReflectionHelpers.TypeNotEquals,
+            2, ReturnKind.Int32, false, false);
+
         // MethodInfo.op_Equality - static, reference comparison
         Register(
             "System.Reflection.MethodInfo", "op_Equality",
@@ -4530,6 +4546,23 @@ public static class ReflectionHelpers
 
     public static bool MethodInfoNotEquals(System.Reflection.MethodInfo? left, System.Reflection.MethodInfo? right)
         => !MethodInfoEquals(left, right);
+
+    // Type equality - compare the underlying MethodTable handles. typeof() creates a
+    // fresh RuntimeType wrapper per call, so wrapper reference equality is not the
+    // right semantics; the handle is the type identity (matches Type.op_Equality).
+    public static bool TypeEquals(Type? left, Type? right)
+    {
+        if (left is null)
+            return right is null;
+        if (right is null)
+            return false;
+        if (ReferenceEquals(left, right))
+            return true;
+        return TypeMethodHelpers.GetTypeHandle(left) == TypeMethodHelpers.GetTypeHandle(right);
+    }
+
+    public static bool TypeNotEquals(Type? left, Type? right)
+        => !TypeEquals(left, right);
 
     // MethodBase equality - compare by metadata token (same method = same token)
     public static bool MethodBaseEquals(System.Reflection.MethodBase? left, System.Reflection.MethodBase? right)

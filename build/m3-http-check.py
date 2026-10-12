@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""M3 raw-client checks against the WebHost engine (chunked + 100-continue + async).
+"""M3 raw-client checks against the WebHost engine (framing + async + expect).
 
-Usage: m3-http-check.py chunked|continue|async [port]
+Usage: m3-http-check.py chunked|continue|async|expect417|trailers [port]
 
 Connects to 127.0.0.1:<port> (the QEMU hostfwd, default 18080), speaks raw
 HTTP/1.1 so the framing is fully deterministic, and asserts the M3 behaviors:
@@ -10,6 +10,8 @@ HTTP/1.1 so the framing is fully deterministic, and asserts the M3 behaviors:
                interim "HTTP/1.1 100 Continue" BEFORE sending the body
   async     -> GET /api/v1/wait (async handler suspends); GET /api/v1/poke on
                a second connection resumes it; both responses are checked
+  expect417 -> an unsatisfiable Expect (not 100-continue) gets 417
+  trailers  -> chunked request with two trailer lines after the last chunk
 Exit code 0 = pass; 1 = fail (reason printed to stdout).
 """
 
@@ -110,6 +112,31 @@ def check_async(port):
     return 0
 
 
+def check_expect417(port):
+    s = socket.create_connection(("127.0.0.1", port), timeout=10)
+    s.sendall(b"GET /api/v1/info HTTP/1.1\r\nHost: m3-check\r\n"
+              b"Expect: something-else\r\nConnection: close\r\n\r\n")
+    resp = recv_response(s)
+    s.close()
+    if not resp.startswith(b"HTTP/1.1 417"):
+        print("expected 417, got: %r" % resp[:120])
+        return 1
+    return 0
+
+
+def check_trailers(port):
+    s = socket.create_connection(("127.0.0.1", port), timeout=10)
+    s.sendall(b"POST /api/v1/echo HTTP/1.1\r\nHost: m3-check\r\n"
+              b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+              b"5\r\nhello\r\n0\r\nX-Checksum: 42\r\nAnother-Trailer: ok\r\n\r\n")
+    resp = recv_response(s)
+    s.close()
+    if b'"content_length":5' not in resp or b'"you_sent":"hello"' not in resp:
+        print("bad echo response: %r" % resp[-220:])
+        return 1
+    return 0
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "chunked"
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 18080
@@ -119,6 +146,10 @@ def main():
         return check_continue(port)
     if mode == "async":
         return check_async(port)
+    if mode == "expect417":
+        return check_expect417(port)
+    if mode == "trailers":
+        return check_trailers(port)
     print("unknown mode: %s" % mode)
     return 2
 
