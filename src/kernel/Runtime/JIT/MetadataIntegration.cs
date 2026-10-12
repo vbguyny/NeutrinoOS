@@ -2489,6 +2489,7 @@ public static unsafe class MetadataIntegration
         // Get the type name from the TypeRef or TypeSpec
         byte* typeName = null;
         bool firstGenericArgIsRefType = false;  // Track if first generic type arg is reference type
+        byte firstGenericArgElemType = 0;       // Raw element type of first generic arg (0 = unknown)
         if (classRef.Table == MetadataTableId.TypeRef)
         {
             uint typeNameIdx = MetadataReader.GetTypeRefName(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
@@ -2557,6 +2558,7 @@ public static unsafe class MetadataIntegration
                                 if (argCount > 0 && tsPos < (int)tsSigLen)
                                 {
                                     byte argElemType = tsSig[tsPos];
+                                    firstGenericArgElemType = argElemType;
                                     // Reference types: CLASS(0x12), STRING(0x0E), OBJECT(0x1C), SZARRAY(0x1D), ARRAY(0x14)
                                     // Value types: VALUETYPE(0x11), I1-I8, U1-U8, R4, R8, BOOLEAN, CHAR, etc.
                                     firstGenericArgIsRefType =
@@ -2619,6 +2621,41 @@ public static unsafe class MetadataIntegration
         {
             JitTrace.WriteLine("[AotMemberRef] ReadOnlyCollection.get_Item: T is value type, skip AOT");
             return false;  // Fall through to JIT for value types
+        }
+
+        // Span<T>/ReadOnlySpan<T>.get_Item: the plain AOT entry indexes BYTES
+        // (GetByteRef), which reads misaligned elements for any T wider than
+        // one byte (observed: summing a ReadOnlySpan<int> of [1,2,3,4] gave
+        // 0x02020201). Pick the element-strided variant that matches the
+        // span's generic argument: 2/4/8-byte primitives and pointer-sized
+        // reference elements. Byte-wide T keeps the default entry.
+        int spanElemSizeVariant = 0;
+        if ((NameEquals(typeName, "System.Span`1") || NameEquals(typeName, "System.ReadOnlySpan`1")) &&
+            NameEquals(memberName, "get_Item"))
+        {
+            switch (firstGenericArgElemType)
+            {
+                case 0x03:  // ELEMENT_TYPE_CHAR
+                case 0x06:  // ELEMENT_TYPE_I2
+                case 0x07:  // ELEMENT_TYPE_U2
+                    spanElemSizeVariant = 2;
+                    break;
+                case 0x08:  // ELEMENT_TYPE_I4
+                case 0x09:  // ELEMENT_TYPE_U4
+                case 0x0C:  // ELEMENT_TYPE_R4
+                    spanElemSizeVariant = 4;
+                    break;
+                case 0x0A:  // ELEMENT_TYPE_I8
+                case 0x0B:  // ELEMENT_TYPE_U8
+                case 0x0D:  // ELEMENT_TYPE_R8
+                case 0x0E:  // STRING (reference, pointer-sized)
+                case 0x12:  // CLASS
+                case 0x14:  // ARRAY
+                case 0x1C:  // OBJECT
+                case 0x1D:  // SZARRAY
+                    spanElemSizeVariant = 8;
+                    break;
+            }
         }
 
         // Special handling for String constructors - need to distinguish char* from char[]
@@ -2703,14 +2740,14 @@ public static unsafe class MetadataIntegration
         // use the legacy lookup with variant flags instead of signature hash.
         // This is because those methods are registered with variant names like ".ctor$single"
         // rather than with signature hashes.
-        bool useVariantLookup = useCharPtrVariant || useListVariant || useSingleExceptionVariant;
+        bool useVariantLookup = useCharPtrVariant || useListVariant || useSingleExceptionVariant || spanElemSizeVariant != 0;
 
         bool found;
         AotMethodEntry entry;
         if (useVariantLookup)
         {
             // Use legacy lookup with variant flags for constructors with special overloads
-            found = AotMethodRegistry.TryLookup(typeName, memberName, paramCount, out entry, useCharPtrVariant, useListVariant, useSingleExceptionVariant);
+            found = AotMethodRegistry.TryLookup(typeName, memberName, paramCount, out entry, useCharPtrVariant, useListVariant, useSingleExceptionVariant, spanElemSizeVariant);
         }
         else
         {

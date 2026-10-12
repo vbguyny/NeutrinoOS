@@ -2046,10 +2046,25 @@ public static unsafe class AotMethodRegistry
             0, ReturnKind.Int32, true, false);
 
         // System.ReadOnlySpan`1.get_Item - 1 explicit param (index)
-        // Returns ref T (pointer to element) - caller uses ldind to load actual value
+        // Returns ref T (pointer to element) - caller uses ldind to load actual value.
+        // The plain entry indexes BYTES; the $i2/$i4/$i8 variants index by
+        // the element size and are selected by the memberRef resolution path
+        // when the span's element type is wider than one byte.
         Register(
             "System.ReadOnlySpan`1", "get_Item",
             (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetByteRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "get_Item$i2",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetShortRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "get_Item$i4",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetIntRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "get_Item$i8",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetLongRef,
             1, ReturnKind.IntPtr, true, false);
 
         // System.ReadOnlySpan`1.get_IsEmpty - 0 explicit params (property getter)
@@ -2078,10 +2093,23 @@ public static unsafe class AotMethodRegistry
             0, ReturnKind.Int32, true, false);
 
         // System.Span`1.get_Item - 1 explicit param (index)
-        // Returns ref T (pointer to element) - caller uses ldind to load actual value
+        // Returns ref T (pointer to element) - caller uses ldind to load actual value.
+        // Element-size variants as for ReadOnlySpan`1 above.
         Register(
             "System.Span`1", "get_Item",
             (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetByteRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Span`1", "get_Item$i2",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetShortRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Span`1", "get_Item$i4",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetIntRef,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Span`1", "get_Item$i8",
+            (nint)(delegate*<nint, int, nint>)&SpanHelpers.GetLongRef,
             1, ReturnKind.IntPtr, true, false);
 
         // System.Span`1.get_IsEmpty - 0 explicit params (property getter)
@@ -2278,10 +2306,11 @@ public static unsafe class AotMethodRegistry
     /// Uses three-tier lookup: exact match, open generic, legacy arg-count.
     /// </summary>
     public static bool TryLookup(byte* typeName, byte* methodName, byte argCount, out AotMethodEntry entry,
-                                  bool isCharPtrVariant = false, bool isListVariant = false, bool isSingleExceptionVariant = false)
+                                  bool isCharPtrVariant = false, bool isListVariant = false, bool isSingleExceptionVariant = false,
+                                  int spanElemSizeVariant = 0)
     {
         // Legacy lookup - use extended lookup with no signature/instantiation
-        return TryLookupEx(typeName, methodName, argCount, 0, 0, out entry, isCharPtrVariant, isListVariant, isSingleExceptionVariant);
+        return TryLookupEx(typeName, methodName, argCount, 0, 0, out entry, isCharPtrVariant, isListVariant, isSingleExceptionVariant, spanElemSizeVariant);
     }
 
     /// <summary>
@@ -2302,7 +2331,8 @@ public static unsafe class AotMethodRegistry
     /// </summary>
     public static bool TryLookupEx(byte* typeName, byte* methodName, byte argCount,
                                     ulong signatureHash, uint instantiationHash,
-                                    out AotMethodEntry entry, bool isCharPtrVariant = false, bool isListVariant = false, bool isSingleExceptionVariant = false)
+                                    out AotMethodEntry entry, bool isCharPtrVariant = false, bool isListVariant = false, bool isSingleExceptionVariant = false,
+                                    int spanElemSizeVariant = 0)
     {
         entry = default;
 
@@ -2311,6 +2341,16 @@ public static unsafe class AotMethodRegistry
 
         ulong typeHash = HashBytes(typeName);
         ulong methodHash = HashBytes(methodName);
+
+        // Element-size variant for Span<T>.get_Item (2/4/8-byte elements):
+        // the plain entry indexes bytes, so the resolver selects a suffixed
+        // entry registered against an element-strided helper.
+        if (spanElemSizeVariant == 2)
+            methodHash = HashString("get_Item$i2");
+        else if (spanElemSizeVariant == 4)
+            methodHash = HashString("get_Item$i4");
+        else if (spanElemSizeVariant == 8)
+            methodHash = HashString("get_Item$i8");
 
         // For char* variant constructors, look for the special ".ctor$ptr" entry
         // For List<> variant constructors (e.g., AggregateException), look for ".ctor$list"
@@ -5780,6 +5820,37 @@ public static unsafe class SpanHelpers
             Environment.FailFast(null);
 
         int* data = (int*)*(nint*)spanPtr;
+        return (nint)(data + index);
+    }
+
+    /// <summary>
+    /// Get a reference (pointer) to a 2-byte element (char/short/ushort)
+    /// at the specified index. The plain GetByteRef helper indexes BYTES,
+    /// which reads misaligned elements for wider T; the resolution path
+    /// selects this entry for 2-byte element types.
+    /// </summary>
+    public static nint GetShortRef(nint spanPtr, int index)
+    {
+        int length = *(int*)((byte*)spanPtr + 8);
+        if ((uint)index >= (uint)length)
+            Environment.FailFast(null);
+
+        short* data = (short*)*(nint*)spanPtr;
+        return (nint)(data + index);
+    }
+
+    /// <summary>
+    /// Get a reference (pointer) to an 8-byte element (long/ulong/double or
+    /// a reference) at the specified index; same selection story as
+    /// GetShortRef.
+    /// </summary>
+    public static nint GetLongRef(nint spanPtr, int index)
+    {
+        int length = *(int*)((byte*)spanPtr + 8);
+        if ((uint)index >= (uint)length)
+            Environment.FailFast(null);
+
+        long* data = (long*)*(nint*)spanPtr;
         return (nint)(data + index);
     }
 

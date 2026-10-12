@@ -252,16 +252,22 @@ its ReadOnlySequence test):**
   8 mod 16 keeps the funclet's call sites ABI-aligned); software throws keep
   the historical `[Rsp-8]` anchor (their context was captured at a call site,
   not an interrupt frame, and the rest of the suite exercises that path).
-- Current boot: `JITTest` **3046 passed / 11 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining reds: `Seq/enumerate-checksum` (+ its local-span
-  probe; per-segment sums show a read-stride problem, not a caching one),
-  `step/pipe-read-wake` / `step/pipe-async-sync` (`InvalidOperationException:
-  ValueTask not initialized` out of the awaiter copy - the 24-byte
-  struct-copy family), the new instrumentation probes (`vt/copy24`,
-  `vt-awaiter/copy`, `seq/getpos`, `Seq/single`, `Pipe/awaiter-copy-sees-
-  completion`), and `hw/nullderef-catch` - a new probe that observes a
-  silent resume-past-the-#PF with no dispatch trace at all (separate,
-  still-open bug).
+- FIXED (this commit): **Span<T>/ReadOnlySpan<T> indexers used a byte
+  stride.** The AOT registry bound `get_Item` for every element type to
+  `SpanHelpers.GetByteRef` (pointer + index bytes), so a `ReadOnlySpan<int>`
+  of [1,2,3,4] summed as 0x02020201 instead of 10 - `Seq/enumerate-checksum`
+  and `Seq/single` were red because of this. The resolver now reads the
+  span's generic argument from the memberRef TypeSpec and selects
+  `get_Item$i2`/`$i4`/`$i8` entries (element-strided helpers) for char/short,
+  int/uint/float, and long/double/pointer-sized elements; byte spans keep
+  the original entry.
+- Current boot: `JITTest` **3049 passed / 8 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining reds: `step/pipe-read-wake` / `step/pipe-async-sync`
+  plus the probes `vt/copy24`, `vt-awaiter/copy(-sees-completion)`,
+  `seq/getpos`, `Pipe/awaiter-copy-sees-completion` (all forms of the 24-byte
+  struct argument/return calling-convention family), and `hw/nullderef-catch`
+  (silent resume-past-the-#PF with no dispatch trace - separate, still-open
+  bug).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0
