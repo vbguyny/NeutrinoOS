@@ -18,7 +18,12 @@ public static class MemoryPipelineTests
 {
     public static void RunAll()
     {
-        RunStep("step/vt-large-struct-probe", TestValueTaskLargeStructProbe);
+        RunStep("vt/make-tcs", ProbeMakeTcs);
+        RunStep("vt/read-task", ProbeReadTask);
+        RunStep("vt/wrap-vt", ProbeMakeVt);
+        RunStep("vt/pending-flags", ProbePending);
+        RunStep("vt/complete", ProbeComplete);
+        RunStep("vt/done-flags", ProbeDone);
         RunStep("step/memory", TestMemoryBasics);
         RunStep("step/memory-span", TestMemorySpan);
         RunStep("step/array-pool", TestArrayPool);
@@ -162,20 +167,47 @@ public static class MemoryPipelineTests
         pool.Return(d);
     }
 
-    // The ReadAsync path hands the caller a ValueTask<ReadResult> - a ~56
-    // byte struct (ReadResult embeds a ReadOnlySequence). This probe isolates
-    // whether constructing/observing a PENDING ValueTask of that size works
-    // at all, before blaming the Pipe. (Boot 2026-10-11: ReadAsync on an
-    // empty pipe reported IsCompleted=true.)
-    private static void TestValueTaskLargeStructProbe()
+    // Tier-0 coverage for the large-TResult Task/ValueTask paths: a ~48-byte
+    // ReadResult used to NRE the whole flow (TaskCompletionSource<ReadResult>
+    // / ValueTask<ReadResult> / a typed TResult storage field). The sub-steps
+    // are individually labeled so a regression pinpoints the layer; they
+    // pass with the boxed-result storage in korlib Task<TResult>/
+    // ValueTask<TResult> (object field instead of a typed TResult field).
+    private static TaskCompletionSource<ReadResult> _probeTcs;
+    private static Task<ReadResult> _probeTask;
+    private static ValueTask<ReadResult> _probeVt;
+
+    private static void ProbeMakeTcs()
     {
-        var tcs = new TaskCompletionSource<ReadResult>();
-        var vt = new ValueTask<ReadResult>(tcs.Task);
-        bool ic = vt.IsCompleted;
-        TestTracker.Record("VT/large-pending-not-completed", !ic, ic ? "completed=true" : null);
-        tcs.TrySetResult(new ReadResult(default, false, true));
-        bool ic2 = vt.IsCompleted;
-        TestTracker.Record("VT/large-completed-after-set", ic2);
+        _probeTcs = new TaskCompletionSource<ReadResult>();
+    }
+
+    private static void ProbeReadTask()
+    {
+        _probeTask = _probeTcs.Task;
+    }
+
+    private static void ProbeMakeVt()
+    {
+        _probeVt = new ValueTask<ReadResult>(_probeTask);
+    }
+
+    private static void ProbePending()
+    {
+        TestTracker.Record("VT/large-pending-not-completed", !_probeVt.IsCompleted);
+    }
+
+    private static void ProbeComplete()
+    {
+        _probeTcs.TrySetResult(new ReadResult(default, false, true));
+    }
+
+    private static void ProbeDone()
+    {
+        bool done = _probeVt.IsCompleted;
+        TestTracker.Record("VT/large-completed-after-set", done);
+        ReadResult r = _probeVt.Result;   // exercises the unbox result path
+        TestTracker.Record("VT/large-result-read-ok", r.IsCompleted);
     }
 
     // ==================== ReadOnlySequence ====================

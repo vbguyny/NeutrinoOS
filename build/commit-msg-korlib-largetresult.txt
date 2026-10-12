@@ -1,0 +1,19 @@
+korlib: boxed-result storage for Task<TResult>/ValueTask<TResult> (fixes large-TResult NREs)
+
+- Task<TResult>: the result is stored in an `object?` field (boxed) instead of
+  a typed `TResult?` field. A typed field embeds a copy of TResult (possibly a
+  large struct like ReadResult, ~48B) in the generic class instance; Tier-0
+  misbehaves with large struct fields in generic layouts - observed as NREs
+  through TaskCompletionSource<ReadResult>/ValueTask<ReadResult> and the
+  whole Pipe async-read path. The object reference keeps the instance layout
+  fixed for every TResult; the box is sized correctly by the GC.
+- ValueTask<TResult>: same treatment - `_result` is an `object?` (the struct
+  stays a fixed small size for every TResult); Result/AsTask/InternalResult
+  cast on read, Equals compares boxed results by identity (documented).
+
+JITTest: the large-struct probe is now six labeled sub-steps
+(vt/make-tcs, read-task, wrap-vt, pending-flags, complete, done-flags) so a
+regression pinpoints the layer; the VT/large-* records exercise the pending
+and completed states plus the unbox Result path.
+
+Verification: JITTest + AppTest + boot + probes on the round's image.

@@ -395,7 +395,14 @@ namespace System.Threading.Tasks
     /// </summary>
     public class Task<TResult> : Task
     {
-        private TResult? _result;
+        // The result is stored BOXED on purpose: a typed TResult? field would
+        // put a copy of TResult (possibly a large struct like ReadResult,
+        // ~48B) inline in this generic class instance, and Tier-0 misbehaves
+        // with large struct fields in generic layouts (observed NREs through
+        // TaskCompletionSource<ReadResult>/ValueTask<ReadResult>). An object
+        // reference keeps this instance layout fixed for every TResult; the
+        // box is sized correctly by the GC at runtime.
+        private object? _result;
 
         /// <summary>Gets the result value of this Task.</summary>
         public TResult Result
@@ -405,7 +412,7 @@ namespace System.Threading.Tasks
                 Wait();
                 if (IsFaulted && Exception != null) throw Exception;
                 if (IsCanceled) throw new TaskCanceledException(this);
-                return _result!;
+                return (TResult)_result!;
             }
         }
 

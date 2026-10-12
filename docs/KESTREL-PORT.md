@@ -214,18 +214,19 @@ its ReadOnlySequence test):**
 - `RunCategory` used to swallow category exceptions via `Debug.Write` (which
   is compiled out of default builds); it now reports + records them, and
   `MemoryPipelineTests.RunAll` wraps each step in `RunStep` so one throwing
-  test no longer kills the rest of the category. Current boot: 3016 passed,
-  7 visible failures: `category/Overflow` (NRE), `step/vt-large-struct-probe`
-  (NRE), `step/readonly-sequence` (NRE in the slice enumerator),
-  `Pipe/read-async-incomplete-initially` + `step/pipe-read-wake`
-  (InvalidOperationException), `step/pipe-pump-1mb` (NRE), `step/pipe-async-sync`.
-- Root cause hunt data: a minimal probe (`ValueTask<ReadResult>` wrapping an
-  incomplete `TaskCompletionSource<ReadResult>.Task`, then `IsCompleted`)
-  NullReferenceExceptions on Tier-0 - `ValueTask<TResult>`/`Task<TResult>`
-  with a LARGE `TResult` (~48-byte `ReadResult`) misbehave; the pipe async
-  path builds exactly that shape on every pending `ReadAsync`. Fixing the
-  large-`TResult` task storage (likely boxed-object result fields instead of
-  typed ones) is the next korlib work item, then re-run the pipe tests.
+  test no longer kills the rest of the category. Current boot: 3024 passed,
+  5 remaining failures: `category/Overflow` (NRE), `Seq/enumerate-checksum`,
+  `step/readonly-sequence` (NRE in the slice enumerator), `step/pipe-read-wake`
+  (InvalidOperationException out of the ValueTask awaiter copy), and
+  `step/pipe-async-sync`.
+- FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
+  `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
+  for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0
+  (minimal probe NREd; the whole pending-`Pipe.ReadAsync` path broke). The
+  results are now stored BOXED in `object?` fields, keeping both the generic
+  class instance and the ValueTask struct fixed small sizes for every
+  `TResult`. The `vt/*` probe steps, the pending-read record and the 1 MB
+  pipe pump pass with this in; type-level casts replace the typed reads.
 - Fixed along the way (already in): ReadOnlySequence `Length` read the
   cumulative `RunningIndex` contract while the JITTest built segments with
   index 0 (test now chains them properly); `Slice`/`TryGet` recovered

@@ -102,7 +102,11 @@ namespace System.Threading.Tasks
     public readonly struct ValueTask<TResult> : IEquatable<ValueTask<TResult>>
     {
         private readonly Task<TResult>? _task;
-        private readonly TResult? _result;
+        // Boxed on purpose: a typed TResult? field embeds a copy of TResult
+        // (possibly a large struct) in this generic struct, which Tier-0
+        // misbehaves with (see the Task<TResult> note). The object reference
+        // keeps this struct a fixed small size for every TResult.
+        private readonly object? _result;
         private readonly bool _hasResult;
         private readonly bool _continueOnCapturedContext;
 
@@ -110,7 +114,7 @@ namespace System.Threading.Tasks
         public ValueTask(Task<TResult> task)
         {
             _task = task ?? throw new ArgumentNullException(nameof(task));
-            _result = default;
+            _result = null;
             _hasResult = false;
             _continueOnCapturedContext = true;
         }
@@ -119,12 +123,12 @@ namespace System.Threading.Tasks
         public ValueTask(TResult result)
         {
             _task = null;
-            _result = result;
+            _result = result;   // boxes value types
             _hasResult = true;
             _continueOnCapturedContext = true;
         }
 
-        private ValueTask(Task<TResult>? task, TResult? result, bool hasResult, bool continueOnCapturedContext)
+        private ValueTask(Task<TResult>? task, object? result, bool hasResult, bool continueOnCapturedContext)
         {
             _task = task;
             _result = result;
@@ -166,7 +170,7 @@ namespace System.Threading.Tasks
             get
             {
                 if (_hasResult)
-                    return _result!;
+                    return (TResult)_result!;
 
                 if (_task == null)
                     throw new InvalidOperationException("ValueTask not initialized");
@@ -189,7 +193,7 @@ namespace System.Threading.Tasks
         public Task<TResult>? AsTask()
         {
             if (_hasResult)
-                return Task.FromResult(_result!);
+                return Task.FromResult((TResult)_result!);
             return _task;
         }
 
@@ -204,7 +208,7 @@ namespace System.Threading.Tasks
         public bool Equals(ValueTask<TResult> other) =>
             _hasResult == other._hasResult &&
             _task == other._task &&
-            EqualityComparer<TResult>.Default.Equals(_result, other._result);
+            _result == other._result;   // boxed results compare by identity
 
         public override bool Equals(object? obj) => obj is ValueTask<TResult> vt && Equals(vt);
         public override int GetHashCode() => _hasResult ? _result?.GetHashCode() ?? 0 : _task?.GetHashCode() ?? 0;
@@ -213,7 +217,7 @@ namespace System.Threading.Tasks
 
         internal bool ContinueOnCapturedContext => _continueOnCapturedContext;
         internal bool HasResult => _hasResult;
-        internal TResult? InternalResult => _result;
+        internal TResult? InternalResult => (TResult)_result!;
         internal Task<TResult>? InternalTask => _task;
     }
 }
