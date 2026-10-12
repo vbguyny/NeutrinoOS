@@ -5146,11 +5146,13 @@ public static unsafe class AssemblyLoader
                 if (genRow == 0)
                     return 8;
 
-                // Get base type size
-                uint baseSize = 0;
+                // Resolve the definition (assembly + TypeDef row) to size
+                LoadedAssembly* defAsm = null;
+                uint defTypeDefRow = 0;
                 if (genTag == 0)  // TypeDef in same assembly
                 {
-                    baseSize = ComputeInstanceSize(asm, genRow, true);
+                    defAsm = asm;
+                    defTypeDefRow = genRow;
                 }
                 else if (genTag == 1)  // TypeRef in another assembly
                 {
@@ -5158,74 +5160,147 @@ public static unsafe class AssemblyLoader
                     uint typeDefToken;
                     if (ResolveTypeRefToTypeDef(asm, genRow, out targetAsm, out typeDefToken))
                     {
-                        uint typeDefRow = typeDefToken & 0x00FFFFFF;
-                        if (targetAsm != null && typeDefRow > 0)
+                        defAsm = targetAsm;
+                        defTypeDefRow = typeDefToken & 0x00FFFFFF;
+                    }
+                }
+
+                // Resolve this instantiation's type arguments from the
+                // signature itself and size the definition against THEM as the
+                // type context. This makes the computed size exact and
+                // independent of any ambient (unrelated) generic context, so
+                // e.g. a ValueTask<ReadResult> field sizes identically in
+                // every compilation. (The previous behavior - adding the
+                // argument sizes on top of the definition's fields - inflated
+                // structs whose arguments are stored by reference:
+                // ValueTaskAwaiter<ReadResult> came out 104 bytes instead of
+                // 24, so its constructor's stack temp was zeroed over 104
+                // bytes and awaiter copies read zeros - "ValueTask not
+                // initialized".)
+                MethodTable** argMTs = stackalloc MethodTable*[8];
+                int argCount = 0;
+                bool argsResolved = false;
+                if (defAsm != null && defTypeDefRow > 0 && ptr < end)
+                {
+                    uint declaredCount = MetadataReader.ReadCompressedUInt(ref ptr);
+                    if (declaredCount > 0 && declaredCount <= 8)
+                    {
+                        int argPos = (int)(ptr - typeSig);
+                        bool ok = true;
+                        for (uint i = 0; i < declaredCount; i++)
                         {
-                            baseSize = ComputeInstanceSize(targetAsm, typeDefRow, true);
+                            MethodTable* argMT = ParseTypeFromSignature(asm, typeSig, ref argPos, sigLen);
+                            if (argMT == null)
+                            {
+                                ok = false;
+                                break;
+                            }
+                            argMTs[i] = argMT;
+                        }
+                        if (ok)
+                        {
+                            argCount = (int)declaredCount;
+                            argsResolved = true;
                         }
                     }
+                }
+
+                uint baseSize = 0;
+                if (argsResolved)
+                {
+                    // Save the ambient type context, then size the definition
+                    // with the signature's own instantiation arguments.
+                    int savedContextCnt = JIT.MetadataIntegration.GetTypeTypeArgCount();
+                    MethodTable** savedCtxArgs = stackalloc MethodTable*[savedContextCnt > 0 ? savedContextCnt : 1];
+                    for (int ctx = 0; ctx < savedContextCnt; ctx++)
+                        savedCtxArgs[ctx] = JIT.MetadataIntegration.GetTypeTypeArgMethodTable(ctx);
+
+                    JIT.MetadataIntegration.SetTypeTypeArgs(argMTs, argCount);
+                    baseSize = ComputeInstanceSize(defAsm, defTypeDefRow, true);
+
+                    if (savedContextCnt > 0)
+                        JIT.MetadataIntegration.SetTypeTypeArgs(savedCtxArgs, savedContextCnt);
+                    else
+                        JIT.MetadataIntegration.ClearTypeTypeArgs();
                 }
 
                 if (baseSize == 0)
-                    baseSize = 8;
-
-                // Parse type arguments and add their sizes
-                if (ptr < end)
                 {
-                    uint argCount = MetadataReader.ReadCompressedUInt(ref ptr);
-                    uint typeArgTotal = 0;
+                    // Fallback: size the definition against the AMBIENT context
+                    // (if any). Without a context its VAR value-type fields
+                    // fall back to pointer size, so keep the legacy
+                    // compensation of adding the (signature) argument sizes.
+                    if (defAsm != null && defTypeDefRow > 0)
+                        baseSize = ComputeInstanceSize(defAsm, defTypeDefRow, true);
 
-                    for (uint i = 0; i < argCount && ptr < end; i++)
+                    if (baseSize == 0)
+                        baseSize = 8;
+
+                    if (!argsResolved && ptr < end && JIT.MetadataIntegration.GetTypeTypeArgCount() == 0)
                     {
-                        // Get size of each type argument
-                        uint argStartLen = (uint)(end - ptr);
-                        uint argSize = GetFieldTypeSize(asm, ptr, argStartLen);
+                        uint argCountFallback = MetadataReader.ReadCompressedUInt(ref ptr);
+                        uint typeArgTotal = 0;
 
-                        // Skip past this type argument in the signature
-                        // Simple skip for common cases
-                        if (ptr < end)
+                        for (uint i = 0; i < argCountFallback && ptr < end; i++)
                         {
-                            byte argElemType = *ptr++;
-                            if (argElemType == 0x11 || argElemType == 0x12)
+                            // Get size of each type argument
+                            uint argStartLen = (uint)(end - ptr);
+                            uint argSize = GetFieldTypeSize(asm, ptr, argStartLen);
+
+                            // Skip past this type argument in the signature
+                            if (ptr < end)
                             {
-                                // VALUETYPE or CLASS - skip compressed token
-                                if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);
-                            }
-                            else if (argElemType == 0x15)
-                            {
-                                // Nested GENERICINST - skip genKind, token, argcount, args
-                                if (ptr < end) ptr++;  // genKind
-                                if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);  // token
-                                if (ptr < end)
+                                byte argElemType = *ptr++;
+                                if (argElemType == 0x11 || argElemType == 0x12)
                                 {
-                                    uint nestedArgCount = MetadataReader.ReadCompressedUInt(ref ptr);
-                                    // Skip nested args (simplified - may need recursive skip)
-                                    for (uint j = 0; j < nestedArgCount && ptr < end; j++)
+                                    if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);
+                                }
+                                else if (argElemType == 0x15)
+                                {
+                                    // Nested GENERICINST - skip genKind, token, argcount, args
+                                    if (ptr < end) ptr++;  // genKind
+                                    if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);  // token
+                                    if (ptr < end)
                                     {
-                                        byte nestedElemType = *ptr++;
-                                        if (nestedElemType == 0x11 || nestedElemType == 0x12)
+                                        uint nestedArgCount = MetadataReader.ReadCompressedUInt(ref ptr);
+                                        for (uint j = 0; j < nestedArgCount && ptr < end; j++)
                                         {
-                                            if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);
+                                            byte nestedElemType = *ptr++;
+                                            if (nestedElemType == 0x11 || nestedElemType == 0x12)
+                                            {
+                                                if (ptr < end) MetadataReader.ReadCompressedUInt(ref ptr);
+                                            }
                                         }
                                     }
                                 }
+                                // Primitive types are single byte, already skipped
                             }
-                            // Primitive types are single byte, already skipped
+
+                            typeArgTotal += argSize;
                         }
 
-                        typeArgTotal += argSize;
-                    }
-
-                    // Add type argument sizes to base size
-                    // For generic structs, type args contribute to the instance size
-                    if (typeArgTotal > 0)
-                    {
-                        uint instantiatedSize = baseSize + typeArgTotal;
-                        instantiatedSize = (instantiatedSize + 7) & ~7u;  // Align to 8
-                        return instantiatedSize;
+                        if (typeArgTotal > 0)
+                        {
+                            uint instantiatedSize = baseSize + typeArgTotal;
+                            baseSize = (instantiatedSize + 7) & ~7u;  // Align to 8
+                        }
                     }
                 }
 
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[FldSz15] def=0x");
+                    DebugConsole.WriteHex(genRow);
+                    DebugConsole.Write(" size=");
+                    DebugConsole.WriteDecimal(baseSize);
+                    DebugConsole.Write(" argc=");
+                    DebugConsole.WriteDecimal((uint)argCount);
+                    DebugConsole.Write(" resolved=");
+                    DebugConsole.Write(argsResolved ? "Y" : "N");
+                    DebugConsole.Write(" ctxCount=");
+                    DebugConsole.WriteDecimal((uint)JIT.MetadataIntegration.GetTypeTypeArgCount());
+                    DebugConsole.WriteLine();
+                }
                 return baseSize;
             }
 
@@ -10285,6 +10360,17 @@ public static unsafe class AssemblyLoader
                 // Compute the instance size with type context set
                 uint computedSize = ComputeInstanceSize(defAsm, typeDefRow, false);
                 instMT->_uBaseSize = computedSize;
+
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[GenInst-size] def=0x");
+                    DebugConsole.WriteHex(defTypeDefToken);
+                    DebugConsole.Write(" base=");
+                    DebugConsole.WriteDecimal(computedSize);
+                    DebugConsole.Write(" isVT=");
+                    DebugConsole.Write(isValueType ? "Y" : "N");
+                    DebugConsole.WriteLine();
+                }
 
                 if (JitDiag.VerboseJit)
                 {

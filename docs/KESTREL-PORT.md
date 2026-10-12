@@ -261,13 +261,37 @@ its ReadOnlySequence test):**
   `get_Item$i2`/`$i4`/`$i8` entries (element-strided helpers) for char/short,
   int/uint/float, and long/double/pointer-sized elements; byte spans keep
   the original entry.
-- Current boot: `JITTest` **3049 passed / 8 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining reds: `step/pipe-read-wake` / `step/pipe-async-sync`
-  plus the probes `vt/copy24`, `vt-awaiter/copy(-sees-completion)`,
-  `seq/getpos`, `Pipe/awaiter-copy-sees-completion` (all forms of the 24-byte
-  struct argument/return calling-convention family), and `hw/nullderef-catch`
-  (silent resume-past-the-#PF with no dispatch trace - separate, still-open
-  bug).
+- FIXED (this commit): **`ldfld` of a large value-type field from an inline
+  struct on the eval stack.** `w.v.a` (IL: `ldloc w; ldfld Wrap24::v;
+  ldfld Triple24::a` where `v` is a 24-byte struct) hit the scalar switch in
+  `CompileLdfld`'s large-container path: it loaded only the first 8 bytes,
+  discarded the 24-byte container and pushed an `Int32` entry, so the next
+  `ldfld` dereferenced the field VALUE as a pointer (NRE at address 5;
+  `vt/ctor24`). The large-VT-field case now re-positions the field bytes to
+  the top of the container region (`delta = containerBytes -
+  alignedFieldBytes`, overlap-safe qword/byte copies) and replaces the
+  container entry with `Struct(size)`.
+- FIXED (this commit): **generic-instantiation size inflation for value
+  types.** `GetFieldTypeSize`'s `GENERICINST VALUETYPE` branch added the
+  signature's type-argument sizes ON TOP of `ComputeInstanceSize(definition)`
+  even though the definition's field sizes (resolved against the active type
+  context) already include embedded arguments. `ValueTaskAwaiter<ReadResult>`
+  consequently sized 104 bytes instead of 24 (base 24 + `ReadResult` 80): the
+  async state machine's `newobj` temp was zeroed over 104 bytes and the
+  awaiter copies read ZEROS - `vt-awaiter/copy(-sees-completion)` and
+  `step/pipe-read-wake` failed with "ValueTask not initialized". The branch
+  now parses the instantiation's OWN arguments from the signature
+  (`ParseTypeFromSignature` -> Materialized MethodTables), sets them as the
+  type context, sizes the definition against them and restores the ambient
+  context - exact and consistent across every compilation. (Legacy add-args
+  compensation retained only when argument parsing fails.)
+- Current boot: `JITTest` **3055 passed / 5 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining reds: `vt-awaiter/getresult-ok` and
+  `Pipe/read-async-returns-flushed-data` (n=0) / `Pipe/async-await-sync-completion`
+  (n=2) - `ReadResult` round-trips through the task-result path still lose
+  their tail fields/data in some shapes - plus the long-standing
+  `seq/getpos` (NRE) and `hw/nullderef-catch` (silent resume-past-the-#PF
+  with no dispatch trace - separate, still-open bug).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0

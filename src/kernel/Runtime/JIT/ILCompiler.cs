@@ -4439,6 +4439,19 @@ public unsafe struct ILCompiler
             // For large structs, TOS contains the ADDRESS of the value, not the value itself
             if (_returnIsValueType && _returnTypeSize > 8)
             {
+                if (JitDiag.VerboseJit)
+                {
+                    DebugConsole.Write("[JIT retVT] asm=");
+                    DebugConsole.WriteDecimal((uint)_debugAssemblyId);
+                    DebugConsole.Write(" m=0x");
+                    DebugConsole.WriteHex(_debugMethodToken);
+                    DebugConsole.Write(" sz=");
+                    DebugConsole.WriteDecimal((uint)_returnTypeSize);
+                    DebugConsole.Write(" depth=");
+                    DebugConsole.WriteDecimal((uint)_evalStackDepth);
+                    DebugConsole.WriteLine();
+                }
+
                 // Use new type system: PeekEntry tells us exact byte size on stack
                 EvalStackEntry tosEntry = PeekEntry();
                 int stackSize = tosEntry.ByteSize;  // Actual bytes this entry occupies
@@ -5526,6 +5539,30 @@ public unsafe struct ILCompiler
             hiddenBufferSize = (method.ReturnStructSize + 7) & ~7;
         }
 
+        // Verbose trace of struct-returning call sites (few per boot): shows
+        // whether the call site sets up the hidden return buffer and what
+        // native target it resolved to.
+        if (JitDiag.VerboseJit && method.ReturnKind == ReturnKind.Struct)
+        {
+            DebugConsole.Write("[JIT retS] asm=");
+            DebugConsole.WriteDecimal((uint)_debugAssemblyId);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" argc=");
+            DebugConsole.WriteDecimal((uint)method.ArgCount);
+            DebugConsole.Write(" this=");
+            DebugConsole.Write(method.HasThis ? "Y" : "N");
+            DebugConsole.Write(" sz=");
+            DebugConsole.WriteDecimal((uint)method.ReturnStructSize);
+            DebugConsole.Write(" hidden=");
+            DebugConsole.Write(needsHiddenBuffer ? "Y" : "N");
+            DebugConsole.Write(" native=0x");
+            DebugConsole.WriteHex(method.NativeCode == null ? 0UL : (ulong)method.NativeCode);
+            DebugConsole.Write(" aot=");
+            DebugConsole.Write(method.IsAotTarget ? "Y" : "N");
+            DebugConsole.WriteLine();
+        }
+
         // Verify we have enough values on the eval stack
         if (_evalStackDepth < totalArgs)
         {
@@ -5650,8 +5687,22 @@ public unsafe struct ILCompiler
             // With hidden buffer, arg0 shifts to slot 1 (RDX -> XMM1)
             arg1IsFloat32 = argEntry.Kind == EvalStackKind.Float32;
             arg1IsFloat64 = argEntry.Kind == EvalStackKind.Float64;
-            X64Emitter.Pop(ref _code, VReg.R2);   // arg0 -> RDX
-            PopEntry();
+            if (argEntry.Kind == EvalStackKind.ValueType && argEntry.ByteSize > 8)
+            {
+                // Large value-type arg: pass by pointer (JIT convention) -
+                // keep the struct bytes on the machine stack and let the
+                // deferred LEA (in the shadow/buffer allocation block below)
+                // set RDX = &struct after the frame is allocated. Popping a
+                // 24-byte struct into RDX truncated it to its first eight
+                // bytes and left the rest dangling (CopyTriple24 NRE'd).
+                needsLargeStructPtrInRdx = true;
+                PopEntry();
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R2);   // arg0 -> RDX
+                PopEntry();
+            }
         }
         else if (totalArgs == 2 && !needsHiddenBuffer)
         {
@@ -6112,6 +6163,14 @@ public unsafe struct ILCompiler
                 // Set RCX = buffer address (RSP + 32, after shadow space)
                 // lea rcx, [rsp + 32]
                 X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32);
+
+                // Deferred pointer for a large struct arg (single-arg +
+                // hidden-buffer shape): the struct bytes sit just above the
+                // whole allocation, so RDX = &struct.
+                if (needsLargeStructPtrInRdx)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, totalAlloc);
+                }
             }
             else
             {
@@ -7370,6 +7429,10 @@ public unsafe struct ILCompiler
         // "LEA RDX, [RSP+32]" pointer setup.
         int retainedStructBytes = 0;
         bool needsStructPtrInRdx = false;
+        // Unboxed large value-type 'this' (arg0): pass by pointer per
+        // ldarg's large-VT convention; the deferred LEA after the shadow
+        // allocation sets RCX = &this.
+        bool needsValueTypeThisPtrInRcx = false;
 
         if (!needsHiddenBuffer)
         {
@@ -7380,9 +7443,25 @@ public unsafe struct ILCompiler
             }
             else if (totalArgs == 1)
             {
-                // Single arg (this): pop to RCX
-                X64Emitter.Pop(ref _code, VReg.R1);
-                PopEntry();
+                // Single arg (this). An unboxed large value type is passed
+                // BY POINTER (ldarg's large-VT convention); the deferred LEA
+                // in the shadow-allocation block sets RCX = &this. Popping
+                // such a struct into RCX truncated it to its first eight
+                // bytes (ValueTask<ReadResult> / awaiter method calls all
+                // broke this way).
+                EvalStackEntry vThis = PeekEntryAt(0);
+                if (vThis.Kind == EvalStackKind.ValueType && vThis.ByteSize > 8)
+                {
+                    retainedStructBytes = vThis.ByteSize;
+                    needsValueTypeThisPtrInRcx = true;
+                    PopEntry();
+                }
+                else
+                {
+                    // Single arg (this): pop to RCX
+                    X64Emitter.Pop(ref _code, VReg.R1);
+                    PopEntry();
+                }
             }
             else if (totalArgs == 2)
             {
@@ -7400,10 +7479,24 @@ public unsafe struct ILCompiler
                 }
                 else
                 {
-                    // Two args: pop to RDX (arg1), then RCX (this)
+                    // Two args: pop to RDX (arg1), then handle 'this'. An
+                    // unboxed large value-type 'this' is passed by pointer
+                    // (deferred RCX LEA after the shadow allocation); a
+                    // small 'this' pops straight to RCX.
                     X64Emitter.Pop(ref _code, VReg.R2);
-                    X64Emitter.Pop(ref _code, VReg.R1);
-                    PopEntry(); PopEntry();
+                    PopEntry();
+                    EvalStackEntry vThis = PeekEntryAt(0);
+                    if (vThis.Kind == EvalStackKind.ValueType && vThis.ByteSize > 8)
+                    {
+                        retainedStructBytes = vThis.ByteSize;
+                        needsValueTypeThisPtrInRcx = true;
+                        PopEntry();
+                    }
+                    else
+                    {
+                        X64Emitter.Pop(ref _code, VReg.R1);
+                        PopEntry();
+                    }
                 }
             }
             else if (totalArgs == 3)
@@ -7512,8 +7605,20 @@ public unsafe struct ILCompiler
             {
                 // One logical arg (this) + buffer = 2 physical args
                 // RCX=buffer, RDX=this
-                X64Emitter.Pop(ref _code, VReg.R2);  // this -> RDX
-                PopEntry();
+                EvalStackEntry vThis = PeekEntryAt(0);
+                bool thisIsLargeVT = vThis.Kind == EvalStackKind.ValueType && vThis.ByteSize > 8;
+                if (thisIsLargeVT)
+                {
+                    // Unboxed large value-type 'this': pass by pointer -
+                    // keep the struct bytes; RDX = &this set after the
+                    // allocation below (the bytes end up just above it).
+                    PopEntry();
+                }
+                else
+                {
+                    X64Emitter.Pop(ref _code, VReg.R2);  // this -> RDX
+                    PopEntry();
+                }
 
                 // Allocate shadow space (32) + buffer
                 int bufferRounded = (hiddenBufferSize + 15) & ~15;
@@ -7522,6 +7627,11 @@ public unsafe struct ILCompiler
 
                 // Set RCX = buffer address (after shadow space)
                 X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32);
+
+                if (thisIsLargeVT)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, totalAlloc);  // RDX = &this
+                }
 
                 handledAllocation = true;
                 cleanupAmount = 32;  // just shadow space (buffer stays for return)
@@ -7670,6 +7780,11 @@ public unsafe struct ILCompiler
             // directly above the shadow space once it is allocated.
             if (needsStructPtrInRdx)
                 X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32 + callvirtAlignPad);
+
+            // Deferred by-ref pointer for an unboxed large value-type 'this':
+            // the struct sits directly above the shadow space + pad.
+            if (needsValueTypeThisPtrInRcx)
+                X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32 + callvirtAlignPad);
         }
 
         // Load target address and call
@@ -8548,6 +8663,21 @@ public unsafe struct ILCompiler
 
         int size = GetTypeSizeFromToken(token);
 
+        // Verbose trace for ldobj (awaiter/ValueTask copies) - all sizes so a
+        // wrong size resolution (e.g. 24 -> 8) is visible.
+        if (JitDiag.VerboseJit)
+        {
+            DebugConsole.Write("[JIT ldobj] asm=");
+            DebugConsole.WriteDecimal((uint)_debugAssemblyId);
+            DebugConsole.Write(" m=0x");
+            DebugConsole.WriteHex(_debugMethodToken);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" size=");
+            DebugConsole.WriteDecimal((uint)size);
+            DebugConsole.WriteLine();
+        }
+
         // Pop addr into R2 (we'll use R0/R3 for the copy)
         X64Emitter.Pop(ref _code, VReg.R2);
         PopEntry();
@@ -9151,6 +9281,69 @@ public unsafe struct ILCompiler
             //     DebugConsole.WriteDecimal((uint)structByteSize);
             //     DebugConsole.WriteLine();
             // }
+
+            // If the field itself is a large value type (>8 bytes), the result of ldfld
+            // is another inline struct. Re-position the field bytes to the top of the
+            // container region (eval-stack convention: RSP points at the value's first
+            // byte), then replace the container entry with the field entry.
+            // Previously this fell into the scalar switch below (loading only 8 bytes)
+            // and pushed an Int32 entry, so a subsequent ldfld dereferenced the first
+            // qword as a pointer (NRE) - e.g. `w.v.a` where v is a 24-byte struct.
+            if (fieldTypeIsValueType && size > 8)
+            {
+                int alignedFieldSize = (size + 7) & ~7;
+                int delta = tosEntry.ByteSize - alignedFieldSize;  // net stack delta: pop container, push field
+                if (delta < 0)
+                    delta = 0;
+
+                if (delta != offset)
+                {
+                    // Copy `size` bytes from [RSP+offset] to [RSP+delta]. The regions may
+                    // overlap: copy backward when moving up, forward when moving down.
+                    if (delta > offset)
+                    {
+                        int k = size;
+                        while (k >= 8)
+                        {
+                            k -= 8;
+                            X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, offset + k);
+                            X64Emitter.MovMR(ref _code, VReg.SP, delta + k, VReg.R1);
+                        }
+                        while (k > 0)
+                        {
+                            k--;
+                            X64Emitter.MovRM8(ref _code, VReg.R1, VReg.SP, offset + k);
+                            X64Emitter.MovMR8(ref _code, VReg.SP, delta + k, VReg.R1);
+                        }
+                    }
+                    else
+                    {
+                        int k = 0;
+                        int remaining = size;
+                        while (remaining >= 8)
+                        {
+                            X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, offset + k);
+                            X64Emitter.MovMR(ref _code, VReg.SP, delta + k, VReg.R1);
+                            k += 8;
+                            remaining -= 8;
+                        }
+                        while (remaining > 0)
+                        {
+                            X64Emitter.MovRM8(ref _code, VReg.R1, VReg.SP, offset + k);
+                            X64Emitter.MovMR8(ref _code, VReg.SP, delta + k, VReg.R1);
+                            k++;
+                            remaining--;
+                        }
+                    }
+                }
+
+                if (delta > 0)
+                    X64Emitter.AddRI(ref _code, VReg.SP, delta);
+
+                PopEntry();
+                PushEntry(EvalStackEntry.Struct(size));
+                return true;
+            }
 
             // The field is at [RSP + fieldOffset], not requiring a dereference of a pointer
             // Load the field value directly from the stack
@@ -10908,7 +11101,20 @@ public unsafe struct ILCompiler
 
                 int alignedVtSize = (int)((vtSize + 7) & ~7UL);  // Round up to 8-byte alignment
 
-                // Adjust newobjTempOffset to account for larger structs
+                if (JitDiag.VerboseJit && alignedVtSize > 16)
+                {
+                    DebugConsole.Write("[newobj-VT] asm=");
+                    DebugConsole.WriteDecimal((uint)_debugAssemblyId);
+                    DebugConsole.Write(" m=0x");
+                    DebugConsole.WriteHex(_debugMethodToken);
+                    DebugConsole.Write(" mt=0x");
+                    DebugConsole.WriteHex((ulong)mt);
+                    DebugConsole.Write(" vt=");
+                    DebugConsole.WriteDecimal((uint)alignedVtSize);
+                    DebugConsole.Write(" ctors=");
+                    DebugConsole.WriteDecimal((uint)ctorArgs);
+                    DebugConsole.WriteLine();
+                }
                 // newobjTempOffset is the start of the temp area, growing toward lower addresses
                 // We need space for the full struct, so adjust the base if needed
                 int vtBaseOffset = newobjTempOffset - (alignedVtSize - 8);

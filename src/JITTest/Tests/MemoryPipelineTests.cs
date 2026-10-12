@@ -26,6 +26,8 @@ public static class MemoryPipelineTests
         RunStep("vt/done-flags", ProbeDone);
         RunStep("vt/return24", TestReturn24);
         RunStep("vt/copy24", TestCopy24);
+        RunStep("vt/structthis24", TestStructThis24);
+        RunStep("vt/ctor24", TestCtor24);
         RunStep("vt-awaiter/copy", ProbeAwaiterCopy);
         RunStep("step/memory", TestMemoryBasics);
         RunStep("step/memory-span", TestMemorySpan);
@@ -258,6 +260,68 @@ public static class MemoryPipelineTests
         var w = CopyTriple24(v);            // 24B by-value arg + 24B return
         TestTracker.Record("VT/copy24", w.a == 7 && w.b == 8 && w.c == 9,
             "a=" + w.a.ToString() + " b=" + w.b.ToString() + " c=" + w.c.ToString());
+    }
+
+    // ---- Isolated 24B 'this' probes: an instance method on a 24B struct
+    // with a 24B return (hidden buffer) mirrors the ValueTask awaiter call
+    // shape exactly, but entirely in JIT-land so it isolates the call-site
+    // codegen from korlib/await specifics. ----
+    private struct TS24
+    {
+        public long a;
+        public long b;
+        public long c;
+
+        public TS24 MakeAdd24(long d)          // 24B this + 24B return (hidden buffer)
+        {
+            var r = default(TS24);
+            r.a = a + d;
+            r.b = b + d;
+            r.c = c + d;
+            return r;
+        }
+
+        public long ReadSum24()                // 24B this + small return
+        {
+            return a + b + c;
+        }
+    }
+
+    private static void TestStructThis24()
+    {
+        var s = default(TS24);
+        s.a = 1;
+        s.b = 2;
+        s.c = 3;
+        var r = s.MakeAdd24(10);               // 24B this, 24B return
+        TestTracker.Record("VT/structthis24", r.a == 11 && r.b == 12 && r.c == 13,
+            "a=" + r.a.ToString() + " b=" + r.b.ToString() + " c=" + r.c.ToString());
+        long sum = s.ReadSum24();              // 24B this, small return
+        TestTracker.Record("VT/structthis-read", sum == 6, "sum=" + sum.ToString());
+    }
+
+    // ---- A 24B struct whose constructor takes another 24B struct BY VALUE
+    // mirrors ValueTaskAwaiter<TResult>(ValueTask<TResult> value) - the exact
+    // shape the awaiter probe exercises one level down. ----
+    private struct Wrap24
+    {
+        public Triple24 v;
+
+        public Wrap24(Triple24 x)
+        {
+            v = x;
+        }
+    }
+
+    private static void TestCtor24()
+    {
+        var t = default(Triple24);
+        t.a = 5;
+        t.b = 6;
+        t.c = 7;
+        var w = new Wrap24(t);                 // 24B ctor arg by value
+        TestTracker.Record("VT/ctor24", w.v.a == 5 && w.v.b == 6 && w.v.c == 7,
+            "a=" + w.v.a.ToString() + " b=" + w.v.b.ToString() + " c=" + w.v.c.ToString());
     }
 
     // ---- ValueTask<ReadResult> (24B) awaiter copy probe: GetAwaiter returns
