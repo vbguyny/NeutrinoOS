@@ -32,6 +32,7 @@
 // docs/samples/webapi/NeutrinoWebApi.postman_collection.json
 
 using System;
+using System.Threading.Tasks;
 using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Services;   // WebService string helpers
 using NeutrinoOS.DDK.Web;
@@ -50,6 +51,12 @@ public static class TasksWebApp
     // In-memory task store: null = free slot, id = slot + 1.
     private static readonly string[] _taskNames = new string[MaxTasks];
     private static int _taskCount;
+
+    // Async demo state: /api/v1/wait suspends on the current signal until
+    // /api/v1/poke completes it (the handler's await resumes on the poke
+    // request's tick; WebHost writes the deferred response next slice).
+    private static TaskCompletionSource<bool> _pokeSignal = new TaskCompletionSource<bool>();
+    private static int _pokeCount;
 
     /// <summary>True while the app's listener is running.</summary>
     public static bool Active => _app != null && _app.IsRunning;
@@ -70,6 +77,8 @@ public static class TasksWebApp
         for (int i = 0; i < _taskNames.Length; i++)
             _taskNames[i] = null;
         _taskCount = 0;
+        _pokeSignal = new TaskCompletionSource<bool>();
+        _pokeCount = 0;
         _startedAt = Timer.GetUptimeMilliseconds();
 
         return _app.Start();
@@ -109,11 +118,31 @@ public static class TasksWebApp
         app.MapGet("/api/v1/tasks/{id}", OnGetTask);
         app.MapPut("/api/v1/tasks/{id}", OnRenameTask);
         app.MapDelete("/api/v1/tasks/{id}", OnDeleteTask);
+        app.MapGet("/api/v1/wait", OnWaitAsync);
+        app.MapGet("/api/v1/poke", OnPoke);
 
         return app;
     }
 
     // ---- handlers ------------------------------------------------------
+
+    /// <summary>Async handler: suspends until /api/v1/poke wakes it.</summary>
+    private static async Task OnWaitAsync(HttpContext ctx)
+    {
+        Task signal = _pokeSignal.Task;
+        await signal;
+        ctx.Response.Json("{\"poked\":true}\n");
+    }
+
+    /// <summary>Completes the current /api/v1/wait signal (if any).</summary>
+    private static void OnPoke(HttpContext ctx)
+    {
+        TaskCompletionSource<bool> tcs = _pokeSignal;
+        _pokeSignal = new TaskCompletionSource<bool>();
+        tcs.TrySetResult(true);
+        _pokeCount++;
+        ctx.Response.Json("{\"poked\":true,\"count\":" + WebService.IntToStr(_pokeCount) + "}\n");
+    }
 
     private static void OnRoot(HttpContext ctx)
     {

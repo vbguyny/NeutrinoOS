@@ -169,9 +169,51 @@ namespace System.Buffers
                 throw new ArgumentOutOfRangeException("start");
             if (length < 0 || length > total - start)
                 throw new ArgumentOutOfRangeException("length");
-            var begin = GetPosition(start);
-            var end = GetPosition(start + length);
-            return Slice(begin, end);
+            // Position-free walk: the Tier-0 JIT cannot recover a segment from
+            // a SequencePosition (object->ReadOnlySequenceSegment<T> coercion
+            // is broken in every probed shape: as / castclass / is-pattern),
+            // so this path navigates the typed chain directly instead.
+            var sSeg = WalkTo(start, out int sIdx);
+            var eSeg = WalkTo(start + length, out int eIdx);
+            return new ReadOnlySequence<T>(sSeg, sIdx, eSeg, eIdx);
+        }
+
+        /// <summary>Segment containing <paramref name="offset"/> (typed walk).</summary>
+        private ReadOnlySequenceSegment<T> WalkTo(long offset, out int index)
+        {
+            var seg = _startSegment!;
+            int off = _startIndex;
+            long remaining = offset;
+            while (seg != null)
+            {
+                int available = (ReferenceEquals(seg, _endSegment) ? _endIndex : seg.Memory.Length) - off;
+                if (remaining <= available)
+                    break;
+                remaining -= available;
+                seg = seg.Next;
+                off = 0;
+            }
+            index = off + (int)remaining;
+            return seg!;
+        }
+
+        /// <summary>
+        /// Segment for a position object by REFERENCE IDENTITY against this
+        /// sequence's chain - no cast involved, so it works on Tier-0.
+        /// Positions from another sequence (invalid input) return null.
+        /// </summary>
+        private ReadOnlySequenceSegment<T>? FindByIdentity(object? o)
+        {
+            if (o == null)
+                return null;
+            var seg = _startSegment;
+            while (seg != null)
+            {
+                if (ReferenceEquals(seg, o))
+                    return seg;
+                seg = seg.Next;
+            }
+            return null;
         }
 
         public ReadOnlySequence<T> Slice(int start) => Slice((long)start);
@@ -191,8 +233,8 @@ namespace System.Buffers
                 if (e < s) e = s;
                 return new ReadOnlySequence<T>(_memory.Slice(s, e - s));
             }
-            var sSeg = (ReadOnlySequenceSegment<T>?)start.GetObject() ?? _startSegment!;
-            var eSeg = (ReadOnlySequenceSegment<T>?)end.GetObject() ?? _endSegment!;
+            var sSeg = FindByIdentity(start.GetObject()) ?? _startSegment!;
+            var eSeg = FindByIdentity(end.GetObject()) ?? _endSegment!;
             return new ReadOnlySequence<T>(sSeg, start.GetInteger(), eSeg, end.GetInteger());
         }
 
@@ -201,7 +243,7 @@ namespace System.Buffers
             if (_isMemory)
                 return new ReadOnlySequence<T>(_memory.Slice(start.GetInteger(), length));
 
-            var sSeg = (ReadOnlySequenceSegment<T>?)start.GetObject() ?? _startSegment!;
+            var sSeg = FindByIdentity(start.GetObject()) ?? _startSegment!;
             int sIdx = start.GetInteger();
             long remaining = length;
             var seg = sSeg;
@@ -232,15 +274,14 @@ namespace System.Buffers
                 return true;
             }
 
-            var seg = position.GetObject() as ReadOnlySequenceSegment<T>;
+            var seg = FindByIdentity(position.GetObject());
             if (seg == null)
             {
-                // NOTE: the Tier-0 JIT currently mis-resolves casts to generic
-                // instantiations whose type argument is the enclosing generic's
-                // parameter (object as ReadOnlySequenceSegment<T> fails even for
-                // a PipeSegment instance). Until the JIT cast is fixed, callers
-                // that need segment iteration should use the sequence enumerator
-                // (ReadOnlySequence<T>.Enumerator walks typed fields directly).
+                // No match (null object from a default position, or a position
+                // from another sequence): report failure. NOTE: the M2-era
+                // workaround comment about the Tier-0 cast bug lives on in
+                // the Slice/WalkTo notes; identity recovery made TryGet work
+                // again without any cast.
                 return false;
             }
             int si = position.GetInteger();
@@ -269,7 +310,24 @@ namespace System.Buffers
             return result;
         }
 
-        public Enumerator GetEnumerator() => new Enumerator(this);
+        public Enumerator GetEnumerator()
+        {
+            // Field stores instead of a constructor call: the ctor took six
+            // arguments including a 16-byte ReadOnlyMemory struct and was
+            // observed to page-fault on Tier-0 (j 0x6000B01 .Enumerator..ctor
+            // +0x4A, cr2=0 during the AppTest echo). Same nested type, so the
+            // private fields are directly assignable.
+            var en = default(Enumerator);
+            en._isMemory = _isMemory;
+            en._memory = _memory;
+            en._endSegment = _endSegment;
+            en._endIndex = _endIndex;
+            en._segment = _startSegment;
+            en._index = _startIndex;
+            en._memoryDone = false;
+            en._current = default;
+            return en;
+        }
 
         public bool Equals(ReadOnlySequence<T> other)
         {
@@ -300,25 +358,22 @@ namespace System.Buffers
 
         public struct Enumerator
         {
-            private readonly ReadOnlySequence<T> _sequence;
-            private ReadOnlySequenceSegment<T>? _segment;
-            private int _index;
-            private bool _isMemory;
-            private bool _memoryDone;
-            private ReadOnlyMemory<T> _current;
-
-            internal Enumerator(ReadOnlySequence<T> sequence)
-            {
-                _sequence = sequence;
-                _isMemory = sequence._isMemory;
-                _segment = sequence._startSegment;
-                _index = sequence._startIndex;
-                _memoryDone = false;
-                _current = default;
-            }
+            // The sequence state is copied field-by-field on purpose: passing
+            // the ~48-byte ReadOnlySequence<T> struct by value into the
+            // constructor garbled the copy on Tier-0 (observed: MoveNext
+            // returned false immediately - "enumerate-total total=0"); the
+            // replacement six-arg ctor then faulted outright, so GetEnumerator
+            // assigns these fields directly instead (see its comment).
+            internal bool _isMemory;
+            internal ReadOnlyMemory<T> _memory;
+            internal ReadOnlySequenceSegment<T>? _endSegment;
+            internal int _endIndex;
+            internal ReadOnlySequenceSegment<T>? _segment;
+            internal int _index;
+            internal bool _memoryDone;
+            internal ReadOnlyMemory<T> _current;
 
             public ReadOnlyMemory<T> Current => _current;
-
             public bool MoveNext()
             {
                 if (_isMemory)
@@ -326,25 +381,25 @@ namespace System.Buffers
                     if (_memoryDone)
                         return false;
                     _memoryDone = true;
-                    _current = _sequence._memory;
+                    _current = _memory;
                     return !_current.IsEmpty;
                 }
 
                 while (_segment != null)
                 {
-                    int end = ReferenceEquals(_segment, _sequence._endSegment)
-                        ? _sequence._endIndex
+                    int end = ReferenceEquals(_segment, _endSegment)
+                        ? _endIndex
                         : _segment.Memory.Length;
                     if (end > _index)
                     {
                         _current = _segment.Memory.Slice(_index, end - _index);
-                        _segment = ReferenceEquals(_segment, _sequence._endSegment)
+                        _segment = ReferenceEquals(_segment, _endSegment)
                             ? null
                             : _segment.Next;
                         _index = 0;
                         return true;
                     }
-                    _segment = ReferenceEquals(_segment, _sequence._endSegment)
+                    _segment = ReferenceEquals(_segment, _endSegment)
                         ? null
                         : _segment.Next;
                     _index = 0;

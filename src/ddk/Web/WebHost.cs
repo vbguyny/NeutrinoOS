@@ -18,6 +18,7 @@
 using System;
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Threading.Tasks;
 using NeutrinoOS.DDK.Connections;
 using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Network;
@@ -52,6 +53,7 @@ public sealed class WebHost
     private readonly string[] _routeMethods = new string[MaxRoutes];
     private readonly string[] _routePatterns = new string[MaxRoutes];
     private readonly RequestHandler[] _routeHandlers = new RequestHandler[MaxRoutes];
+    private readonly RequestHandlerAsync[] _routeAsyncHandlers = new RequestHandlerAsync[MaxRoutes];
     private int _routeCount;
 
     /// <summary>Creates a host; call Start()/Tick()/Stop() like a service.</summary>
@@ -75,6 +77,17 @@ public sealed class WebHost
         _routeMethods[_routeCount] = method;
         _routePatterns[_routeCount] = pattern;
         _routeHandlers[_routeCount] = handler;
+        _routeCount++;
+    }
+
+    /// <summary>Register an async handler for a method + pattern.</summary>
+    public void AddRouteAsync(string method, string pattern, RequestHandlerAsync handler)
+    {
+        if (_routeCount >= MaxRoutes)
+            return;
+        _routeMethods[_routeCount] = method;
+        _routePatterns[_routeCount] = pattern;
+        _routeAsyncHandlers[_routeCount] = handler;
         _routeCount++;
     }
 
@@ -210,6 +223,9 @@ public sealed class WebHost
         public int Requests;     // served on this connection (keep-alive cap)
         public int GraceTicks;
         public bool Sent100;     // initial "100 Continue" sent for the current request
+        public Task PendingTask; // async handler still running (null = none)
+        public HttpResponse PendingResponse;   // written when the task completes
+        public bool PendingKeepAlive;
 
         public Connection(SocketConnectionContext context)
         {
@@ -285,6 +301,27 @@ public sealed class WebHost
         // Serve every complete request currently buffered (keep-alive loop).
         while (!conn.Done)
         {
+            // Finish a deferred (async handler) response from an earlier tick.
+            if (conn.PendingTask != null)
+            {
+                if (!conn.PendingTask.IsCompleted)
+                    return;   // handler still running: stop for this tick
+                HttpResponse pending = conn.PendingResponse;
+                bool pendingKeepAlive = conn.PendingKeepAlive;
+                conn.PendingTask = null;
+                conn.PendingResponse = null;
+                WriteResponse(conn, pending.StatusCode, pending.ContentType,
+                    pending.Body, pendingKeepAlive);
+                if (!pendingKeepAlive)
+                {
+                    conn.Done = true;
+                    return;
+                }
+                if (conn.Length == 0)
+                    return;   // nothing pipelined behind it
+                // fall through: serve any pipelined request
+            }
+
             string method;
             string target;
             int contentLength;
@@ -370,6 +407,9 @@ public sealed class WebHost
             conn.Length = left;
             conn.Requests++;
             conn.LastActivity = now;
+
+            if (conn.PendingTask != null)
+                return;   // async response deferred; resume at the loop top
 
             if (!keepAlive)
             {
@@ -463,7 +503,24 @@ public sealed class WebHost
         ctx.Request.Body = reqBody;
         ctx.Request.SetRoute(capNames, capValues, capCount);
 
-        _routeHandlers[matched](ctx);
+        RequestHandler sync = _routeHandlers[matched];
+        if (sync != null)
+        {
+            sync(ctx);
+        }
+        else
+        {
+            Task deferred = _routeAsyncHandlers[matched](ctx);
+            if (!deferred.IsCompleted)
+            {
+                // The handler suspended: keep the response and let the serve
+                // loop write it once the task completes (later ticks).
+                conn.PendingTask = deferred;
+                conn.PendingResponse = ctx.Response;
+                conn.PendingKeepAlive = keepAlive;
+                return;
+            }
+        }
 
         WriteResponse(conn, ctx.Response.StatusCode, ctx.Response.ContentType, ctx.Response.Body, keepAlive);
         if (!keepAlive)

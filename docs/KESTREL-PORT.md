@@ -178,16 +178,62 @@ Bring-up bugs found while landing step 2 (worth knowing for M3+):
   checks: chunked POST and a staged 100-continue exchange),
   `sampleapi-probe` 28/28.
 
+**Step 2 DONE - async `RequestDelegate`.** `RequestHandlerAsync`
+(`delegate Task RequestHandlerAsync(HttpContext)` - the Kestrel-shaped
+RequestDelegate) plus `Map*` overloads; WebHost runs the handler, and when
+it suspends it stores the returned task + the response on the connection
+slot and writes the deferred response on a later service tick once the task
+completes (resume runs the state-machine continuation inline at the
+completing call, e.g. `/api/v1/poke` completing the `/api/v1/wait` signal -
+exercised by `build/m3-http-check.py async`: two raw connections, wait then
+poke). Landing this exposed and fixed a **korlib state-machine lifetime bug**:
+`AsyncTaskMethodBuilder`/`<T>` boxed the state machine in
+`AwaitOnCompleted`/`AwaitUnsafeOnCompleted` BEFORE materializing the task
+(`Task` property was lazily created), so the caller's `builder.Task` (read
+after `Start` returns) was a different instance than the one the boxed
+builder completed at `SetResult` - a suspended `async Task` method never
+completed its caller-visible task. The builders now force `_ = Task` before
+boxing, and `AsyncValueTaskMethodBuilder<TResult>.SetResult` completes the
+backing task when it was materialized. JITTest gained
+`Task/suspended-before-signal`-style coverage (`TestTaskSuspension`, the
+first on-device test of a Task that suspends and is completed later).
+
 Remaining M3 work:
 
-- `RequestDelegate` becomes async (`ValueTask` handler form; the dispatcher
-  defers response writing until the task completes on a later tick).
 - Full request/response feature collection (`IFeatureCollection` shape) -
   lands with the M4 DI shim so it can be shared.
 - `Expect:` edge semantics (417 on unsatisfiable, `100-continue` flood
   bounding) and chunked trailers beyond one line.
 - Body handling must keep reusing the M1 semantics (413/431 limits) so all
   probes keep passing unchanged.
+
+**Known issues (made VISIBLE by the JITTest honesty fix below - these were
+silently skipped since M2 because the Memory/Pipelines category aborted at
+its ReadOnlySequence test):**
+
+- `RunCategory` used to swallow category exceptions via `Debug.Write` (which
+  is compiled out of default builds); it now reports + records them, and
+  `MemoryPipelineTests.RunAll` wraps each step in `RunStep` so one throwing
+  test no longer kills the rest of the category. Current boot: 3016 passed,
+  7 visible failures: `category/Overflow` (NRE), `step/vt-large-struct-probe`
+  (NRE), `step/readonly-sequence` (NRE in the slice enumerator),
+  `Pipe/read-async-incomplete-initially` + `step/pipe-read-wake`
+  (InvalidOperationException), `step/pipe-pump-1mb` (NRE), `step/pipe-async-sync`.
+- Root cause hunt data: a minimal probe (`ValueTask<ReadResult>` wrapping an
+  incomplete `TaskCompletionSource<ReadResult>.Task`, then `IsCompleted`)
+  NullReferenceExceptions on Tier-0 - `ValueTask<TResult>`/`Task<TResult>`
+  with a LARGE `TResult` (~48-byte `ReadResult`) misbehave; the pipe async
+  path builds exactly that shape on every pending `ReadAsync`. Fixing the
+  large-`TResult` task storage (likely boxed-object result fields instead of
+  typed ones) is the next korlib work item, then re-run the pipe tests.
+- Fixed along the way (already in): ReadOnlySequence `Length` read the
+  cumulative `RunningIndex` contract while the JITTest built segments with
+  index 0 (test now chains them properly); `Slice`/`TryGet` recovered
+  segments via object->`ReadOnlySequenceSegment<T>` casts which are broken
+  on Tier-0 in EVERY shape (as/castclass/is - probed) - they now recover by
+  reference identity against the chain (no cast); the sequence `Enumerator`
+  copied the whole ~48-byte sequence struct by value (garbled - enumeration
+  yielded nothing) and now copies primitives field-by-field.
 
 ### M4 — Hosting layer
 

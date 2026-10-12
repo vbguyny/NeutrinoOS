@@ -89,6 +89,11 @@ if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py continue > /tm
 else
   fail "100-continue ($(tail -1 /tmp/m3-continue.out))"
 fi
+if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py async > /tmp/m3-async.out 2>&1; then
+  pass "async RequestDelegate (deferred response resumed by /poke)"
+else
+  fail "async handler ($(tail -1 /tmp/m3-async.out))"
+fi
 
 echo "=== concurrency + counters ==="
 curl -sS -m 15 -o /dev/null $B/api/v1/info 2>/dev/null &

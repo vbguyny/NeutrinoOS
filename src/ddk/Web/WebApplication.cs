@@ -87,6 +87,34 @@ public sealed class WebApplication
         return this;
     }
 
+    /// <summary>Register an async GET handler for a pattern.</summary>
+    public WebApplication MapGet(string pattern, RequestHandlerAsync handler)
+    {
+        _host.AddRouteAsync("GET", pattern, handler);
+        return this;
+    }
+
+    /// <summary>Register an async POST handler for a pattern.</summary>
+    public WebApplication MapPost(string pattern, RequestHandlerAsync handler)
+    {
+        _host.AddRouteAsync("POST", pattern, handler);
+        return this;
+    }
+
+    /// <summary>Register an async PUT handler for a pattern.</summary>
+    public WebApplication MapPut(string pattern, RequestHandlerAsync handler)
+    {
+        _host.AddRouteAsync("PUT", pattern, handler);
+        return this;
+    }
+
+    /// <summary>Register an async DELETE handler for a pattern.</summary>
+    public WebApplication MapDelete(string pattern, RequestHandlerAsync handler)
+    {
+        _host.AddRouteAsync("DELETE", pattern, handler);
+        return this;
+    }
+
     /// <summary>Start the listener; 0 = ok (-30 no eth0, -32 bind failed).</summary>
     public int Start()
     {

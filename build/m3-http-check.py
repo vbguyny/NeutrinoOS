@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""M3 raw-client checks against the WebHost engine (chunked + 100-continue).
+"""M3 raw-client checks against the WebHost engine (chunked + 100-continue + async).
 
-Usage: m3-http-check.py chunked|continue [port]
+Usage: m3-http-check.py chunked|continue|async [port]
 
 Connects to 127.0.0.1:<port> (the QEMU hostfwd, default 18080), speaks raw
 HTTP/1.1 so the framing is fully deterministic, and asserts the M3 behaviors:
   chunked   -> POST /api/v1/echo with Transfer-Encoding: chunked, two chunks
   continue  -> POST /api/v1/echo with Expect: 100-continue; waits for the
                interim "HTTP/1.1 100 Continue" BEFORE sending the body
+  async     -> GET /api/v1/wait (async handler suspends); GET /api/v1/poke on
+               a second connection resumes it; both responses are checked
 Exit code 0 = pass; 1 = fail (reason printed to stdout).
 """
 
 import socket
 import sys
+import time
 
 
 def recv_response(sock):
@@ -88,6 +91,25 @@ def check_continue(port):
     return 0
 
 
+def check_async(port):
+    wait_sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+    wait_sock.sendall(b"GET /api/v1/wait HTTP/1.1\r\nHost: m3-check\r\nConnection: close\r\n\r\n")
+    time.sleep(0.4)   # let the server start the deferred (suspended) handler
+    poke_sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+    poke_sock.sendall(b"GET /api/v1/poke HTTP/1.1\r\nHost: m3-check\r\nConnection: close\r\n\r\n")
+    poke_resp = recv_response(poke_sock)
+    poke_sock.close()
+    wait_resp = recv_response(wait_sock)
+    wait_sock.close()
+    if b'"poked":true' not in poke_resp:
+        print("poke response bad: %r" % poke_resp[-200:])
+        return 1
+    if b'"poked":true' not in wait_resp:
+        print("wait response bad: %r" % wait_resp[-200:])
+        return 1
+    return 0
+
+
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "chunked"
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 18080
@@ -95,6 +117,8 @@ def main():
         return check_chunked(port)
     if mode == "continue":
         return check_continue(port)
+    if mode == "async":
+        return check_async(port)
     print("unknown mode: %s" % mode)
     return 2
 

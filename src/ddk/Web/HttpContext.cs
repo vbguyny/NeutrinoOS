@@ -16,11 +16,20 @@
 //   RequestHandler       <-> RequestDelegate (sync subset in M1)
 
 using NeutrinoOS.DDK.Services;   // WebService's proven string helpers (same assembly)
+using System.Threading.Tasks;    // Task for the async handler delegate
 
 namespace NeutrinoOS.DDK.Web;
 
 /// <summary>A request handler (the M1 synchronous subset of RequestDelegate).</summary>
 public delegate void RequestHandler(HttpContext context);
+
+/// <summary>
+/// The async handler form (the Kestrel-shaped RequestDelegate subset -
+/// Microsoft.AspNetCore.Http.RequestDelegate returns Task). Handlers that
+/// suspend cannot be completed inline; the host keeps the response and
+/// writes it once the returned task completes on a later service tick.
+/// </summary>
+public delegate Task RequestHandlerAsync(HttpContext context);
 
 /// <summary>
 /// The M3 slice of Kestrel's <c>IHttpRequestFeature</c>

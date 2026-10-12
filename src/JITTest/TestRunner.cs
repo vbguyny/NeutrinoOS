@@ -216,12 +216,23 @@ public static class TestRunner
         {
             testRunner();
         }
-        catch (Exception ex)
+        catch (ArgumentOutOfRangeException)
         {
-            Debug.Write("[CATEGORY ERROR] ");
-            Debug.Write(categoryName);
-            Debug.Write(": ");
-            Debug.WriteLine(ex.Message);
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": ArgumentOutOfRangeException");
+            TestTracker.Record("category/" + categoryName, false, "ArgumentOutOfRangeException");
+        }
+        catch (NullReferenceException)
+        {
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": NullReferenceException");
+            TestTracker.Record("category/" + categoryName, false, "NullReferenceException");
+        }
+        catch (Exception)
+        {
+            // Debug.Write* is compiled out of default builds - the Report
+            // channel keeps category failures visible in boot logs (a
+            // silently skipped category would otherwise hide its tests).
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": Exception (other type)");
+            TestTracker.Record("category/" + categoryName, false, "Exception (other type)");
         }
     }
 }

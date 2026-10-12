@@ -18,15 +18,48 @@ public static class MemoryPipelineTests
 {
     public static void RunAll()
     {
-        TestMemoryBasics();
-        TestMemorySpan();
-        TestArrayPool();
-        TestReadOnlySequence();
-        TestPipeReaderAsyncWake();
-        TestPipePump1MB();
-        TestPipeBackpressure();
-        TestPipeAsyncAwaitSyncCompletion();
-        TestDuplexPipe();
+        RunStep("step/vt-large-struct-probe", TestValueTaskLargeStructProbe);
+        RunStep("step/memory", TestMemoryBasics);
+        RunStep("step/memory-span", TestMemorySpan);
+        RunStep("step/array-pool", TestArrayPool);
+        RunStep("step/readonly-sequence", TestReadOnlySequence);
+        RunStep("step/pipe-read-wake", TestPipeReaderAsyncWake);
+        RunStep("step/pipe-pump-1mb", TestPipePump1MB);
+        RunStep("step/pipe-backpressure", TestPipeBackpressure);
+        RunStep("step/pipe-async-sync", TestPipeAsyncAwaitSyncCompletion);
+        RunStep("step/task-suspension", TestTaskSuspension);
+        RunStep("step/duplex-pipe", TestDuplexPipe);
+    }
+
+    /// <summary>Runs one test step; a throwing step is recorded as a failure
+    /// instead of aborting the whole category (a silent category abort hid
+    /// the ReadOnlySequence bug for the whole M2 era).</summary>
+    private static void RunStep(string name, Action step)
+    {
+        try
+        {
+            step();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            TestTracker.Record(name, false, "ArgumentOutOfRangeException");
+        }
+        catch (ArgumentNullException)
+        {
+            TestTracker.Record(name, false, "ArgumentNullException");
+        }
+        catch (NullReferenceException)
+        {
+            TestTracker.Record(name, false, "NullReferenceException");
+        }
+        catch (InvalidOperationException)
+        {
+            TestTracker.Record(name, false, "InvalidOperationException");
+        }
+        catch (Exception)
+        {
+            TestTracker.Record(name, false, "Exception (other type)");
+        }
     }
 
     // ==================== Memory ====================
@@ -129,7 +162,29 @@ public static class MemoryPipelineTests
         pool.Return(d);
     }
 
+    // The ReadAsync path hands the caller a ValueTask<ReadResult> - a ~56
+    // byte struct (ReadResult embeds a ReadOnlySequence). This probe isolates
+    // whether constructing/observing a PENDING ValueTask of that size works
+    // at all, before blaming the Pipe. (Boot 2026-10-11: ReadAsync on an
+    // empty pipe reported IsCompleted=true.)
+    private static void TestValueTaskLargeStructProbe()
+    {
+        var tcs = new TaskCompletionSource<ReadResult>();
+        var vt = new ValueTask<ReadResult>(tcs.Task);
+        bool ic = vt.IsCompleted;
+        TestTracker.Record("VT/large-pending-not-completed", !ic, ic ? "completed=true" : null);
+        tcs.TrySetResult(new ReadResult(default, false, true));
+        bool ic2 = vt.IsCompleted;
+        TestTracker.Record("VT/large-completed-after-set", ic2);
+    }
+
     // ==================== ReadOnlySequence ====================
+
+    // NOTE on object->ReadOnlySequenceSegment<T> coercion: probed on-device
+    // (2026-10-11) - `as`, explicit castclass and the `is` pattern ALL fail on
+    // Tier-0 inside a generic context, for segments of any assembly. korlib
+    // therefore recovers segments by reference identity against the chain
+    // (FindByIdentity in ReadOnlySequence.cs); do not reintroduce casts.
 
     private sealed class TestSegment : ReadOnlySequenceSegment<int>
     {
@@ -138,6 +193,14 @@ public static class MemoryPipelineTests
             Memory = data;
             Next = next;
             RunningIndex = 0;
+        }
+
+        /// <summary>Sets the cumulative index of this segment's first element
+        /// (RunningIndex has a protected setter, so the test goes through a
+        /// subclass helper).</summary>
+        public void SetRunningIndex(long index)
+        {
+            RunningIndex = index;
         }
     }
 
@@ -150,14 +213,36 @@ public static class MemoryPipelineTests
         var seg2 = new TestSegment(s2, seg3);
         var seg1 = new TestSegment(s1, seg2);
 
+        // ReadOnlySequenceSegment<T> contract: RunningIndex is the index of
+        // the segment's first element in the sequence, so creators must
+        // chain them cumulatively (Length derives from it; Pipe does the
+        // same). This test used to leave every segment at 0, making
+        // Length=2 and Slice(3,4) throw - which silently aborted the whole
+        // Memory/Pipelines category (see the RunCategory Report fix).
+        seg1.SetRunningIndex(0);
+        seg2.SetRunningIndex(seg1.RunningIndex + s1.Length);
+        seg3.SetRunningIndex(seg2.RunningIndex + s2.Length);
+
         var seq = new ReadOnlySequence<int>(seg1, 0, seg3, 2);
         TestTracker.Record("Seq/multi-length", Assert.AreEqual((long)9, seq.Length), "len=" + seq.Length.ToString());
         TestTracker.Record("Seq/multi-first", Assert.AreEqual(1, seq.First.Span[0]) && Assert.AreEqual(4, seq.First.Length));
 
         var slice = seq.Slice(3, 4);             // elements 4,5,6,7
         TestTracker.Record("Seq/slice-length", Assert.AreEqual((long)4, slice.Length));
+        int segs = 0;
+        long segLen = 0;
+        foreach (var segMem in slice)
+        {
+            segs++;
+            segLen += segMem.Length;
+        }
+        TestTracker.Record("Seq/slice-foreach", segs == 2 && segLen == 4,
+            "segs=" + segs.ToString() + "/" + segLen.ToString());
         var arr = slice.ToArray();
-        TestTracker.Record("Seq/slice-content", arr.Length == 4 && arr[0] == 4 && arr[3] == 7);
+        TestTracker.Record("Seq/slice-content", arr.Length == 4 && arr[0] == 4 && arr[3] == 7,
+            "n=" + arr.Length.ToString());
+
+        NeutrinoOS.DDK.Kernel.Debug.Report("[JITTest] seq-e");
 
         long total = 0;
         int checksum = 0;
@@ -173,7 +258,8 @@ public static class MemoryPipelineTests
         var pos = seq.GetPosition(5);            // element index 5 => value 6
         var viaSlice = seq.Slice(pos);
         var viaArr = viaSlice.ToArray();
-        TestTracker.Record("Seq/get-position", viaArr.Length == 4 && viaArr[0] == 6);
+        TestTracker.Record("Seq/get-position", viaArr.Length == 4 && viaArr[0] == 6,
+            "n=" + viaArr.Length.ToString());
 
         var single = new ReadOnlySequence<int>(new int[] { 10, 11, 12 });
         TestTracker.Record("Seq/single", single.Length == 3 && single.First.Span[1] == 11 && single.IsSingleSegment);
@@ -335,6 +421,31 @@ public static class MemoryPipelineTests
 
         pipe.Reader.Complete();
         pipe.Writer.Complete();
+    }
+
+    // The async Task method must stay SUSPENDED until the signal fires, and
+    // the Task the caller holds must complete when it does. Regression guard
+    // for the M3 async-delegate bug: the builder used to box the state
+    // machine before materializing its Task, so the boxed builder completed
+    // a different instance than builder.Task (the caller waited forever).
+    private static async Task<int> SuspendOnSignalAsync(TaskCompletionSource<bool> signal)
+    {
+        await signal.Task;
+        return 42;
+    }
+
+    private static void TestTaskSuspension()
+    {
+        var signal = new TaskCompletionSource<bool>();
+        Task<int> task = SuspendOnSignalAsync(signal);
+        TestTracker.Record("Task/suspended-before-signal", !task.IsCompleted);
+
+        bool setOk = signal.TrySetResult(true);
+        TestTracker.Record("Task/signal-set", setOk);
+        TestTracker.Record("Task/completed-after-signal", task.IsCompleted);
+
+        int result = task.GetAwaiter().GetResult();
+        TestTracker.Record("Task/result-value", result == 42, "r=" + result.ToString());
     }
 
     // IDuplexPipe is the Kestrel-shaped transport view the M2 socket listener

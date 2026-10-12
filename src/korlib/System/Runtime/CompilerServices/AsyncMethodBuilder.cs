@@ -73,7 +73,13 @@ namespace System.Runtime.CompilerServices
             where TAwaiter : INotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            // Box the state machine to capture it
+            // Materialize the task BEFORE boxing. The caller reads .Task right
+            // after Start() returns, while every later SetResult runs on the
+            // BOXED copy of this struct - the box must therefore complete the
+            // same Task instance the caller already holds. (M3 async-delegate
+            // bring-up: without this, a suspended async Task method never
+            // completed its caller-visible task.)
+            _ = Task;
             IAsyncStateMachine boxedStateMachine = stateMachine;
             var continuation = new StateMachineContinuation(boxedStateMachine);
             awaiter.OnCompleted(continuation.MoveNext);
@@ -84,7 +90,8 @@ namespace System.Runtime.CompilerServices
             where TAwaiter : ICriticalNotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            // Box the state machine to capture it
+            // See AwaitOnCompleted: force the task to exist before boxing.
+            _ = Task;
             IAsyncStateMachine boxedStateMachine = stateMachine;
             var continuation = new StateMachineContinuation(boxedStateMachine);
             awaiter.UnsafeOnCompleted(continuation.MoveNext);
@@ -135,12 +142,17 @@ namespace System.Runtime.CompilerServices
             (_task ??= new Task<TResult>()).SetException(exception);
         }
 
+        /// <summary>True once the backing task has been materialized.</summary>
+        internal bool TaskCreated => _task != null;
+
         /// <summary>Schedules the state machine to proceed to the next action when the specified awaiter completes.</summary>
         public void AwaitOnCompleted<TAwaiter, TStateMachine>(ref TAwaiter awaiter, ref TStateMachine stateMachine)
             where TAwaiter : INotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            // Box the state machine to capture it
+            // Materialize the task BEFORE boxing (see the non-generic builder
+            // for the full explanation of the M3 async-delegate bug).
+            _ = Task;
             IAsyncStateMachine boxedStateMachine = stateMachine;
             var continuation = new StateMachineContinuation(boxedStateMachine);
             awaiter.OnCompleted(continuation.MoveNext);
@@ -151,7 +163,8 @@ namespace System.Runtime.CompilerServices
             where TAwaiter : ICriticalNotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            // Box the state machine to capture it
+            // See AwaitOnCompleted: force the task to exist before boxing.
+            _ = Task;
             IAsyncStateMachine boxedStateMachine = stateMachine;
             var continuation = new StateMachineContinuation(boxedStateMachine);
             awaiter.UnsafeOnCompleted(continuation.MoveNext);
@@ -323,6 +336,11 @@ namespace System.Runtime.CompilerServices
         {
             _result = result;
             _haveResult = true;
+            // When the method suspended, the ValueTask handed to the caller
+            // wraps the backing task - complete it too (an inline result alone
+            // would never be observed by the awaiting code).
+            if (_methodBuilder.TaskCreated)
+                _methodBuilder.SetResult(result);
         }
 
         /// <summary>Marks the task as failed.</summary>
