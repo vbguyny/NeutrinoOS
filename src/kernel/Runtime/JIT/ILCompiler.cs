@@ -11623,6 +11623,23 @@ public unsafe struct ILCompiler
         // Save R3 (the value/address to box) on the stack - R8 is caller-saved and will be clobbered
         X64Emitter.Push(ref _code, VReg.R3);
 
+        if (JitDiag.VerboseJit && _typeResolver != null)
+        {
+            DebugConsole.Write("[box] m=0x");
+            DebugConsole.WriteHex(_debugMethodToken);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" mt=0x");
+            DebugConsole.WriteHex(mtAddress);
+            DebugConsole.Write(" valSz=");
+            DebugConsole.WriteDecimal(valueSize);
+            DebugConsole.Write(" entrySz=");
+            DebugConsole.WriteDecimal((uint)structByteSize);
+            DebugConsole.Write(" multi=");
+            DebugConsole.Write(isMultiSlotStruct ? "Y" : "N");
+            DebugConsole.WriteLine();
+        }
+
         // Load MethodTable* into RCX (first arg for RhpNewFast)
         X64Emitter.MovRI64(ref _code, VReg.R1, mtAddress);
 
@@ -12199,6 +12216,19 @@ public unsafe struct ILCompiler
 
         // Note: In a full implementation, we'd verify obj->MT matches expectedMT
         _ = expectedMT;  // Currently unused - type validation not implemented
+
+        if (JitDiag.VerboseJit && _typeResolver != null)
+        {
+            DebugConsole.Write("[unbox] m=0x");
+            DebugConsole.WriteHex(_debugMethodToken);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.Write(" mt=0x");
+            DebugConsole.WriteHex(expectedMT);
+            DebugConsole.Write(" valSz=");
+            DebugConsole.WriteDecimal(valueSize);
+            DebugConsole.WriteLine();
+        }
 
         // Pop object reference from stack into R3 (source address)
         X64Emitter.Pop(ref _code, VReg.R3);

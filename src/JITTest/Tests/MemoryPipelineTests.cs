@@ -29,6 +29,10 @@ public static class MemoryPipelineTests
         RunStep("vt/structthis24", TestStructThis24);
         RunStep("vt/ctor24", TestCtor24);
         RunStep("vt-awaiter/copy", ProbeAwaiterCopy);
+        RunStep("rt/box-readresult", ProbeBoxRoundtrip);
+        RunStep("rt/min-tcs", ProbeMinTcs);
+        RunStep("rt/rr-then-tcs", ProbeRoundtripThenTcs);
+        RunStep("rt/diag", ProbeDiag);
         RunStep("step/memory", TestMemoryBasics);
         RunStep("step/memory-span", TestMemorySpan);
         RunStep("step/array-pool", TestArrayPool);
@@ -337,6 +341,134 @@ public static class MemoryPipelineTests
         TestTracker.Record("vt-awaiter/copy-sees-completion", aw.IsCompleted);
         var r = aw.GetResult();
         TestTracker.Record("vt-awaiter/getresult-ok", r.IsCompleted);
+    }
+
+    // ---- Isolation probe for the ReadResult (64B) flag roundtrip. Each stage
+    // rules out one leg of the Task<TResult> boxed-result machinery:
+    //   direct    : ctor -> r.IsCompleted (no copies through anything beyond locals)
+    //   passret   : 64B struct passed by value + returned through hidden buffer
+    //   box       : explicit box + unbox (the Task<TResult>_result shape)
+    //   taskresult: TrySetResult (box into object) + Task.Result (unbox back) ----
+    private static ReadResult RoundtripRR(ReadResult r) => r;
+
+    private static void ProbeMinTcs()
+    {
+        var tcs = new TaskCompletionSource<ReadResult>();
+        tcs.TrySetResult(new ReadResult(default, false, true));
+        var viaTask = tcs.Task.Result;
+        TestTracker.Record("rt/min-task-result", viaTask.IsCompleted);
+    }
+
+    private static void ProbeRoundtripThenTcs()
+    {
+        var passed = RoundtripRR(new ReadResult(default, false, true));
+        TestTracker.Record("rt/rr-first", passed.IsCompleted);
+        var tcs = new TaskCompletionSource<ReadResult>();
+        tcs.TrySetResult(new ReadResult(default, false, true));
+        var viaTask = tcs.Task.Result;
+        TestTracker.Record("rt/rr-then-task-result", viaTask.IsCompleted);
+    }
+
+    // ---- Diagnostics: pure-data 64B struct through Task<T> (no refs), and a
+    // ReadResult with a real 3-byte buffer so truncation vs flag-loss and
+    // buffer-vs-flag survival can be told apart. ----
+    private struct Probe64
+    {
+        public long a;
+        public long b;
+        public long c;
+        public long d;
+        public long e;
+        public long f;
+        public long g;
+        public long h;
+    }
+
+    private static void ProbeDiag()
+    {
+        var tcs64 = new TaskCompletionSource<Probe64>();
+        var p = default(Probe64);
+        p.a = 1;
+        p.b = 2;
+        p.c = 3;
+        p.d = 4;
+        p.e = 5;
+        p.f = 6;
+        p.g = 7;
+        p.h = unchecked((long)0x1122334455667788);
+        tcs64.TrySetResult(p);
+        var gp = tcs64.Task.Result;
+        TestTracker.Record("diag/p64-all",
+            gp.a == 1 && gp.b == 2 && gp.c == 3 && gp.d == 4 &&
+            gp.e == 5 && gp.f == 6 && gp.g == 7 &&
+            gp.h == unchecked((long)0x1122334455667788),
+            "a=" + gp.a.ToString() + " b=" + gp.b.ToString() + " c=" + gp.c.ToString() +
+            " d=" + gp.d.ToString() + " e=" + gp.e.ToString() + " f=" + gp.f.ToString() +
+            " g=" + gp.g.ToString() + " h=" + gp.h.ToString());
+
+        var buf = new byte[3];
+        buf[0] = 11;
+        buf[1] = 22;
+        buf[2] = 33;
+        var seq = new ReadOnlySequence<byte>(buf);
+        var tcsA = new TaskCompletionSource<ReadResult>();
+        tcsA.TrySetResult(new ReadResult(seq, true, false));
+        var ra = tcsA.Task.Result;
+        TestTracker.Record("diag/real-buffer-len3", ra.Buffer.Length == 3,
+            "len=" + ra.Buffer.Length.ToString());
+        TestTracker.Record("diag/canceled-true", ra.IsCanceled);
+        TestTracker.Record("diag/completed-false", !ra.IsCompleted);
+
+        var tcsB = new TaskCompletionSource<ReadResult>();
+        tcsB.TrySetResult(new ReadResult(seq, false, true));
+        var rb = tcsB.Task.Result;
+        TestTracker.Record("diag/real-buffer-len3-b", rb.Buffer.Length == 3,
+            "len=" + rb.Buffer.Length.ToString());
+        TestTracker.Record("diag/completed-true", rb.IsCompleted);
+    }
+
+    private static void ProbeBoxRoundtrip()
+    {
+        var direct = new ReadResult(default, false, true);
+        TestTracker.Record("rt/direct", direct.IsCompleted);
+
+        var passed = RoundtripRR(new ReadResult(default, false, true));
+        TestTracker.Record("rt/passret", passed.IsCompleted);
+
+        object boxed = new ReadResult(default, false, true);
+        var unboxed = (ReadResult)boxed;
+        TestTracker.Record("rt/box-unbox", unboxed.IsCompleted);
+
+        var tcs = new TaskCompletionSource<ReadResult>();
+        tcs.TrySetResult(new ReadResult(default, false, true));
+        var viaTask = tcs.Task.Result;
+        TestTracker.Record("rt/task-result", viaTask.IsCompleted);
+
+        var tcsLong = new TaskCompletionSource<long>();
+        tcsLong.TrySetResult(0x1122334455667788L);
+        TestTracker.Record("rt/task-result-long", tcsLong.Task.Result == 0x1122334455667788L);
+
+        var tcs24 = new TaskCompletionSource<Triple24>();
+        var t24 = default(Triple24);
+        t24.a = 7;
+        t24.b = 8;
+        t24.c = 9;
+        tcs24.TrySetResult(t24);
+        var g24 = tcs24.Task.Result;
+        TestTracker.Record("rt/task-result-24", g24.a == 7 && g24.b == 8 && g24.c == 9);
+
+        var aw2 = tcs.Task.GetAwaiter();
+        var rAw = aw2.GetResult();
+        TestTracker.Record("rt/taskawaiter", rAw.IsCompleted);
+
+        var vtWrap = new ValueTask<ReadResult>(tcs.Task);
+        var rVt = vtWrap.Result;
+        TestTracker.Record("rt/vt-result", rVt.IsCompleted);
+
+        var tcsF = new TaskCompletionSource<ReadResult>();
+        tcsF.TrySetResult(new ReadResult(default, true, true));
+        var rF = tcsF.Task.Result;
+        TestTracker.Record("rt/task-result-flags2", rF.IsCanceled && rF.IsCompleted);
     }
 
     // ==================== ReadOnlySequence ====================

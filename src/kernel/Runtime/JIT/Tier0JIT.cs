@@ -1626,6 +1626,31 @@ public static unsafe class Tier0JIT
             return;
         }
 
+        // VAR (0x13) - generic TYPE parameter (e.g. TResult in Task<TResult>.
+        // get_Result): resolve through the active type type-arg context so
+        // large value-type instantiations report their true size (the return
+        // ABI picks the hidden buffer from this size).
+        if (elemType == 0x13)
+        {
+            uint varIndex = MetadataReader.ReadCompressedUInt(ref ptr);
+            MethodTable* varMT = MetadataIntegration.GetTypeTypeArgMethodTable((int)varIndex);
+            if (varMT != null)
+            {
+                isValueType = varMT->IsValueType;
+                if (isValueType)
+                {
+                    typeSize = (ushort)(varMT->_usComponentSize > 0 ? varMT->_usComponentSize :
+                        (varMT->_uBaseSize >= 8 ? varMT->_uBaseSize - 8 : varMT->_uBaseSize));
+                }
+            }
+            else
+            {
+                typeSize = 8;
+                isValueType = false;
+            }
+            return;
+        }
+
         // GENERICINST (0x15) - generic instantiation return type
         if (elemType == 0x15)
         {
@@ -2046,13 +2071,31 @@ public static unsafe class Tier0JIT
             return;
         }
 
-        // VAR (0x13) - type parameter from generic type, not currently supported
-        // Would need type context from containing generic type
+        // VAR (0x13) - generic TYPE parameter: resolve through the active
+        // type type-arg context (the enclosing instantiation's args). Missing
+        // context keeps the pointer-sized fallback.
         if (elemType == 0x13)
         {
-            MetadataReader.ReadCompressedUInt(ref ptr); // Skip index
-            typeSize = 8;
-            isValueType = false;
+            uint varIndex = MetadataReader.ReadCompressedUInt(ref ptr);
+            MethodTable* varMT = MetadataIntegration.GetTypeTypeArgMethodTable((int)varIndex);
+            if (varMT != null)
+            {
+                isValueType = varMT->IsValueType;
+                if (isValueType)
+                {
+                    typeSize = (ushort)(varMT->_usComponentSize > 0 ? varMT->_usComponentSize :
+                        (varMT->_uBaseSize >= 8 ? varMT->_uBaseSize - 8 : varMT->_uBaseSize));
+                }
+                else
+                {
+                    typeSize = 8;
+                }
+            }
+            else
+            {
+                typeSize = 8;
+                isValueType = false;
+            }
             return;
         }
 
@@ -2186,6 +2229,27 @@ public static unsafe class Tier0JIT
         // TypedByRef (0x16) is a 16-byte struct
         if (elemType == 0x16)  // ELEMENT_TYPE_TYPEDBYREF
             return ReturnKind.Struct;
+
+        // VAR (0x13) - generic TYPE parameter (e.g. TResult in Task<TResult>.
+        // get_Result): resolve through the active type type-arg context so a
+        // large struct instantiation gets the by-value/hidden-buffer ABI
+        // instead of the old IntPtr (register) fallback. Missing context keeps
+        // the pointer-sized default.
+        if (elemType == ElementType.Var)
+        {
+            MethodTable* varMT = MetadataIntegration.GetTypeTypeArgMethodTable((int)typeSig.GenericParamIndex);
+            if (varMT == null)
+                return ReturnKind.IntPtr;
+            if (!varMT->IsValueType)
+                return ReturnKind.IntPtr;
+            uint varSize = varMT->_usComponentSize > 0 ? varMT->_usComponentSize :
+                (varMT->_uBaseSize >= 8 ? varMT->_uBaseSize - 8 : varMT->_uBaseSize);
+            if (varSize <= 4)
+                return ReturnKind.Int32;
+            if (varSize <= 8)
+                return ReturnKind.Int64;
+            return ReturnKind.Struct;
+        }
 
         // Default to IntPtr for unknown types
         return ReturnKind.IntPtr;

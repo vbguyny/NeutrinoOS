@@ -285,12 +285,29 @@ its ReadOnlySequence test):**
   type context, sizes the definition against them and restores the ambient
   context - exact and consistent across every compilation. (Legacy add-args
   compensation retained only when argument parsing fails.)
-- Current boot: `JITTest` **3055 passed / 5 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining reds: `vt-awaiter/getresult-ok` and
-  `Pipe/read-async-returns-flushed-data` (n=0) / `Pipe/async-await-sync-completion`
-  (n=2) - `ReadResult` round-trips through the task-result path still lose
-  their tail fields/data in some shapes - plus the long-standing
-  `seq/getpos` (NRE) and `hw/nullderef-catch` (silent resume-past-the-#PF
+- FIXED (this commit): **VAR (`0x13`) return types compiled as 8-byte
+  register returns.** Every accessor whose return type is the enclosing
+  generic type's parameter - `Task<TResult>.get_Result`,
+  `TaskAwaiter<TResult>.GetResult`, `ValueTask<TResult>.get_Result` - was
+  classified `IntPtr` (or size 0) because `GetReturnKind`,
+  `ParseMethodSigReturnType` and `GetValueTypeSigWithSize` only resolved
+  MVAR (`0x1E`, method type parameters) from a context; VAR fell into the
+  "not currently supported"/default-IntPtr arms. For `TResult=ReadResult`
+  (64B) the callee emitted an 8-byte register return while only the first
+  qword carried data: `rt/task-result` probes showed `a=1` intact and all
+  later fields as stale stack garbage, the boxed-buffer length read 0, and
+  the identity-shaped or luck-of-the-garbage probes (`VT/large-result-read-ok`)
+  passed intermittently. The three helpers now resolve VAR through the
+  active type type-arg context (`GetTypeTypeArgMethodTable`) and report the
+  instantiation's true value-type size / `ReturnKind.Struct`; missing
+  context keeps the old pointer-sized fallback. This cleared
+  `vt-awaiter/getresult-ok`, `Pipe/read-async-returns-flushed-data` (n=0)
+  and `Pipe/async-await-sync-completion` (n=2) plus the whole new `rt/*` +
+  `diag/*` probe battery (boxed 64B `ReadResult`/`Probe64` round-trips
+  through `Task<TResult>.TrySetResult`/`Result`).
+- Current boot: `JITTest` **3075 passed / 3 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining reds: `seq/getpos` (NRE), `step/pipe-async-sync`
+  (NRE) and the long-standing `hw/nullderef-catch` (silent resume-past-the-#PF
   with no dispatch trace - separate, still-open bug).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
