@@ -199,7 +199,13 @@ namespace System.Threading.Tasks
         /// <summary>Creates a Task that's completed successfully with the specified result.</summary>
         public static Task<TResult> FromResult<TResult>(TResult result)
         {
-            return new Task<TResult>(result);
+            // Store via the parameterless ctor + SetResult (the proven TCS
+            // path): Task<TResult>(TResult) can be compiled without the
+            // type-arg context and then stores the RAW value instead of a box
+            // (see AsyncTaskMethodBuilder<TResult>.SetResult).
+            var task = new Task<TResult>();
+            task.SetResult(result);
+            return task;
         }
 
         /// <summary>Creates a Task that has completed with a specified exception.</summary>

@@ -11730,6 +11730,18 @@ public unsafe struct ILCompiler
                 else
                 {
                     // Reference type - box is a no-op, just leave value on stack
+                    if (JitDiag.VerboseJit)
+                    {
+                        DebugConsole.Write("[box] m=0x");
+                        DebugConsole.WriteHex(_debugMethodToken);
+                        DebugConsole.Write(" tok=0x");
+                        DebugConsole.WriteHex(token);
+                        DebugConsole.Write(" mt=0x");
+                        DebugConsole.WriteHex(mtAddress);
+                        DebugConsole.Write(" flags=0x");
+                        DebugConsole.WriteHex(combinedFlags);
+                        DebugConsole.WriteLine(" REF-NOOP");
+                    }
                     JitTrace.WriteLine(" REF-NOOP");
                     return true;
                 }

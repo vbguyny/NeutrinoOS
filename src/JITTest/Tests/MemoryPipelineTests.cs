@@ -33,6 +33,7 @@ public static class MemoryPipelineTests
         RunStep("rt/min-tcs", ProbeMinTcs);
         RunStep("rt/rr-then-tcs", ProbeRoundtripThenTcs);
         RunStep("rt/diag", ProbeDiag);
+        RunStep("async/simple", ProbeSimpleAsync);
         RunStep("step/memory", TestMemoryBasics);
         RunStep("step/memory-span", TestMemorySpan);
         RunStep("step/array-pool", TestArrayPool);
@@ -367,6 +368,42 @@ public static class MemoryPipelineTests
         tcs.TrySetResult(new ReadResult(default, false, true));
         var viaTask = tcs.Task.Result;
         TestTracker.Record("rt/rr-then-task-result", viaTask.IsCompleted);
+    }
+
+    // ---- Async state machine isolation: a minimal `async Task<int>` with a
+    // single synchronous await, mirroring CountAsync's shape (the
+    // step/pipe-async-sync red). Splits Task<T> await vs ValueTask<T> await
+    // so a corrupt builder field (e.g. awaiter copies overlapping the state
+    // machine's builder) pinpoints itself. ----
+    private static async Task<int> SimpleAsync(int v)
+    {
+        var tcs = new TaskCompletionSource<int>();
+        tcs.TrySetResult(v);
+        int r = await tcs.Task;
+        return r;
+    }
+
+    private static async Task<int> SimpleVtAsync(int v)
+    {
+        var vt = new ValueTask<int>(v);
+        int r = await vt;
+        return r;
+    }
+
+    private static void ProbeSimpleAsync()
+    {
+        var t1 = SimpleAsync(21);
+        TestTracker.Record("async/simple-completed", t1.IsCompleted);
+        TestTracker.Record("async/simple-not-faulted", !t1.IsFaulted);
+        var aw1 = t1.GetAwaiter();
+        int n1 = aw1.GetResult();
+        TestTracker.Record("async/simple-result", n1 == 21, "n=" + n1.ToString());
+
+        var t2 = SimpleVtAsync(22);
+        TestTracker.Record("async/simplevt-completed", t2.IsCompleted);
+        TestTracker.Record("async/simplevt-not-faulted", !t2.IsFaulted);
+        int n2 = t2.GetAwaiter().GetResult();
+        TestTracker.Record("async/simplevt-result", n2 == 22, "n=" + n2.ToString());
     }
 
     // ---- Diagnostics: pure-data 64B struct through Task<T> (no refs), and a

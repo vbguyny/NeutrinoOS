@@ -317,12 +317,27 @@ its ReadOnlySequence test):**
   retained, and the deferred LEAs (emitted after the frame allocation)
   point at them (`arg1` at `[RSP+totalAlloc]`, `this` directly above it,
   arg2/arg1/arg0 rel offsets for the 3-arg shape). `seq/getpos` green.
-- Current boot: `JITTest` **3076 passed / 2 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining reds: `hw/nullderef-catch` (silent resume-past-the
-  -#PF, longstanding) and `step/pipe-async-sync` (NRE inside
-  `TaskAwaiter<int>.GetResult` -> `Task<int>.get_Result` -> wrongly-taken
-  `IsFaulted`/`Exception` branch -> `new AggregateException` newarr path
-  crashes; open item).
+- FIXED (this commit): **`Task<TResult>(TResult)` ctor compiled without the
+  type-arg context.** Repeat boots showed `Task<TResult>..ctor`
+  (`m=0x0600072A`) compiled ONCE with the type context `[Object]` (the
+  "VAR out-of-range -> Object (expected in generic def)" fallback - the
+  verbose `[box]` trace printed `mt=0x80054E0 flags=... REF-NOOP`); its
+  `box !!TResult` therefore baked a REF-NOOP, so `AsyncTaskMethodBuilder<TResult>`
+  completed sync paths through `Task.FromResult` -> `new Task<TResult>(result)`
+  - which stored the RAW int into the boxed-`object _result` field.
+  `Task<int>.Result` then unboxed `0x15` (CR2=0x1d = 0x15+8, GDB-confirmed
+  in `Task_1__get_Result+270`: `mov 0x30(%rax)` then `movslq 0x8(%r8)`),
+  the wrongly-entered fault path built an `AggregateException` and
+  `async/simple` + `step/pipe-async-sync` NREd. Both entry points now use
+  the parameterless ctor + `Task<TResult>.SetResult` - the TCS path that is
+  compiled per instantiation and boxes correctly (`rt/task-result*`,
+  `diag/p64-all` were green through exactly that shape). `FromResult` kept
+  its public behavior, `ProbeSimpleAsync` added as a regression probe
+  (`async/simple*`).
+- Current boot: `JITTest` **3083 passed / 1 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining red: `hw/nullderef-catch` (silent resume-past-the
+  -#PF, longstanding; the GDB first stop showed only the tracker recording
+  the failure - open item).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0

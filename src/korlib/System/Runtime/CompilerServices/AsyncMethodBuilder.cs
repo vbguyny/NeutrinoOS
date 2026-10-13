@@ -128,12 +128,17 @@ namespace System.Runtime.CompilerServices
         {
             if (_task == null)
             {
-                _task = System.Threading.Tasks.Task.FromResult(result);
+                // Materialize through the parameterless ctor and store via
+                // Task<TResult>.SetResult. Task<TResult>(TResult) boxes
+                // !!TResult at ITS compile site; a body compiled without the
+                // type-arg context (VAR -> Object fallback) baked a REF-NOOP
+                // and stored the RAW value into the object _result field
+                // (Task<int>.Result then NREd unboxing 0x15). SetResult is
+                // compiled per instantiation - the proven TCS path - and
+                // boxes correctly.
+                _task = new Task<TResult>();
             }
-            else
-            {
-                _task.SetResult(result);
-            }
+            _task.SetResult(result);
         }
 
         /// <summary>Marks the task as failed.</summary>
