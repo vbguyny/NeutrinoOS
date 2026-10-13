@@ -363,6 +363,28 @@ public static unsafe class ExceptionHandling
         return _funcletExitTrampoline;
     }
 
+    /// <summary>
+    /// Native trampoline (native.asm) for HARDWARE-FAULT catch transfers
+    /// into JIT funclets. The ISR's iretq restores the fault-time RSP, so
+    /// the funclet would be entered with the wrong stack base whenever the
+    /// fault happened in code resumed from an earlier catch (rsp =
+    /// rbp-0x100 instead of the canonical rbp-0x108). The trampoline lands
+    /// after the iretq, sets rsp = rbp-0x108 (canonical entry with 8-mod-16
+    /// parity), plants the resume slot and jumps to the funclet.
+    /// Entry convention: rdx = parent rbp, r8 = leave target, rax = funclet.
+    /// </summary>
+    [DllImport("*", CallingConvention = CallingConvention.Cdecl)]
+    private static extern nint exception_funclet_entry_trampoline_addr();
+
+    private static ulong _exceptionFuncletEntryTrampoline;
+
+    private static ulong ExceptionFuncletEntryTrampolineAddress()
+    {
+        if (_exceptionFuncletEntryTrampoline == 0)
+            _exceptionFuncletEntryTrampoline = (ulong)exception_funclet_entry_trampoline_addr();
+        return _exceptionFuncletEntryTrampoline;
+    }
+
 
     /// <summary>
     /// C# handler called by assembly RhpThrowEx.
@@ -2489,19 +2511,48 @@ public static unsafe class ExceptionHandling
                         targetRsp = catchSearchContext.Rsp - 8;
                     }
 
-                    context->Rip = handlerAddr;
-                    context->Rsp = targetRsp;
-                    context->Rbp = catchSearchContext.Rbp;  // Keep the frame pointer
-                    context->Rcx = (ulong)exceptionObject;
-                    context->Rdx = catchSearchContext.Rbp;  // Pass frame pointer
-
                     // Write the funclet's return address at RSP: AOT funclets
                     // continue via RAX (trampoline), JIT funclets via the
                     // explicit leave target.
                     ulong resumeAddr = aotFormat
                         ? FuncletExitTrampolineAddress()
                         : catchImageBase + catchFuncEntry->BeginAddress + clause.LeaveTargetOffset;
-                    *(ulong*)(context->Rsp) = resumeAddr;
+
+                    bool useEntryTrampoline = fromFaultFrame && !aotFormat;
+                    if (useEntryTrampoline)
+                    {
+                        // Hardware-fault transfers: the ISR's iretq restores
+                        // the FAULT-TIME rsp (ring 0 -> ring 0: only
+                        // Rip/Cs/Rflags are pushed), which equals the
+                        // canonical funclet entry rsp (rbp-0x108) only when
+                        // the fault happened in the method body. Code
+                        // resumed from an earlier catch runs at rbp-0x100,
+                        // so a SECOND hardware fault in the same frame would
+                        // enter the funclet one slot high and its RET would
+                        // pop garbage - and planting the resume slot at
+                        // rbp-0x108 from here clobbers the CPU interrupt
+                        // frame's Rflags slot (it sits at faultRsp-0x10
+                        // when faultRsp = rbp-0x100), so the iretq itself
+                        // #GPs. Route through native.asm's entry trampoline
+                        // instead: it lands AFTER the iretq and canonicalizes
+                        // rsp = rbp-0x108, plants the resume slot there and
+                        // jumps to the handler. Convention: rdx = parent rbp
+                        // (already set below), r8 = leave target,
+                        // rax = funclet address.
+                        context->Rip = ExceptionFuncletEntryTrampolineAddress();
+                        context->Rax = handlerAddr;
+                        context->R8 = resumeAddr;
+                        context->Rsp = targetRsp;
+                    }
+                    else
+                    {
+                        context->Rip = handlerAddr;
+                        context->Rsp = targetRsp;
+                        *(ulong*)(context->Rsp) = resumeAddr;
+                    }
+                    context->Rbp = catchSearchContext.Rbp;  // Keep the frame pointer
+                    context->Rcx = (ulong)exceptionObject;
+                    context->Rdx = catchSearchContext.Rbp;  // Pass frame pointer
 
                     // Verbose EH tracing (JitDiag.VerboseJit): JIT catch
                     // transfers (handler entry + resume slot) so a broken
@@ -2516,6 +2567,8 @@ public static unsafe class ExceptionHandling
                         DebugConsole.WriteHex(resumeAddr);
                         DebugConsole.Write(" prbp=0x");
                         DebugConsole.WriteHex(catchSearchContext.Rbp);
+                        if (useEntryTrampoline)
+                            DebugConsole.Write(" tramp=Y");
                         DebugConsole.WriteLine();
                     }
 

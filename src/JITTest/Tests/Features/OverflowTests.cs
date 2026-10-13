@@ -200,7 +200,6 @@ public static class OverflowTests
     }
 
     // ---- hardware-trap + software-throw probes ----
-    private static string s_nullString = null!;
 
     /// <summary>Software-throw discriminator: both the thrown object and the
     /// catch clause are JIT-side here. If this catches but the INT 4 overflow
@@ -222,18 +221,47 @@ public static class OverflowTests
 
     private static void HwNullDeref()
     {
+        // NOTE: string.Length goes through StringHelpers.GetLength, which
+        // null-guards and returns 0 - use a RAW field load (plain `ldfld`
+        // from a null this, emitted as a direct memory read) so the probe
+        // really produces a #PF.
         bool caught = false;
         try
         {
-            int l = s_nullString.Length;   // deref null -> vector 14 (#PF)
-            TestTracker.Record("hw/nullderef-no-trap", l == 0);
+            int l = s_nullTest.Field;      // ldfld null -> vector 14 (#PF)
+            TestTracker.Record("hw/nullderef-no-trap", false, "l=" + l.ToString());
         }
         catch (NullReferenceException)
         {
             caught = true;
         }
         TestTracker.Record("hw/nullderef-catch", caught);
+
+        // Discriminator: a SECOND hardware fault in the same frame - the
+        // first catch transfers execution so this load runs with rsp =
+        // rbp-0x100, which used to make the fault dispatch enter the catch
+        // funclet one slot high (regression coverage for native.asm's
+        // exception_funclet_entry_trampoline).
+        bool caughtLoc = false;
+        try
+        {
+            NulDerefProbe? n = null;
+            int l2 = n!.Field;
+            TestTracker.Record("nd/loc-no-trap", false, "l=" + l2.ToString());
+        }
+        catch (NullReferenceException)
+        {
+            caughtLoc = true;
+        }
+        TestTracker.Record("nd/loc-catch", caughtLoc);
     }
+
+    private sealed class NulDerefProbe
+    {
+        public int Field;
+    }
+
+    private static NulDerefProbe s_nullTest = null!;
 
     private static void HwDivideByZero()
     {

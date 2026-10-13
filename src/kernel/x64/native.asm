@@ -1432,6 +1432,29 @@ funclet_exit_trampoline_addr:
     lea rax, [rel funclet_exit_trampoline]
     ret
 
+;; Hardware-fault JIT catch-funclet ENTRY trampoline.
+;; The ISR's iretq restores the FAULT-TIME rsp (ring 0 -> ring 0 pushes
+;; only Rip/Cs/Rflags), which equals the JIT's canonical funclet entry
+;; rsp (rbp-0x108) only when the fault happened in the method body. Code
+;; resumed from an earlier catch runs at rbp-0x100, so a second hardware
+;; fault in the same frame would enter the funclet one slot high (its RET
+;; pops garbage) and planting the resume slot at rbp-0x108 from the
+;; dispatcher clobbers the CPU interrupt frame (Rflags -> #GP at the
+;; iretq). The managed dispatcher redirects hardware-fault catch
+;; transfers here instead of straight to the funclet. Convention on
+;; entry: rdx = parent rbp, r8 = leave target (resume), rax = funclet.
+global exception_funclet_entry_trampoline
+exception_funclet_entry_trampoline:
+    mov rsp, rdx            ; parent rbp
+    sub rsp, 0x108          ; canonical funclet entry rsp (parity 8 mod 16)
+    mov [rsp], r8           ; resume slot the funclet's final RET pops
+    jmp rax                 ; enter the JIT catch funclet
+
+global exception_funclet_entry_trampoline_addr
+exception_funclet_entry_trampoline_addr:
+    lea rax, [rel exception_funclet_entry_trampoline]
+    ret
+
 ; void RhpCallCatchFunclet(void* exceptionObject, void* handlerAddress, void* framePointer)
 ; Transfer control to a catch funclet with proper setup
 ; Windows x64 ABI: exceptionObject in rcx, handlerAddress in rdx, framePointer in r8

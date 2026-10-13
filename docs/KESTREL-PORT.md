@@ -334,10 +334,30 @@ its ReadOnlySequence test):**
   `diag/p64-all` were green through exactly that shape). `FromResult` kept
   its public behavior, `ProbeSimpleAsync` added as a regression probe
   (`async/simple*`).
-- Current boot: `JITTest` **3083 passed / 1 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining red: `hw/nullderef-catch` (silent resume-past-the
-  -#PF, longstanding; the GDB first stop showed only the tracker recording
-  the failure - open item).
+- FIXED (this commit): **hardware-fault catch transfers onto a funclet
+  entry trampoline** (the last red, `hw/nullderef-catch`). The probe's
+  original `s_nullString.Length` never faulted at all - `string.Length`
+  goes through `StringHelpers.GetLength`, which null-guards and returns 0
+  - so the probe now uses a raw `ldfld` off a null reference. The real
+  bug: the ISR's `iretq` restores the FAULT-TIME rsp (ring 0 -> ring 0
+  pushes only Rip/Cs/Rflags, so the kernel cannot redirect rsp at the
+  iretq). The dispatcher's transfer assumed the funclet would be entered
+  at `rbp-0x108` - true for faults in the method body, but code resumed
+  from an earlier catch runs at `rbp-0x100`. A second hardware fault in
+  the same frame therefore entered the funclet one slot high (its RET
+  popped garbage), and planting the resume slot at `rbp-0x108` from the
+  dispatcher clobbered the CPU interrupt frame's Rflags slot (it sits at
+  `faultRsp-0x10` when `faultRsp = rbp-0x100`), so the iretq itself #GPed
+  (verbose trace: `[EHDisp] mt=NRE rip=0x8001186` - the iretq - after
+  both catches had already matched and transferred). Hardware-fault catch
+  transfers now land on `exception_funclet_entry_trampoline`
+  (native.asm): it runs after the iretq, sets `rsp = rbp-0x108`
+  (canonical entry, parity 8 mod 16), plants the resume slot and jumps to
+  the handler - so the funclet entry is identical regardless of where in
+  the method the fault happened (`tramp=Y` in the verbose `[EHXfer]`
+  trace).
+- Current boot: `JITTest` **3084 passed / 0 failed** (two consecutive
+  boots), `AppTest` 25/25 (1 MB echo). No known reds remain.
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0
