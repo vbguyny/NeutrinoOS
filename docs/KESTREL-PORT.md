@@ -305,10 +305,24 @@ its ReadOnlySequence test):**
   and `Pipe/async-await-sync-completion` (n=2) plus the whole new `rt/*` +
   `diag/*` probe battery (boxed 64B `ReadResult`/`Probe64` round-trips
   through `Task<TResult>.TrySetResult`/`Result`).
-- Current boot: `JITTest` **3075 passed / 3 failed**, `AppTest` 25/25
-  (1 MB echo). Remaining reds: `seq/getpos` (NRE), `step/pipe-async-sync`
-  (NRE) and the long-standing `hw/nullderef-catch` (silent resume-past-the-#PF
-  with no dispatch trace - separate, still-open bug).
+- FIXED (this commit): **large value-type arguments through the hidden-buffer
+  call shapes.** `CompileCall`'s `totalArgs==2/3 && needsHiddenBuffer`
+  branches popped every argument as a single 8-byte register value. With
+  large structs on either slot the pops truncated them (and consumed the
+  wrong bytes): `_seq.Slice(pos)` passed `pos._integer` (=1) as the receiver
+  and `pos._object` as `&arg`, so compiled `ReadOnlySequence.Slice(
+  SequencePosition)` dereferenced `[1+0x30]` (CR2=0x31, GDB-confirmed via
+  `TaskAwaiter`-style frames -> `get_End` -> `call *rax` ret addr). Both
+  branches now pass >8B value types BY POINTER with their eval-stack bytes
+  retained, and the deferred LEAs (emitted after the frame allocation)
+  point at them (`arg1` at `[RSP+totalAlloc]`, `this` directly above it,
+  arg2/arg1/arg0 rel offsets for the 3-arg shape). `seq/getpos` green.
+- Current boot: `JITTest` **3076 passed / 2 failed**, `AppTest` 25/25
+  (1 MB echo). Remaining reds: `hw/nullderef-catch` (silent resume-past-the
+  -#PF, longstanding) and `step/pipe-async-sync` (NRE inside
+  `TaskAwaiter<int>.GetResult` -> `Task<int>.get_Result` -> wrongly-taken
+  `IsFaulted`/`Exception` branch -> `new AggregateException` newarr path
+  crashes; open item).
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0

@@ -5615,6 +5615,14 @@ public unsafe struct ILCompiler
         bool needsLargeStructPtrInRcx = false;
         bool needsLargeStructPtrInRdx = false;
 
+        // Deferred by-ref slots for the 2-arg + hidden-buffer shape: large
+        // value-type args are passed by pointer with their bytes retained, so
+        // the LEAs are emitted after the frame allocation. Values are the
+        // offsets ABOVE the frame (relative to post-allocation RSP); -1 = unset.
+        int hiddenLargeArg1PtrRel = -1;  // R8
+        int hiddenLargeArg0PtrRel = -1;  // RDX
+        int hiddenLargeArg2PtrRel = -1;  // R9
+
         // Track offset of arg0 from start of struct data area (used when both args are large structs)
         int largeStructArg0Offset = 0;
 
@@ -5782,9 +5790,45 @@ public unsafe struct ILCompiler
             arg1IsFloat64 = arg0Entry.Kind == EvalStackKind.Float64;
             arg2IsFloat32 = arg1Entry.Kind == EvalStackKind.Float32;
             arg2IsFloat64 = arg1Entry.Kind == EvalStackKind.Float64;
-            X64Emitter.Pop(ref _code, VReg.R3);   // arg1 -> R8
-            X64Emitter.Pop(ref _code, VReg.R2);   // arg0 -> RDX
-            PopEntry(); PopEntry();
+
+            // Large value types (>8B) are passed BY POINTER with their eval-stack
+            // bytes retained; the deferred LEAs in the frame-allocation block
+            // point at them. Popping truncated them to one qword (seq/getpos:
+            // ReadOnlySequence.Slice(SequencePosition) received the arg's int
+            // half as 'this' (RDX=1) and crashed reading [1+0x30]).
+            bool arg1IsLargeVT = arg1Entry.Kind == EvalStackKind.ValueType && arg1Entry.ByteSize > 8;
+            bool arg0IsLargeVT = arg0Entry.Kind == EvalStackKind.ValueType && arg0Entry.ByteSize > 8;
+
+            if (arg1IsLargeVT)
+            {
+                PopEntry();                          // keep bytes; R8 = &arg1 later
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R3);  // arg1 -> R8
+                PopEntry();
+            }
+
+            if (arg0IsLargeVT)
+            {
+                PopEntry();                          // keep bytes; RDX = &arg0 later
+                hiddenLargeArg0PtrRel = arg1IsLargeVT ? arg1Entry.ByteSize : 0;
+            }
+            else if (arg1IsLargeVT)
+            {
+                // arg0 sits directly above the retained arg1 bytes; load its
+                // value from there (the retained bytes stay as dead space).
+                X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, arg1Entry.ByteSize);
+                PopEntry();
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R2);  // arg0 -> RDX
+                PopEntry();
+            }
+
+            if (arg1IsLargeVT)
+                hiddenLargeArg1PtrRel = 0;
         }
         else if (totalArgs == 3 && !needsHiddenBuffer)
         {
@@ -5853,10 +5897,61 @@ public unsafe struct ILCompiler
             arg2IsFloat64 = arg1Entry.Kind == EvalStackKind.Float64;
             arg3IsFloat32 = arg2Entry.Kind == EvalStackKind.Float32;
             arg3IsFloat64 = arg2Entry.Kind == EvalStackKind.Float64;
-            X64Emitter.Pop(ref _code, VReg.R4);    // arg2 -> R9
-            X64Emitter.Pop(ref _code, VReg.R3);    // arg1 -> R8
-            X64Emitter.Pop(ref _code, VReg.R2);   // arg0 -> RDX
-            PopEntry(); PopEntry(); PopEntry();
+
+            // Large value types (>8B) are passed BY POINTER with their
+            // eval-stack bytes retained; the deferred LEAs in the
+            // frame-allocation block point at them (ReadOnlySequence.Slice
+            // (SequencePosition, SequencePosition): start/end are 16B).
+            bool arg2IsLargeVT = arg2Entry.Kind == EvalStackKind.ValueType && arg2Entry.ByteSize > 8;
+            bool arg1IsLargeVT = arg1Entry.Kind == EvalStackKind.ValueType && arg1Entry.ByteSize > 8;
+            bool arg0IsLargeVT = arg0Entry.Kind == EvalStackKind.ValueType && arg0Entry.ByteSize > 8;
+            int retainedAbove = 0;  // retained large-arg bytes above current RSP
+
+            if (arg2IsLargeVT)
+            {
+                PopEntry();
+                hiddenLargeArg2PtrRel = retainedAbove;
+                retainedAbove += arg2Entry.ByteSize;
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R4);    // arg2 -> R9
+                PopEntry();
+            }
+
+            if (arg1IsLargeVT)
+            {
+                PopEntry();
+                hiddenLargeArg1PtrRel = retainedAbove;
+                retainedAbove += arg1Entry.ByteSize;
+            }
+            else if (retainedAbove > 0)
+            {
+                X64Emitter.MovRM(ref _code, VReg.R3, VReg.SP, retainedAbove);  // arg1 -> R8
+                PopEntry();
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R3);    // arg1 -> R8
+                PopEntry();
+            }
+
+            if (arg0IsLargeVT)
+            {
+                PopEntry();
+                hiddenLargeArg0PtrRel = retainedAbove;
+                retainedAbove += arg0Entry.ByteSize;
+            }
+            else if (retainedAbove > 0)
+            {
+                X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, retainedAbove);  // arg0 -> RDX
+                PopEntry();
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R2);    // arg0 -> RDX
+                PopEntry();
+            }
         }
         else if (totalArgs == 4 && !needsHiddenBuffer)
         {
@@ -6170,6 +6265,21 @@ public unsafe struct ILCompiler
                 if (needsLargeStructPtrInRdx)
                 {
                     X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, totalAlloc);
+                }
+
+                // Deferred by-ref slots for the 2-arg + hidden-buffer shape
+                // (retained large value types above the allocation).
+                if (hiddenLargeArg1PtrRel >= 0)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R3, VReg.SP, totalAlloc + hiddenLargeArg1PtrRel);
+                }
+                if (hiddenLargeArg0PtrRel >= 0)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, totalAlloc + hiddenLargeArg0PtrRel);
+                }
+                if (hiddenLargeArg2PtrRel >= 0)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R4, VReg.SP, totalAlloc + hiddenLargeArg2PtrRel);
                 }
             }
             else
@@ -7641,9 +7751,47 @@ public unsafe struct ILCompiler
             {
                 // Two logical args + buffer = 3 physical args
                 // RCX=buffer, RDX=this, R8=arg1
-                X64Emitter.Pop(ref _code, VReg.R3);  // arg1 -> R8
-                X64Emitter.Pop(ref _code, VReg.R2);  // this -> RDX
-                PopEntry(); PopEntry();
+                //
+                // Large value types (>8B) on either slot are passed BY POINTER
+                // per the JIT convention with their eval-stack bytes retained;
+                // the deferred LEAs below point at them after the frame is
+                // allocated. Popping such a struct into one register truncated
+                // it (RDX then held the struct's second qword as 'this', R8 the
+                // first as '&arg' - seq/getpos: Slice(SequencePosition) crashed
+                // reading [1+0x30]). Layout above the frame (RSP=first byte
+                // upward): [arg1][this].
+                EvalStackEntry vArg1 = PeekEntryAt(0);
+                EvalStackEntry vThis = PeekEntryAt(1);
+                bool arg1IsLargeVT = vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8;
+                bool thisIsLargeVT = vThis.Kind == EvalStackKind.ValueType && vThis.ByteSize > 8;
+
+                if (arg1IsLargeVT)
+                {
+                    PopEntry();                          // keep bytes; R8 = &arg1 later
+                }
+                else
+                {
+                    X64Emitter.Pop(ref _code, VReg.R3);  // arg1 -> R8
+                    PopEntry();
+                }
+
+                if (thisIsLargeVT)
+                {
+                    PopEntry();                          // keep bytes; RDX = &this later
+                }
+                else if (arg1IsLargeVT)
+                {
+                    // 'this' sits above the retained arg1 bytes; load its value
+                    // directly (arg1 bytes stay as leading dead space, like the
+                    // other retained-struct call shapes).
+                    X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, vArg1.ByteSize);
+                    PopEntry();
+                }
+                else
+                {
+                    X64Emitter.Pop(ref _code, VReg.R2);  // this -> RDX
+                    PopEntry();
+                }
 
                 // Allocate shadow space (32) + buffer
                 int bufferRounded = (hiddenBufferSize + 15) & ~15;
@@ -7652,6 +7800,14 @@ public unsafe struct ILCompiler
 
                 // Set RCX = buffer address (after shadow space)
                 X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32);
+
+                // Deferred by-ref pointers for retained large value types:
+                // arg1 at [RSP+totalAlloc], this directly above it.
+                if (arg1IsLargeVT)
+                    X64Emitter.Lea(ref _code, VReg.R3, VReg.SP, totalAlloc);
+                if (thisIsLargeVT)
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP,
+                        totalAlloc + (arg1IsLargeVT ? vArg1.ByteSize : 0));
 
                 handledAllocation = true;
                 cleanupAmount = 32;  // just shadow space (buffer stays for return)
