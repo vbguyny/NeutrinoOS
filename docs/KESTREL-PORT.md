@@ -508,14 +508,16 @@ its ReadOnlySequence test):**
   engine has no ApiExplorer metadata, so the document describes methods,
   paths and path parameters only.
 - **Sample/tests**: `TasksWebApp` (the `webapi` kernel service) and the
-  M4/M5 `webapp` sample both do AddOpenApi + MapOpenApi. JITTest
-  `HostingTests.TestOpenApiCompat` adds 9 records (service registration,
-  spec version, info customization, path items, path parameters,
-  endpoint self-exclusion, brace balance + closed tail, empty-paths
-  document). Probes: webapi 34 -> 40 checks (document body, 200, content
-  type, path parameter, self-exclusion, valid JSON via `json.tool`) and
-  m5 14 -> 18 (document over h1, content type, h2c serves it, valid
-  JSON).
+  M4/M5 `webapp` sample both do AddOpenApi + MapOpenApi, and both serve
+  the M5 TLS 1.3 listener with the same routes (webapp 8091, webapi
+  8443). JITTest `HostingTests.TestOpenApiCompat` adds 9 records
+  (service registration, spec version, info customization, path items,
+  path parameters, endpoint self-exclusion, brace balance + closed tail,
+  empty-paths document). Probes: webapi 34 -> 43 checks (document body,
+  200, content type, path parameter, self-exclusion, valid JSON via
+  `json.tool`, HTTPS listener line + `https /api/v1/info` + the https
+  document valid) and m5 14 -> 18 (document over h1, content type, h2c
+  serves it, valid JSON).
 - **Fixed in the M6 follow-up**: the first cut's document ended after the
   `"paths"` close - the root `}` was missing - so every real parser
   rejected it ("expected ',' or '}' after property value" at EOF) while
@@ -523,7 +525,7 @@ its ReadOnlySequence test):**
   document with `python3 -m json.tool` and HostingTests pins
   brace-balance + closed tail + the empty route table shape.
 - Boot numbers: JITTest 3128/0; AppTest 25/25 + echo 1048576/1048576;
-  webapi-probe 40/40; m5-transport-probe 18/18; m4-hosting-probe 14/14;
+  webapi-probe 43/43; m5-transport-probe 18/18; m4-hosting-probe 14/14;
   sampleapi-probe 28/28.
 - Note: the webapi probe boots `build/x64/neutrinoos-cli.img`, so run
   `build/rebuild-cli-image.sh` after kernel/DDK changes - it tested a

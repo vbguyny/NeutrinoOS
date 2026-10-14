@@ -1,9 +1,10 @@
 #!/bin/bash
-# WebAPI sample verification probe (docs/samples/webapi, Kestrel port M1).
-# Boots the CLI image, starts the WebApplication-style `webapi` app (port
-# 8080) and runs the full CRUD matrix from the WSL host through slirp
-# hostfwd (18080 -> 8080), plus guest-side start/stop/status checks and
-# the M6 OpenAPI document checks.
+# WebAPI sample verification probe (docs/samples/webapi, Kestrel port).
+# Boots the CLI image, starts the WebApplication-style `webapi` app (HTTP
+# 8080 + HTTPS 8443, TLS 1.3) and runs the full CRUD matrix from the WSL
+# host through slirp hostfwd (18080 -> 8080, 18443 -> 8443), plus
+# guest-side start/stop/status checks, the M6 OpenAPI document checks and
+# the M5 HTTPS checks.
 # Prints PASS/FAIL per check + summary.
 set -u
 cd /root/neutrino
@@ -18,7 +19,7 @@ setsid bash -c "tail -f /root/qin-webapi | qemu-system-x86_64 -machine q35 -m 2G
   -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
   -drive if=pflash,format=raw,file=build/x64/OVMF_VARS-webapi.fd \
   -drive format=raw,file=/tmp/webapi.img \
-  -netdev user,id=n0,hostfwd=tcp::18080-:8080 \
+  -netdev user,id=n0,hostfwd=tcp::18080-:8080,hostfwd=tcp::18443-:8443 \
   -device virtio-net-pci,netdev=n0 \
   -vga std -display none -serial stdio -no-reboot -no-shutdown" < /dev/null > /root/webapi.out 2>&1 &
 
@@ -35,6 +36,7 @@ pass() { echo "PASS: $1"; PASSED=$((PASSED + 1)); }
 fail() { echo "FAIL: $1"; FAILED=$((FAILED + 1)); }
 
 B=http://127.0.0.1:18080
+S=https://127.0.0.1:18443
 code() { curl -sS -m 15 -o /dev/null -w '%{http_code}' "$@" 2>/dev/null; }
 body() { curl -sS -m 15 "$@" 2>/dev/null; }
 
@@ -92,6 +94,13 @@ case "$r" in *'"name": "id"'*'"in": "path"'*) pass "OpenAPI path parameter descr
 case "$r" in *'openapi/v1.json'*) fail "OpenAPI doc includes its own endpoint";; *) pass "OpenAPI doc excludes its own endpoint";; esac
 jerr=$(body $B/openapi/v1.json | python3 -m json.tool 2>&1 >/dev/null | tail -1)
 [ -z "$jerr" ] && pass "OpenAPI document is valid JSON (json.tool)" || fail "OpenAPI JSON invalid ($jerr)"
+
+echo "=== M5: HTTPS (TLS 1.3) ==="
+grep -aq '(https, TLS 1.3)' /root/webapi.out && pass "HTTPS listener bound (TLS 1.3, port 8443)" || fail "https listener line"
+r=$(body -k $S/api/v1/info)
+case "$r" in *'"service":"webapi"'*) pass "GET https /api/v1/info (TLS 1.3)";; *) fail "https /api/v1/info ($r)";; esac
+jerr=$(body -k $S/openapi/v1.json | python3 -m json.tool 2>&1 >/dev/null | tail -1)
+[ -z "$jerr" ] && pass "https /openapi/v1.json is valid JSON" || fail "https openapi JSON ($jerr)"
 
 echo "=== M3: chunked + 100-continue (raw client) ==="
 if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py chunked > /tmp/m3-chunked.out 2>&1; then

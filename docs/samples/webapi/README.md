@@ -4,7 +4,8 @@ The WebAPI-project version of the task-tracker REST API: **the same endpoints
 as `docs/samples/rest-api`, but written in the `WebApplication` / `MapGet`
 style that the Kestrel port targets.** This is the shape ASP.NET Core
 minimal APIs use, running on NeutrinoOS under QEMU today — and reachable
-from Windows 11 at **`http://127.0.0.1:18080`**.
+from Windows 11 at **`http://127.0.0.1:18080`** (or
+**`https://127.0.0.1:18443`** with `curl -k`: TLS 1.3, self-signed).
 
 > Port plan and milestones: [`docs/KESTREL-PORT.md`](../../KESTREL-PORT.md).
 > M1 ships this app; M2+ replaces the engine underneath it with
@@ -20,7 +21,7 @@ from Windows 11 at **`http://127.0.0.1:18080`**.
 | `src/ddk/Samples/TasksWebApp.cs` | **The app** — `Build()` wires the routes; ~9 handlers implement the API |
 | `src/utilities/webapi/Program.cs` | `webapi start \| stop \| status` |
 | `docs/samples/webapi/NeutrinoWebApi.postman_collection.json` | Postman v2.1 collection for every endpoint |
-| `build/webapi-probe.sh` | Automated end-to-end verification (40 checks) |
+| `build/webapi-probe.sh` | Automated end-to-end verification (43 checks) |
 
 ## The app, as you'd write it
 
@@ -92,6 +93,10 @@ differ: `/api/v1/info` reports `"service":"webapi"`):
 | * | wrong method on a known path | – | `405` (engine route table) |
 | * | anything else | – | `404` `{"error":"not found"}` |
 
+The same routes are also served over **TLS 1.3 on port 8443**
+(`https://127.0.0.1:18443` through the VM script's forward; the
+certificate is the shared self-signed Ed25519 one, so use `curl -k`).
+
 ## Run it under QEMU
 
 ```powershell
@@ -100,7 +105,8 @@ wsl -d Ubuntu-24.04 -u root -- bash /mnt/d/Projects/Code/NeutrinoOS/build/rebuil
 ```
 
 ```bash
-# boot with guest 8080 forwarded to host 18080:
+# boot with guest 8080 forwarded to host 18080 and guest 8443 (HTTPS)
+# forwarded to host 18443:
 wsl -d Ubuntu-24.04 -u root
 bash /mnt/d/Projects/Code/NeutrinoOS/build/sampleapi-vm.sh
 ```
@@ -127,6 +133,7 @@ Invoke-RestMethod http://127.0.0.1:18080/api/v1/tasks
 ```cmd
 curl.exe http://127.0.0.1:18080/api/v1/echo?msg=from-windows
 curl.exe -X DELETE http://127.0.0.1:18080/api/v1/tasks/1
+curl.exe -k https://127.0.0.1:18443/api/v1/info
 ```
 
 VirtualBox CLI VM (`scripts\cli-vm.ps1`) users: the `sampleapi,tcp,,18080,,8080`

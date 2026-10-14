@@ -28,8 +28,10 @@
 //
 // Run from the NeutrinoOS shell:   webapi start   (stop | status)
 // Reach it from Windows 11: boot QEMU with
-//   -netdev user,id=n0,hostfwd=tcp::18080-:8080
-// then use http://127.0.0.1:18080 . Postman collection:
+//   -netdev user,id=n0,hostfwd=tcp::18080-:8080,hostfwd=tcp::18443-:8443
+// then use http://127.0.0.1:18080 - or https://127.0.0.1:18443 with
+// curl -k (TLS 1.3, the shared /etc/ssl Ed25519 certificate; the same
+// routes are served on both listeners). Postman collection:
 // docs/samples/webapi/NeutrinoWebApi.postman_collection.json
 
 using System;
@@ -108,6 +110,11 @@ public static class TasksWebApp
     {
         var builder = WebApplication.CreateBuilder(new string[0]);
         builder.Kestrel.Port = 8080;
+        // M5 engine: HTTPS (TLS 1.3) listener on 8443 using the shared
+        // /etc/ssl Ed25519 certificate (WebService.EnsureCertificate
+        // generates it on first use). Same routes on both listeners.
+        builder.Kestrel.HttpsEnabled = true;
+        builder.Kestrel.HttpsPort = 8443;
         // OpenAPI (ASP.NET Core 10 shape): AddOpenApi registers the doc
         // services; MapOpenApi below maps GET /openapi/v1.json.
         builder.Services.AddOpenApi(new OpenApiOptions { Title = "NeutrinoOS Tasks Web API" });
