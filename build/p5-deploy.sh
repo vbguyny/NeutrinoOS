@@ -11,8 +11,11 @@ export MTOOLS_SKIP_CHECK=1
 
 cp -f build/x64/neutrinoos.img /root/run.img
 
-# /bin with the utilities
-mmd -i /root/run.img ::/bin 2>/dev/null || true
+# /bin with the utilities.
+# NOTE: mtools' mmd loops forever on its "directory exists" overwrite
+# prompt when stdin is closed (observed as a hung deploy) - pre-check with
+# mdir, which never prompts.
+mdir -i /root/run.img ::/bin >/dev/null 2>&1 || mmd -i /root/run.img ::/bin
 for f in /root/phase5bin/*.dll; do
   [ -f "$f" ] || continue
   mcopy -i /root/run.img -o "$f" "::/bin/$(basename "$f")"
@@ -24,8 +27,20 @@ done
 # would silently run old DDK code in every utility.
 mcopy -i /root/run.img -o /root/phase5bin/NeutrinoOS.DDK.dll ::/NeutrinoOS.DDK.dll
 
+# M4: hosted web apps -> /apps/webapp (launched by `webhost <app.dll>`).
+# The base image already ships ::/apps (sample apps), so it must be
+# pre-checked (see the mmd note above).
+if [ -d /root/appsbin ]; then
+  mdir -i /root/run.img ::/apps >/dev/null 2>&1 || mmd -i /root/run.img ::/apps
+  mdir -i /root/run.img ::/apps/webapp >/dev/null 2>&1 || mmd -i /root/run.img ::/apps/webapp
+  for f in /root/appsbin/*.dll; do
+    [ -f "$f" ] || continue
+    mcopy -i /root/run.img -o "$f" "::/apps/webapp/$(basename "$f")"
+  done
+fi
+
 # /etc with a default profile (sourced by the shell at startup)
-mmd -i /root/run.img ::/etc 2>/dev/null || true
+mdir -i /root/run.img ::/etc >/dev/null 2>&1 || mmd -i /root/run.img ::/etc
 cat > /root/profile.sample <<'EOF'
 # /etc/profile - NeutrinoOS shell startup (Phase 5)
 export PATH=/bin:/apps
@@ -35,6 +50,8 @@ mcopy -i /root/run.img -o /root/profile.sample ::/etc/profile
 
 echo "=== /bin ==="
 mdir -i /root/run.img ::/bin
+echo "=== /apps/webapp ==="
+mdir -i /root/run.img ::/apps/webapp 2>/dev/null || true
 echo "=== /etc ==="
 mdir -i /root/run.img ::/etc
 echo "=== root ==="

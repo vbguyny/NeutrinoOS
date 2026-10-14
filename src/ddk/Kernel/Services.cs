@@ -16,6 +16,9 @@ public static unsafe class Services
     [DllImport("*", EntryPoint = "Kernel_ServiceStop")]
     private static extern int ServiceStopRaw(byte* name, int length);
 
+    [DllImport("*", EntryPoint = "Kernel_ServiceStartApp")]
+    private static extern int ServiceStartAppRaw(byte* blob, int length);
+
     private static int AsciiCall(string name, bool start)
     {
         if (name == null || name.Length == 0 || name.Length > 64)
@@ -34,6 +37,48 @@ public static unsafe class Services
 
     /// <summary>Stop a running service by name; 0 = ok.</summary>
     public static int Stop(string name) => AsciiCall(name, false);
+
+    /// <summary>
+    /// Launch a web app DLL as a cooperative hosted app (M4): the kernel
+    /// loads the assembly, runs its Main (hosted mode), and drives the
+    /// registered WebApplication from the idle tick.
+    /// </summary>
+    public static unsafe int StartApp(string path, string[] args)
+    {
+        if (path == null || path.Length == 0)
+            return -1;
+
+        int argc = args == null ? 0 : args.Length;
+        int total = path.Length + argc;
+        for (int i = 0; i < argc; i++)
+        {
+            string a = args[i];
+            if (a != null)
+                total += a.Length;
+        }
+        if (total <= 0 || total > 1000)
+            return -1;
+
+        // "\0"-separated tokens (the kernel splits them back apart).
+        var blob = new byte[total];
+        int w = 0;
+        for (int i = 0; i < path.Length; i++)
+            blob[w++] = (byte)path[i];
+        for (int i = 0; i < argc; i++)
+        {
+            blob[w++] = 0;
+            string a = args[i];
+            if (a == null)
+                continue;
+            for (int j = 0; j < a.Length; j++)
+                blob[w++] = (byte)a[j];
+        }
+
+        fixed (byte* p = blob)
+        {
+            return ServiceStartAppRaw(p, w);
+        }
+    }
 }
 
 /// <summary>DDK wrapper for the kernel shell bridge (remote sessions).</summary>

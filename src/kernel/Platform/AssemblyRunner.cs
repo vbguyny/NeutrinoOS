@@ -65,6 +65,17 @@ public static unsafe class AssemblyRunner
         return req.ExitCode;
     }
 
+    /// <summary>
+    /// Run an assembly WITHOUT switching stacks: the caller must already be
+    /// on a large stack (a utility Main executed through Run()). Used by the
+    /// M4 web-app hosting path (ServiceRegistry.StartApp), where the kernel
+    /// invokes an app DLL nested inside the webhost utility's own run.
+    /// </summary>
+    public static int RunOnCurrentStack(string path, string[] args)
+    {
+        return RunFull(path, args);
+    }
+
     /// <summary>State block for <see cref="RunOuterThunk"/> (caller's stack).</summary>
     private struct RunRequest
     {

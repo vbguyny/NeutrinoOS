@@ -85,4 +85,50 @@ done
 
 echo "=== $count utilities built ==="
 ls -1 "$OUT" | grep '\.dll$' | sort
+
+# M4: hosted web apps (src/apps) -> /root/appsbin, deployed to /apps/webapp.
+# Same project shape as the utilities; ProjectReference two levels up.
+APPSRC="$SRC/src/apps"
+APPWORK="$WORK/apps"
+APPBIN=/root/appsbin
+if [ -d "$APPSRC" ]; then
+  rsync -a --delete --exclude obj --exclude bin "$APPSRC/" "$APPWORK/"
+  rm -rf "$APPBIN"
+  mkdir -p "$APPBIN"
+  appcount=0
+  for dir in "$APPWORK"/*/; do
+    name="$(basename "$dir")"
+    [ -f "$APPWORK/$name/Program.cs" ] || continue
+
+    cat > "$APPWORK/$name/$name.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>$name</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>\$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition="'\$(NeutrinoTrace)' == '1'">
+    <DefineConstants>\$(DefineConstants);NEUTRINO_TRACE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../ddk/DDK.csproj" />
+  </ItemGroup>
+</Project>
+EOF
+
+    if dotnet build "$APPWORK/$name/$name.csproj" -c Release -o "$APPBIN" --nologo -v q $TRACEARG; then
+      appcount=$((appcount+1))
+    else
+      echo "=== BUILD FAILED (app): $name ==="
+      fail=1
+    fi
+  done
+  echo "=== $appcount web apps built ==="
+  ls -1 "$APPBIN" 2>/dev/null | grep '\.dll$' | sort || true
+fi
+
 exit $fail

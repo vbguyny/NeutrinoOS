@@ -30,12 +30,17 @@ namespace NeutrinoOS.DDK.Web;
 /// <summary>The HTTP/1.1 host engine on the socket connection transport.</summary>
 public sealed class WebHost
 {
-    private const int MaxConnections = 4;
-    private const int MaxRequestBytes = 4096;   // head + body must fit
-    private const int MaxRoutes = 32;
-    private const int MaxPathSegments = 8;      // per pattern/path
-    private const int MaxRequestsPerConnection = 100;
-    private const ulong IdleTimeoutMs = 10000;
+    // Engine limits live in KestrelServerOptions (M4); these cached
+    // fields are frozen at construction from the builder's options.
+    private readonly int _maxConnections;
+    private readonly int _maxRequestBytes;
+    private readonly int _maxRoutes;
+    private readonly int _maxPathSegments;
+    private readonly int _maxRequestsPerConnection;
+    private readonly ulong _idleTimeoutMs;
+
+    /// <summary>The options this host was constructed with (M4).</summary>
+    public readonly KestrelServerOptions Options;
 
     /// <summary>Log prefix, e.g. "webapi" (prints as [webapi] ...).</summary>
     public string Name;
@@ -45,22 +50,72 @@ public sealed class WebHost
 
     private SocketConnectionListener _listener;
     private NetworkStack _stack;
-    private readonly Connection[] _connections = new Connection[MaxConnections];
+    private readonly Connection[] _connections;
     private bool _active;
     private ulong _startedAt;
     private int _requests;
 
-    private readonly string[] _routeMethods = new string[MaxRoutes];
-    private readonly string[] _routePatterns = new string[MaxRoutes];
-    private readonly RequestHandler[] _routeHandlers = new RequestHandler[MaxRoutes];
-    private readonly RequestHandlerAsync[] _routeAsyncHandlers = new RequestHandlerAsync[MaxRoutes];
+    private readonly string[] _routeMethods;
+    private readonly string[] _routePatterns;
+    private readonly RequestHandler[] _routeHandlers;
+    private readonly RequestHandlerAsync[] _routeAsyncHandlers;
     private int _routeCount;
 
-    /// <summary>Creates a host; call Start()/Tick()/Stop() like a service.</summary>
+    /// <summary>Creates a host with default options on <paramref name="port"/>.</summary>
     public WebHost(string name, ushort port)
+        : this(name, NewOptions(port))
+    {
+    }
+
+    /// <summary>Creates a host; call Start()/Tick()/Stop() like a service.</summary>
+    public WebHost(string name, KestrelServerOptions options)
     {
         Name = name;
-        Port = port;
+        Options = options ?? new KestrelServerOptions();
+        Port = Options.Port;
+
+        // Clamp the option-derived sizes so a bad configuration cannot
+        // break the engine's fixed arrays.
+        int conns = Options.MaxConnections;
+        if (conns < 1) conns = 1;
+        if (conns > 16) conns = 16;
+        _maxConnections = conns;
+
+        int reqBytes = Options.MaxRequestBytes;
+        if (reqBytes < 256) reqBytes = 256;
+        if (reqBytes > 65536) reqBytes = 65536;
+        _maxRequestBytes = reqBytes;
+
+        int routes = Options.MaxRoutes;
+        if (routes < 1) routes = 1;
+        if (routes > 256) routes = 256;
+        _maxRoutes = routes;
+
+        int segs = Options.MaxPathSegments;
+        if (segs < 2) segs = 2;
+        if (segs > 16) segs = 16;
+        _maxPathSegments = segs;
+
+        int perConn = Options.MaxRequestsPerConnection;
+        if (perConn < 1) perConn = 1;
+        _maxRequestsPerConnection = perConn;
+
+        ulong idle = Options.KeepAliveTimeoutMs;
+        if (idle < 1000) idle = 1000;
+        _idleTimeoutMs = idle;
+
+        _connections = new Connection[_maxConnections];
+        _routeMethods = new string[_maxRoutes];
+        _routePatterns = new string[_maxRoutes];
+        _routeHandlers = new RequestHandler[_maxRoutes];
+        _routeAsyncHandlers = new RequestHandlerAsync[_maxRoutes];
+    }
+
+    private static KestrelServerOptions NewOptions(ushort port)
+    {
+        var options = new KestrelServerOptions();
+        options.Port = port;
+        return options;
     }
 
     /// <summary>True while the listener is running.</summary>
@@ -72,7 +127,7 @@ public sealed class WebHost
     /// <summary>Register a handler for a method + pattern ("/x/{id}").</summary>
     public void AddRoute(string method, string pattern, RequestHandler handler)
     {
-        if (_routeCount >= MaxRoutes)
+        if (_routeCount >= _maxRoutes)
             return;
         _routeMethods[_routeCount] = method;
         _routePatterns[_routeCount] = pattern;
@@ -83,7 +138,7 @@ public sealed class WebHost
     /// <summary>Register an async handler for a method + pattern.</summary>
     public void AddRouteAsync(string method, string pattern, RequestHandlerAsync handler)
     {
-        if (_routeCount >= MaxRoutes)
+        if (_routeCount >= _maxRoutes)
             return;
         _routeMethods[_routeCount] = method;
         _routePatterns[_routeCount] = pattern;
@@ -164,7 +219,7 @@ public sealed class WebHost
             if (accepted == null)
                 break;
             int slot = -1;
-            for (int i = 0; i < MaxConnections; i++)
+            for (int i = 0; i < _maxConnections; i++)
             {
                 if (_connections[i] == null)
                 {
@@ -177,12 +232,12 @@ public sealed class WebHost
                 accepted.Abort();   // pool full: drop
                 continue;
             }
-            _connections[slot] = new Connection(accepted);
+            _connections[slot] = new Connection(accepted, _maxRequestBytes);
         }
 
         // Service each connection: pump the transport, then HTTP.
         ulong now = Timer.GetUptimeMilliseconds();
-        for (int i = 0; i < MaxConnections; i++)
+        for (int i = 0; i < _maxConnections; i++)
         {
             var conn = _connections[i];
             if (conn == null)
@@ -213,8 +268,8 @@ public sealed class WebHost
     private sealed class Connection
     {
         public readonly SocketConnectionContext Context;
-        public readonly byte[] Buffer = new byte[MaxRequestBytes];
-        public readonly char[] BodyChars = new char[MaxRequestBytes];
+        public readonly byte[] Buffer;
+        public readonly char[] BodyChars;
         public int Length;
         public ulong LastActivity;
         public bool Done;        // response written and closing; pump out, then release
@@ -227,9 +282,11 @@ public sealed class WebHost
         public HttpResponse PendingResponse;   // written when the task completes
         public bool PendingKeepAlive;
 
-        public Connection(SocketConnectionContext context)
+        public Connection(SocketConnectionContext context, int maxRequestBytes)
         {
             Context = context;
+            Buffer = new byte[maxRequestBytes];
+            BodyChars = new char[maxRequestBytes];
             LastActivity = Timer.GetUptimeMilliseconds();
         }
     }
@@ -251,7 +308,7 @@ public sealed class WebHost
 
     private void ServiceConnection(Connection conn, ulong now)
     {
-        if (!conn.Done && now - conn.LastActivity > IdleTimeoutMs)
+        if (!conn.Done && now - conn.LastActivity > _idleTimeoutMs)
         {
             conn.Released = true;
             return;
@@ -405,7 +462,7 @@ public sealed class WebHost
                     reqBody = HttpParser.CharsOf(conn.Buffer, headEnd, contentLength);
             }
 
-            bool keepAlive = http11 && !connClose && conn.Requests < MaxRequestsPerConnection;
+            bool keepAlive = http11 && !connClose && conn.Requests < _maxRequestsPerConnection;
             Dispatch(conn, method, target, reqBody, keepAlive);
             conn.Sent100 = false;
 
@@ -445,7 +502,7 @@ public sealed class WebHost
             query = target.Substring(qm + 1, target.Length - qm - 1);
         }
 
-        var pseg = new string[MaxPathSegments];
+        var pseg = new string[_maxPathSegments];
         int pcount;
         SplitPath(path, pseg, out pcount);
 
@@ -457,14 +514,14 @@ public sealed class WebHost
 
         for (int i = 0; i < _routeCount; i++)
         {
-            var rseg = new string[MaxPathSegments];
+            var rseg = new string[_maxPathSegments];
             int rcount;
             SplitPath(_routePatterns[i], rseg, out rcount);
             if (rcount != pcount)
                 continue;
 
-            var names = new string[MaxPathSegments];
-            var values = new string[MaxPathSegments];
+            var names = new string[_maxPathSegments];
+            var values = new string[_maxPathSegments];
             int ncapt = 0;
             bool ok = true;
             for (int s = 0; s < rcount; s++)
@@ -580,7 +637,7 @@ public sealed class WebHost
     }
 
     /// <summary>Split "/a/b/{id}" into ["a","b","{id}"] ('/' alone = 0 segments).</summary>
-    private static void SplitPath(string s, string[] segs, out int count)
+    private void SplitPath(string s, string[] segs, out int count)
     {
         count = 0;
         if (s == null || s.Length == 0)
@@ -595,7 +652,7 @@ public sealed class WebHost
         {
             if (i == s.Length || s[i] == '/')
             {
-                if (count >= MaxPathSegments)
+                if (count >= _maxPathSegments)
                     return;   // too deep: caller treats it as no match
                 segs[count] = s.Substring(start, i - start);
                 count++;

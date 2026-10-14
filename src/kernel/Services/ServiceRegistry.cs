@@ -163,6 +163,91 @@ public static unsafe class ServiceRegistry
         return 0;
     }
 
+    /// <summary>
+    /// M4: launch a web app DLL (e.g. /apps/webapp/webapp.dll) as a
+    /// cooperative hosted app. <paramref name="tokens"/>[0] is the DLL
+    /// path, the rest are passed to the app's Main.
+    ///
+    /// The DDK's WebAppRuntime helpers are compiled by name (the same
+    /// technique as Start): SetHosted() flips the runtime into hosted
+    /// mode, the app's Main runs (it builds a WebApplication and calls
+    /// app.Run(), which starts the listener, registers with
+    /// WebAppRuntime and returns), then the registry-count check tells us
+    /// whether the app took the hosted path. TickAll/StopAll become the
+    /// kernel-side "webapp" service tick once; later apps join the same
+    /// set. Returns 0 on success, negative on resolution/compile errors,
+    /// or the app's own non-zero exit code.
+    /// </summary>
+    public static int StartApp(string[] tokens)
+    {
+        if (tokens == null || tokens.Length == 0)
+            return -1;
+        string path = tokens[0];
+        if (path == null || path.Length == 0)
+            return -1;
+
+        uint ddkId = Kernel.DdkAssemblyId;
+        if (ddkId == AssemblyLoader.InvalidAssemblyId)
+            return -4;
+
+        uint typeToken = AssemblyLoader.FindTypeDefByFullName(ddkId, "NeutrinoOS.DDK.Web", "WebAppRuntime");
+        if (typeToken == 0)
+            return -5;
+
+        void* setHosted = CompileDdkStatic(ddkId, typeToken, "SetHosted");
+        void* clearHosted = CompileDdkStatic(ddkId, typeToken, "ClearHosted");
+        void* getCount = CompileDdkStatic(ddkId, typeToken, "GetHostedCount");
+        if (setHosted == null || clearHosted == null || getCount == null)
+            return -6;
+
+        ((delegate* unmanaged<void>)setHosted)();
+        int before = ((delegate* unmanaged<int>)getCount)();
+
+        var appArgs = new string[tokens.Length - 1];
+        for (int i = 1; i < tokens.Length; i++)
+            appArgs[i - 1] = tokens[i];
+
+        int rc = AssemblyRunner.RunOnCurrentStack(path, appArgs);
+
+        int hostedCount = ((delegate* unmanaged<int>)getCount)();
+        ((delegate* unmanaged<void>)clearHosted)();
+
+        if (hostedCount <= before)
+            return rc != 0 ? rc : -7;   // app never called Run()/registered
+
+        // Register the kernel-side tick once; later apps join the same set.
+        for (int i = 0; i < _count; i++)
+        {
+            if (_names[i] == "webapp")
+                return 0;
+        }
+
+        if (_count >= MaxServices)
+            return -2;
+
+        void* appTick = CompileDdkStatic(ddkId, typeToken, "TickAll");
+        void* appStop = CompileDdkStatic(ddkId, typeToken, "StopAll");
+        if (appTick == null)
+            return -8;
+
+        SetSlot(_count, appTick, appStop);
+        _names[_count] = "webapp";
+        _count++;
+        DebugConsole.Write("[Services] hosted app: ");
+        DebugConsole.WriteLine(path);
+        return 0;
+    }
+
+    /// <summary>Compile one parameterless DDK static by name; null on failure.</summary>
+    private static void* CompileDdkStatic(uint ddkId, uint typeToken, string methodName)
+    {
+        uint token = AssemblyLoader.FindMethodDefByName(ddkId, typeToken, methodName);
+        if (token == 0)
+            return null;
+        var result = Runtime.JIT.Tier0JIT.CompileMethod(ddkId, token);
+        return result.Success ? result.CodeAddress : null;
+    }
+
     /// <summary>Stop a named service (runs its Stop() when available).</summary>
     public static int Stop(string name)
     {

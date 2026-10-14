@@ -149,6 +149,8 @@ public static unsafe class KernelExportInit
             (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.ServiceExports.ServiceStart);
         Reg(n, "Kernel_ServiceStop",
             (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.ServiceExports.ServiceStop);
+        Reg(n, "Kernel_ServiceStartApp",
+            (void*)(delegate* unmanaged<byte*, int, int>)&Exports.DDK.ServiceExports.ServiceStartApp);
     }
 
     /// <summary>

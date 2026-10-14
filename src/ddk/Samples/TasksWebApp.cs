@@ -105,9 +105,10 @@ public static class TasksWebApp
     /// <summary>Wire up the routes - the equivalent of an ASP.NET Core Program.</summary>
     private static WebApplication Build()
     {
-        var app = WebApplication.CreateBuilder(new string[0]);
+        var builder = WebApplication.CreateBuilder(new string[0]);
+        builder.Kestrel.Port = 8080;
+        var app = builder.Build();
         app.Name = "webapi";
-        app.Port = 8080;
 
         app.MapGet("/", OnRoot);
         app.MapGet("/api/v1/info", OnInfo);

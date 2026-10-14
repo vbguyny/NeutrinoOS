@@ -356,8 +356,12 @@ its ReadOnlySequence test):**
   the handler - so the funclet entry is identical regardless of where in
   the method the fault happened (`tramp=Y` in the verbose `[EHXfer]`
   trace).
-- Current boot: `JITTest` **3084 passed / 0 failed** (two consecutive
-  boots), `AppTest` 25/25 (1 MB echo). No known reds remain.
+- Current boot: `JITTest` **3113 passed / 0 failed**, `AppTest` 25/25
+  (1 MB echo); `build/m4-hosting-probe.sh` 14/14; `build/webapi-probe.sh`
+  34/34; `build/sampleapi-probe.sh` 28/28. No known reds remain. (Note:
+  the boot suites are sensitive to the QEMU CPU model - run with
+  `-cpu max` like every other harness; a bare qemu64 default aborts the
+  Arithmetic JITTest category with a bare Exception.)
 - FIXED (this commit): **large-`TResult` task storage**. `Task<TResult>`/
   `ValueTask<TResult>` used to store the result in typed `TResult?` fields -
   for a ~48-byte `ReadResult` the generic layouts misbehaved on Tier-0
@@ -375,18 +379,54 @@ its ReadOnlySequence test):**
   copied the whole ~48-byte sequence struct by value (garbled - enumeration
   yielded nothing) and now copies primitives field-by-field.
 
-### M4 — Hosting layer
+### M4 — Hosting layer (DONE)
 
-- `KestrelServer`-lite (endpoint/limits configuration), a minimal
-  `IServiceProvider`/DI shim and `ILogger` no-op shim, `WebApplicationBuilder`
-  fidelity (`builder.Build()`, options binding for a `--urls`-style flag),
-  and the deployment model from `specs/phase-6.md`: a web app DLL under
-  `/apps/webapp/` launched by `webhost <app>.dll &` as a background service
-  (needs the background-process/`&` support or an equivalent service
-  registration path).
-- `app.Run()` gains real meaning: a bounded foreground loop that pumps the
-  stack (safe because the app owns its sockets), or the cooperative default
-  when hosted by the kernel.
+- **`KestrelServer`-lite (`KestrelServerOptions`)**: the engine limits that
+  were compile-time constants (MaxConnections/MaxRequestBytes/MaxRoutes/
+  MaxPathSegments/MaxRequestsPerConnection/KeepAliveTimeoutMs) plus the
+  endpoint Port are now a configuration object; `WebHost` clamps and
+  freezes them at construction. `builder.Kestrel.Port = ...` before
+  `Build()`.
+- **DI shim (`ServiceCollection`)**: instance registrations by service
+  type (`builder.Services.AddSingleton<TService>(instance)`, replace on
+  re-register) + `app.Services.GetService/GetRequiredService<T>()`
+  (class-constrained; typeof-token compare + cast, the pattern the
+  feature collection pinned). No factory/impl-type registrations -
+  documented limitation.
+- **Logging shim (`NeutrinoOS.DDK.Logging`)**: `ILogger`/`ILoggerFactory`
+  + `LogLevel` with a `ConsoleLogger` (renders `[category] Level: msg`,
+  keeps `LastMessage`) and `NullLogger`/`NullLoggerFactory`.
+- **`WebApplicationBuilder` fidelity**: `WebApplication.CreateBuilder(args)`
+  returns the builder; `builder.Build()` freezes options + services into
+  the application. `--urls <value>` / `--urls=<value>` binds the port
+  (scheme/host ignored - the engine binds all interfaces); bare port and
+  invalid values keep the default. The M1 fused shape (`webapi` sample)
+  migrated to the builder shape unchanged in behavior.
+- **`app.Run()`**: hosted mode (`webhost <app.dll>`) starts the listener,
+  registers with `WebAppRuntime` and returns - the kernel idle hook then
+  drives `TickAll()` (registered as the "webapp" service) so the shell
+  stays usable; `webhost stop` runs `StopAll()`. Foreground mode (direct
+  `run app.dll`, or `Run(maxTicks)` for tooling) pumps bounded slices
+  until `Stop()`.
+- **Deployment model**: `src/apps/<name>/Program.cs` builds into
+  `/root/appsbin` (p5-apps-build) and deploys to `/apps/webapp/<name>.dll`
+  (p5-deploy; the base image already ships `::/apps`, so the deploy
+  pre-checks with `mdir` - mtools' `mmd` loops on its overwrite prompt
+  with closed stdin, which hung a deploy once). Launched from the shell:
+  `webhost /apps/webapp/webapp.dll --urls http://0.0.0.0:8090 &`. The
+  kernel path: `Kernel_ServiceStartApp` export -> `ServiceRegistry.StartApp`
+  (compiles `WebAppRuntime.SetHosted/GetHostedCount/ClearHosted/TickAll/
+  StopAll` from the DDK by name) -> `AssemblyRunner.RunOnCurrentStack`
+  loads + JITs + invokes the app's `Main(string[])` on the webhost
+  utility's big stack -> count check -> kernel service registration.
+- **Sample**: `src/apps/webapp` (builder + `--urls` + DI + logger +
+  `/`,`/health`,`/urls`,`/di`,`/log` endpoints); `build/m4-hosting-probe.sh`
+  boots the deploy image, launches it through hostfwd (18090->8090) and
+  runs 14 checks (launch, logging, HTTP matrix, keep-alive/concurrency,
+  `webhost status` = 1 hosted app, `webhost stop`).
+- Note: hosted apps share one `webapp` kernel service slot (TickAll/StopAll
+  tick/stop all registered apps); `webhost stop` also stops the built-in
+  WebService.
 
 ### M5 — Compatibility and transports
 

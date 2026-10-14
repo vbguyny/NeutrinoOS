@@ -189,6 +189,9 @@ public static class TestRunner
         // Web layer: Kestrel-port feature collection (M3)
         RunCategory("Web/Features", WebFeatureTests.RunAll);
 
+        // Web layer: Kestrel-port hosting (M4) - builder, DI, logging, hosted runtime
+        RunCategory("Hosting/M4", HostingTests.RunAll);
+
         // Korlib: String formatting
         RunCategory("StringFormat", StringFormatTests.RunAll);
 
@@ -229,13 +232,33 @@ public static class TestRunner
             Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": NullReferenceException");
             TestTracker.Record("category/" + categoryName, false, "NullReferenceException");
         }
-        catch (Exception)
+        catch (IndexOutOfRangeException)
+        {
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": IndexOutOfRangeException");
+            TestTracker.Record("category/" + categoryName, false, "IndexOutOfRangeException");
+        }
+        catch (InvalidOperationException)
+        {
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": InvalidOperationException");
+            TestTracker.Record("category/" + categoryName, false, "InvalidOperationException");
+        }
+        catch (OverflowException)
+        {
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": OverflowException");
+            TestTracker.Record("category/" + categoryName, false, "OverflowException");
+        }
+        catch (DivideByZeroException)
+        {
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": DivideByZeroException");
+            TestTracker.Record("category/" + categoryName, false, "DivideByZeroException");
+        }
+        catch (Exception ex)
         {
             // Debug.Write* is compiled out of default builds - the Report
             // channel keeps category failures visible in boot logs (a
             // silently skipped category would otherwise hide its tests).
-            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": Exception (other type)");
-            TestTracker.Record("category/" + categoryName, false, "Exception (other type)");
+            Debug.Report("[JITTest] CATEGORY ERROR " + categoryName + ": Exception " + ex.GetType().Name + ": " + ex.Message);
+            TestTracker.Record("category/" + categoryName, false, "Exception " + ex.GetType().Name);
         }
     }
 }
