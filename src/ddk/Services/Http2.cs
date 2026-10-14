@@ -54,6 +54,30 @@ public static class H2Error
     public const uint CompressionError = 9;
 }
 
+/// <summary>
+/// The transport + response source an Http2Connection drives. Implemented
+/// by the built-in server's WebConnection and by the Kestrel engine's
+/// WebHost h2 bridge (M5), so both share one HTTP/2 engine.
+/// </summary>
+public interface IH2Owner
+{
+    /// <summary>Read bytes: n &gt; 0 data, 0 none available yet, -1 closed.</summary>
+    int H2Read(byte[] buf, int off, int len);
+
+    /// <summary>Write bytes; false when the transport closed.</summary>
+    bool H2Write(byte[] buf, int off, int len);
+
+    /// <summary>Source IP of the peer (rate limiting).</summary>
+    uint H2PeerIp { get; }
+
+    /// <summary>
+    /// Build the response for a request (false lets the engine answer
+    /// with its default 404 body).
+    /// </summary>
+    bool H2BuildResponse(string method, string path, string body,
+        out int status, out string statusText, out string contentType, out string responseBody);
+}
+
 /// <summary>One HTTP/2 stream.</summary>
 public sealed class Http2Stream
 {
@@ -94,7 +118,7 @@ public sealed class Http2Connection
     private const int InitialReqBody = 16384;
     private const long InitialRecvWindow = 65535;
 
-    private readonly WebConnection _owner;
+    private readonly IH2Owner _owner;
     private readonly HpackDecoder _hpack = new HpackDecoder();
     private readonly byte[] _in = new byte[16384 + 64];
     private int _inLen;
@@ -154,7 +178,7 @@ public sealed class Http2Connection
     /// <summary>True when the connection finished/errored.</summary>
     public bool Closed => _closed;
 
-    public Http2Connection(WebConnection owner)
+    public Http2Connection(IH2Owner owner)
     {
         _owner = owner;
         for (int i = 0; i < MaxStreams; i++)
@@ -176,9 +200,9 @@ public sealed class Http2Connection
     // Transport helpers
     // ====================================================================
 
-    private int Read(byte[] buf, int off, int len) => _owner.TransportRead(buf, off, len);
+    private int Read(byte[] buf, int off, int len) => _owner.H2Read(buf, off, len);
 
-    private bool Write(byte[] buf, int off, int len) => _owner.TransportWrite(buf, off, len);
+    private bool Write(byte[] buf, int off, int len) => _owner.H2Write(buf, off, len);
 
     private void SendFrame(byte type, byte flags, int streamId, byte[] payload, int payloadLen)
     {
@@ -810,7 +834,7 @@ public sealed class Http2Connection
         string statusText;
         string contentType;
         string body;
-        if (!WebService.BuildRoute(method, path, reqBody, out status, out statusText, out contentType, out body))
+        if (!_owner.H2BuildResponse(method, path, reqBody, out status, out statusText, out contentType, out body))
         {
             status = 404;
             statusText = "Not Found";
@@ -839,7 +863,7 @@ public sealed class Http2Connection
         }
 
         // Phase 7 parity: per-source-IP rate limiting.
-        if (!WebService.AllowRequest(_owner.PeerIp))
+        if (!WebService.AllowRequest(_owner.H2PeerIp))
         {
             status = 429;
             statusText = "Too Many Requests";

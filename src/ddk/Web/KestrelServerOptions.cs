@@ -36,4 +36,13 @@ public sealed class KestrelServerOptions
 
     /// <summary>Idle keep-alive timeout in milliseconds.</summary>
     public ulong KeepAliveTimeoutMs = 10000;
+
+    /// <summary>Enable the HTTPS (TLS 1.3) listener (M5).</summary>
+    public bool HttpsEnabled = false;
+
+    /// <summary>
+    /// HTTPS port (M5; default 8443). Uses the shared /etc/ssl Ed25519
+    /// certificate, generated on first use by WebService.EnsureCertificate.
+    /// </summary>
+    public ushort HttpsPort = 8443;
 }

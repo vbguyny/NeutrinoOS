@@ -30,6 +30,7 @@ using System.Threading.Tasks;
 using NeutrinoOS.DDK.Kernel;
 using NeutrinoOS.DDK.Network.Sockets;
 using NeutrinoOS.DDK.Network.Stack;
+using NeutrinoOS.DDK.Tls;
 
 namespace NeutrinoOS.DDK.Connections;
 
@@ -54,6 +55,38 @@ public sealed class SocketConnectionContext : ConnectionContext
     private bool _inputDone;
     private bool _outputDone;
     private bool _aborted;
+
+    // M5: optional TLS 1.3 layer (set by the listener before the first
+    // Tick when the endpoint is an HTTPS endpoint). The app-facing pipes
+    // carry PLAINTEXT; the handshake and record layer sit between the
+    // pipes and the socket.
+    private Tls13Connection? _tls;
+    private bool _tlsReady;
+
+    /// <summary>True when this connection runs over TLS 1.3.</summary>
+    public bool TlsEnabled => _tls != null;
+
+    /// <summary>True once the TLS handshake completed.</summary>
+    public bool TlsConnected => _tlsReady;
+
+    /// <summary>ALPN protocol negotiated by the TLS client ("h2"/"http/1.1"/null).</summary>
+    public string? TlsAlpn => _tls != null ? _tls.AlpnSelected : null;
+
+    /// <summary>Source IP of the peer.</summary>
+    public uint PeerIp => _socket.RemoteAddress;
+
+    /// <summary>
+    /// Wrap this connection in a TLS 1.3 server session (M5). Call right
+    /// after construction, before any Tick: the first Tick drives the
+    /// handshake and the input pipe stays empty until it completes.
+    /// </summary>
+    public void EnableTls(byte[] certDer, byte[] keySeed)
+    {
+        if (certDer == null || keySeed == null)
+            return;
+        _tls = new Tls13Connection(_socket, certDer, keySeed);
+        _tlsReady = false;
+    }
 
     public SocketConnectionContext(TcpSocket socket, string connectionId)
     {
@@ -125,6 +158,7 @@ public sealed class SocketConnectionContext : ConnectionContext
         if (_aborted)
             return;
         _aborted = true;
+        _tls?.Close();
         _socket.Close();
         _input.Writer.Complete(abortReason);
         _output.Reader.Complete(abortReason);
@@ -146,6 +180,68 @@ public sealed class SocketConnectionContext : ConnectionContext
             if (!_pendingInputFlush.IsCompleted)
                 return;
             _inputFlushPending = false;
+        }
+
+        // M5: drive the TLS 1.3 handshake first. Nothing reaches the input
+        // pipe until it completes; a closed/errored handshake ends the
+        // stream (the app sees ReadResult.IsCompleted).
+        if (_tls != null && !_tlsReady)
+        {
+            _tls.Step();
+            if (_tls.Closed)
+            {
+                _input.Writer.Complete();
+                _inputDone = true;
+                return;
+            }
+            if (!_tls.Connected)
+                return;   // handshake still in flight
+            _tlsReady = true;
+        }
+
+        if (_tls != null)
+        {
+            // TLS mode: decrypted records -> input pipe (same backpressure
+            // rules as the raw path; EOF only via ReadApp -1, i.e. the
+            // peer's close_notify or a fatal record error - the mirror of
+            // WebConnection's proven TLS read loop).
+            int tlsMoved = 0;
+            while (tlsMoved < budget)
+            {
+                int want = _rxScratch.Length;
+                if (budget - tlsMoved < want)
+                    want = budget - tlsMoved;
+                int tn = _tls.ReadApp(_rxScratch, 0, want);
+                if (tn < 0)
+                {
+                    _input.Writer.Complete();
+                    _inputDone = true;
+                    return;
+                }
+                if (tn == 0)
+                    return;
+
+                Span<byte> tspan = _input.Writer.GetSpan(tn);
+                for (int i = 0; i < tn; i++)
+                    tspan[i] = _rxScratch[i];
+                _input.Writer.Advance(tn);
+                tlsMoved += tn;
+                LastActivityMs = Timer.GetUptimeMilliseconds();
+
+                ValueTask<FlushResult> tflush = _input.Writer.FlushAsync();
+                if (!tflush.IsCompleted)
+                {
+                    _pendingInputFlush = tflush;
+                    _inputFlushPending = true;
+                    return;
+                }
+                if (tflush.Result.IsCompleted)
+                {
+                    _inputDone = true;
+                    return;
+                }
+            }
+            return;
         }
 
         int moved = 0;
@@ -216,6 +312,11 @@ public sealed class SocketConnectionContext : ConnectionContext
         if (_outputDone)
             return;
 
+        // M5: the handshake must complete before application records go
+        // out (PumpInput drives it).
+        if (_tls != null && !_tlsReady)
+            return;
+
         int moved = 0;
         while (moved < budget)
         {
@@ -245,9 +346,25 @@ public sealed class SocketConnectionContext : ConnectionContext
                         for (int i = 0; i < len; i++)
                             _txScratch[i] = ms[off + i];
                         int sent;
-                        fixed (byte* p = _txScratch)
+                        if (_tls != null)
                         {
-                            sent = _socket.Send(p, len);
+                            // Encrypted transport: WriteApp seals the chunk
+                            // (records <=16 KB) and send-alls it. A closed
+                            // session ends the output side.
+                            _tls.WriteApp(_txScratch, 0, len);
+                            sent = _tls.Closed ? 0 : len;
+                            if (sent == 0)
+                            {
+                                _outputDone = true;
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            fixed (byte* p = _txScratch)
+                            {
+                                sent = _socket.Send(p, len);
+                            }
                         }
                         if (sent > 0)
                             DebugSocketSentBytes += sent;
@@ -288,8 +405,18 @@ public sealed class SocketConnectionContext : ConnectionContext
             {
                 // Application finished writing and all bytes are on the
                 // wire: half-close send (FIN). The receive direction stays
-                // open for the peer's remaining bytes.
-                _socket.Shutdown();
+                // open for the peer's remaining bytes. TLS sessions send
+                // close_notify first; the FIN follows immediately, and a
+                // hard close would race the alert/FIN off the wire.
+                if (_tls != null)
+                {
+                    _tls.SendCloseNotify();
+                    _socket.Shutdown();
+                }
+                else
+                {
+                    _socket.Shutdown();
+                }
                 _outputDone = true;
                 return;
             }

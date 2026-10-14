@@ -55,8 +55,12 @@ public static class Program
         builder.Services.AddSingleton<ILoggerFactory>(loggerFactory);
         builder.Services.AddSingleton<AppInfo>(new AppInfo());
 
-        // Endpoint default; `--urls` (in args) overrides it at Build().
+        // Endpoint defaults; `--urls` (in args) overrides the HTTP port at
+        // Build(). M5: HTTPS (TLS 1.3) on 8091 using the shared /etc/ssl
+        // Ed25519 certificate.
         builder.Kestrel.Port = 8090;
+        builder.Kestrel.HttpsEnabled = true;
+        builder.Kestrel.HttpsPort = 8091;
 
         var app = builder.Build();
         app.Name = "webapp";
@@ -69,6 +73,10 @@ public static class Program
         app.MapGet("/urls", OnUrls);
         app.MapGet("/di", OnDi);
         app.MapGet("/log", OnLog);
+        app.MapGet("/lifetime", OnLifetime);
+
+        // M5: IHostApplicationLifetime hook (fires inside Run -> Start).
+        app.Lifetime.ApplicationStarted.Register(OnAppStarted);
 
         _log.Log(LogLevel.Information, "starting on port " + ((int)app.Port).ToString());
 
@@ -110,5 +118,21 @@ public static class Program
         if (last == null)
             last = "";
         ctx.Response.Json("{\"last\":\"" + last + "\"}\n");
+    }
+
+    /// <summary>IHostApplicationLifetime.ApplicationStarted hook (M5).</summary>
+    private static void OnAppStarted()
+    {
+        if (_log != null)
+            _log.Log(LogLevel.Information, "lifetime: ApplicationStarted hook fired");
+    }
+
+    /// <summary>Reports the lifetime state - proves the hooks fire on-device (M5).</summary>
+    private static void OnLifetime(HttpContext ctx)
+    {
+        bool started = _app.Lifetime.ApplicationStarted.IsCancellationRequested;
+        bool stopping = _app.Lifetime.ApplicationStopping.IsCancellationRequested;
+        ctx.Response.Json("{\"started\":" + (started ? "true" : "false") +
+            ",\"stopping\":" + (stopping ? "true" : "false") + "}\n");
     }
 }

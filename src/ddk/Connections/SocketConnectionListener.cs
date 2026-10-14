@@ -25,6 +25,8 @@ public sealed class SocketConnectionListener : IConnectionListener
 
     private readonly NetworkStack _stack;
     private readonly bool _reuseAddress;
+    private readonly byte[]? _tlsCertDer;
+    private readonly byte[]? _tlsKeySeed;
     private readonly SocketConnectionContext?[] _pending = new SocketConnectionContext?[MaxPendingAccepts];
     private TcpServer? _server;
     private int _pendingCount;
@@ -36,6 +38,22 @@ public sealed class SocketConnectionListener : IConnectionListener
         _stack = stack;
         EndPoint = endPoint;
         _reuseAddress = reuseAddress;
+    }
+
+    /// <summary>
+    /// M5: TLS 1.3 acceptor variant. When <paramref name="certDer"/> and
+    /// <paramref name="keySeed"/> are non-null every accepted connection
+    /// is wrapped in a TLS 1.3 server session before the first Tick (the
+    /// app-facing pipes carry plaintext; see SocketConnectionContext).
+    /// </summary>
+    public SocketConnectionListener(NetworkStack stack, ConnectionEndPoint endPoint,
+        byte[]? certDer, byte[]? keySeed, bool reuseAddress = true)
+    {
+        _stack = stack;
+        EndPoint = endPoint;
+        _reuseAddress = reuseAddress;
+        _tlsCertDer = certDer;
+        _tlsKeySeed = keySeed;
     }
 
     /// <inheritdoc/>
@@ -77,8 +95,11 @@ public sealed class SocketConnectionListener : IConnectionListener
             if (socket == null)
                 break;
             _nextConnectionId++;
-            pending[_pendingCount] = new SocketConnectionContext(
+            var accepted = new SocketConnectionContext(
                 socket, "socket-" + _nextConnectionId.ToString());
+            if (_tlsCertDer != null && _tlsKeySeed != null)
+                accepted.EnableTls(_tlsCertDer, _tlsKeySeed);
+            pending[_pendingCount] = accepted;
             _pendingCount++;
         }
     }

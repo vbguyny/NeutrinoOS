@@ -765,6 +765,19 @@ public static class WebService
         return true;
     }
 
+    /// <summary>
+    /// M5: ensure the shared server certificate exists (loads or generates
+    /// it) and hand it to another endpoint - the Kestrel engine's HTTPS
+    /// listener uses the same Ed25519 certificate as the built-in server.
+    /// </summary>
+    internal static bool EnsureCertificate(out byte[] certDer, out byte[] keySeed)
+    {
+        bool ok = LoadOrGenerateCertificate();
+        certDer = _certDer;
+        keySeed = _keySeed;
+        return ok && certDer != null && keySeed != null;
+    }
+
     // ==================== tiny string helpers (JIT-world safe) ====================
 
     internal static string TrimStr(string s)
@@ -907,7 +920,7 @@ public static class WebService
 }
 
 /// <summary>One HTTP or HTTPS connection (TLS is driven internally).</summary>
-public sealed unsafe class WebConnection
+public sealed unsafe class WebConnection : IH2Owner
 {
     private const ulong IdleTimeoutMs = 12000;
 
@@ -973,6 +986,19 @@ public sealed unsafe class WebConnection
         }
         return true;
     }
+
+    // M5: the shared HTTP/2 engine contract (see IH2Owner) - the built-in
+    // server keeps its exact previous behaviour (static-file/REST routes
+    // via WebService.BuildRoute).
+    int IH2Owner.H2Read(byte[] buf, int off, int len) => TransportRead(buf, off, len);
+
+    bool IH2Owner.H2Write(byte[] buf, int off, int len) => TransportWrite(buf, off, len);
+
+    uint IH2Owner.H2PeerIp => PeerIp;
+
+    bool IH2Owner.H2BuildResponse(string method, string path, string body,
+        out int status, out string statusText, out string contentType, out string responseBody)
+        => WebService.BuildRoute(method, path, body, out status, out statusText, out contentType, out responseBody);
 
     /// <summary>Hand the connection over to the HTTP/2 engine.</summary>
     private void StartH2()

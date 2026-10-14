@@ -53,7 +53,9 @@ r=$(body $B/urls)
 r=$(body $B/di)
 [ "$r" = '{"service":"AppInfo","value":"webapp-m4"}' ] && pass "GET /di (DI shim)" || fail "GET /di ($r)"
 r=$(body $B/log)
-case "$r" in *'starting on port 8090'*) pass "GET /log (ILogger LastMessage)";; *) fail "GET /log ($r)";; esac
+# NOTE: from M5 on, webapp logs a lifetime hook line after the startup
+# line, so accept either message as the LastMessage.
+case "$r" in *'starting on port 8090'*|*'lifetime: ApplicationStarted hook fired'*) pass "GET /log (ILogger LastMessage)";; *) fail "GET /log ($r)";; esac
 [ "$(code $B/no/such/route)" = 404 ] && pass "unknown route -> 404" || fail "unknown route"
 sh=$(curl -sS -m 15 -D - -o /dev/null $B/health 2>/dev/null | grep -c 'Server: NeutrinoOS')
 [ "$sh" = 1 ] && pass "Server header from the WebHost engine" || fail "Server header"

@@ -29,7 +29,7 @@ public static class HostingTests
     {
     }
 
-    /// <summary>Runs the M4 hosting tests.</summary>
+    /// <summary>Runs the M4/M5 hosting tests.</summary>
     public static void RunAll()
     {
         TestBuilderDefaults();
@@ -38,6 +38,7 @@ public static class HostingTests
         TestServiceCollection();
         TestLogging();
         TestHostedRuntime();
+        TestM5Compat();
     }
 
     private static void TestBuilderDefaults()
@@ -186,5 +187,60 @@ public static class HostingTests
 
         WebAppRuntime.ClearHosted();
         TestTracker.Record("m4/hosted-flag-cleared", !WebAppRuntime.Hosted);
+    }
+
+    // ---- M5: real-shape compat (IServiceProvider, IHostApplicationLifetime) ----
+
+    private static bool s_startHookFired;
+    private static bool s_stopHookFired;
+
+    private static void OnStartedHook()
+    {
+        s_startHookFired = true;
+    }
+
+    private static void OnStoppedHook()
+    {
+        s_stopHookFired = true;
+    }
+
+    private static void TestM5Compat()
+    {
+        var builder = WebApplication.CreateBuilder(new string[0]);
+        var factory = NullLoggerFactory.Instance;
+        builder.Services.AddSingleton<ILoggerFactory>(factory);
+        var app = builder.Build();
+
+        // IServiceProvider shape: non-generic lookup by Type.
+        IServiceProvider provider = app.Services;
+        TestTracker.Record("m5/iserviceprovider-type-lookup",
+            ReferenceEquals(provider.GetService(typeof(ILoggerFactory)), factory));
+        TestTracker.Record("m5/iserviceprovider-missing-null",
+            provider.GetService(typeof(TestService)) == null);
+
+        // IHostApplicationLifetime: tokens + hooks + StopApplication.
+        // (The concrete HostLifetime exposes the engine hooks + state
+        // predicates the interface deliberately does not.)
+        var lifetime = (HostLifetime)app.Lifetime;
+        TestTracker.Record("m5/lifetime-fresh",
+            !lifetime.ApplicationStarted.IsCancellationRequested &&
+            !lifetime.ApplicationStopping.IsCancellationRequested &&
+            !lifetime.IsStopping);
+
+        s_startHookFired = false;
+        s_stopHookFired = false;
+        lifetime.ApplicationStarted.Register(OnStartedHook);
+        lifetime.ApplicationStopped.Register(OnStoppedHook);
+
+        lifetime.NotifyStarted();
+        TestTracker.Record("m5/lifetime-started-hook",
+            s_startHookFired && lifetime.ApplicationStarted.IsCancellationRequested && lifetime.IsStarted);
+
+        lifetime.StopApplication();
+        TestTracker.Record("m5/lifetime-stopapplication",
+            lifetime.IsStopping && s_stopHookFired &&
+            lifetime.ApplicationStopping.IsCancellationRequested &&
+            lifetime.ApplicationStopped.IsCancellationRequested);
+        TestTracker.Record("m5/lifetime-not-started-after-stop", !lifetime.IsStarted);
     }
 }

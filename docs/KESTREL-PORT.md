@@ -428,13 +428,58 @@ its ReadOnlySequence test):**
   tick/stop all registered apps); `webhost stop` also stops the built-in
   WebService.
 
-### M5 — Compatibility and transports
+### M5 — Compatibility and transports (DONE)
 
-- Track toward compiling larger slices of the real ASP.NET Core sources
-  against korlib (feasibility gate: generics/structs in the JIT, GC
-  pressure, thread pool) — each adoption replaces a shim.
-- TLS for Kestrel endpoints by bridging the existing TLS 1.3 stack;
-  then HTTP/2 and HTTP/3 endpoints reusing the DDK's existing h2/h3 work.
+- **TLS 1.3 for the Kestrel engine**: `SocketConnectionContext` gained a
+  TLS mode - `EnableTls(certDer, keySeed)` wraps the raw socket in the
+  existing `Tls13Connection` (server role). PumpInput drives the
+  handshake (`Step()`) before the raw loop and then decrypts records
+  into the pipe; PumpOutput encrypts and stays idle until the handshake
+  completes; normal completion sends `close_notify` then FIN
+  (`SendCloseNotify()` + `Shutdown()`; a hard close would race the
+  alert/FIN off the wire). `SocketConnectionListener` takes optional
+  cert+seed and enables TLS per accept; `KestrelServerOptions` gained
+  `HttpsEnabled`/`HttpsPort` (default 8443). Key material comes from the
+  existing `WebService` self-signed store (`WebService.EnsureCertificate`).
+  ALPN negotiates `h2` when offered, else serves http/1.1 over TLS.
+- **HTTP/2 bridge**: the DDK's existing h2 engine (`Http2Connection`,
+  which has driven the built-in WebService since the phase-5 stack) now
+  talks through an `IH2Owner` interface — `H2Read/H2Write/H2PeerIp/
+  H2BuildResponse`. The built-in `WebConnection` implements it (explicit
+  impls, unchanged wire behavior) and the Kestrel engine implements it
+  via a `WebHost` bridge. `WebHost` accepts h2 two ways: ALPN `h2` on
+  TLS connections, and h2c prior knowledge (the `PRI * HTTP/2.0` preface
+  sniffs on cleartext). Responses come from `WebHost.TryBuildH2Response`
+  — same route table/DI/handlers as http/1.1, sync handlers only (an
+  async handler that doesn't complete synchronously answers 503 over h2);
+  h2 requests count in `_requests`.
+- **h1 route-matcher regression fixed**: the M4→M5 extraction briefly
+  used a 4-`out`-parameter `MatchRoute`; the Tier-0 JIT delivered a
+  stale `out` slot (`pathMatched` came back true for unmatched paths),
+  turning unknown-route 404s into 405s. The matcher now returns the
+  route index and stashes results in `_match*` fields — multi-`out`
+  calls are deliberately avoided in this engine.
+- **Compat adoptions** (each replaces a shim): `IServiceProvider` shape
+  (`app.Services` is a typed `IServiceProvider` with non-generic
+  `GetService(Type)`), and `IHostApplicationLifetime`/`HostLifetime` —
+  `app.Lifetime` exposes `ApplicationStarted`/`Stopping`/`Stopped`
+  tokens + `StopApplication()`; `WebApplication.Start/Stop` notify them
+  and on-device `Register(Action)` hooks fire.
+- **Sample / tests**: webapp enables HTTPS (`8091`), gains a `/lifetime`
+  route and an `ApplicationStarted` hook (logs
+  `lifetime: ApplicationStarted hook fired`); `HostingTests` adds
+  `TestM5Compat` (typed provider lookup, inactive-service null,
+  lifetime token/hook transitions); `build/m5-transport-probe.sh`
+  (hostfwd 18090->8090, 18091->8091) runs 14 checks: launch + HTTPS
+  listener + lifetime hook, https `/health` `/lifetime` `/di` + unknown
+  route 404, h2-over-TLS ALPN (`http_version=2`, bodies), h2c prior
+  knowledge, and a plain-http regression check.
+- Boot numbers: JITTest 3119/0 in every probe boot; AppTest 25/25 with
+  echo 1048576/1048576.
+- Documented limitations: no HTTP/3 endpoint for the Kestrel engine yet
+  (h3 stays in the built-in stack); async-over-h2 answers 503; TLS
+  output on a full window is retried in bounded passes rather than
+  split mid-record.
 
 ## Verification strategy (every milestone)
 

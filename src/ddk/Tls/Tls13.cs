@@ -131,14 +131,20 @@ public sealed unsafe class Tls13Connection
         _sock.Close();
     }
 
-    /// <summary>Sends close_notify (best effort) and closes.</summary>
-    public void CloseGraceful()
+    /// <summary>Sends close_notify (best effort) without closing the socket.</summary>
+    public void SendCloseNotify()
     {
         if (_state == StateConnected)
         {
             var alert = new byte[] { 1, AlertCloseNotify };
             SendRecord(CtAlert, alert, 0, alert.Length);
         }
+    }
+
+    /// <summary>Sends close_notify (best effort) and closes.</summary>
+    public void CloseGraceful()
+    {
+        SendCloseNotify();
         Close();
     }
 

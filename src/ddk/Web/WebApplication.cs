@@ -31,12 +31,15 @@ public sealed class WebApplication
 {
     private readonly WebHost _host;
     private readonly ServiceCollection _services;
+    private readonly HostLifetime _lifetime;
     private bool _runStop;
 
     internal WebApplication(WebHost host, ServiceCollection services)
     {
         _host = host;
         _services = services ?? new ServiceCollection();
+        _lifetime = new HostLifetime();
+        _lifetime.Owner = this;
     }
 
     /// <summary>Log name, e.g. "webapi" (printed as [webapi] ...).</summary>
@@ -75,6 +78,13 @@ public sealed class WebApplication
 
     /// <summary>The Kestrel-lite options this app was built with (M4).</summary>
     public KestrelServerOptions Options => _host.Options;
+
+    /// <summary>
+    /// The application lifetime (M5): IHostApplicationLifetime-shaped
+    /// hooks + StopApplication(). Fires Started once the listeners bind,
+    /// Stopping/Stopped around Stop().
+    /// </summary>
+    public IHostApplicationLifetime Lifetime => _lifetime;
 
     /// <summary>Register a GET handler for a pattern ("/x", "/x/{id}").</summary>
     public WebApplication MapGet(string pattern, RequestHandler handler)
@@ -135,7 +145,10 @@ public sealed class WebApplication
     /// <summary>Start the listener; 0 = ok (-30 no eth0, -32 bind failed).</summary>
     public int Start()
     {
-        return _host.Start();
+        int rc = _host.Start();
+        if (rc == 0)
+            _lifetime.NotifyStarted();
+        return rc;
     }
 
     /// <summary>One bounded work slice (kernel idle hook drives this).</summary>
@@ -148,7 +161,9 @@ public sealed class WebApplication
     public void Stop()
     {
         _runStop = true;
+        _lifetime.NotifyStopping();
         _host.Stop();
+        _lifetime.NotifyStopped();
     }
 
     // ====================================================================

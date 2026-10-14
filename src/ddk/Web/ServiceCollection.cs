@@ -26,8 +26,19 @@ using System;
 
 namespace NeutrinoOS.DDK.Web;
 
+/// <summary>
+/// The Microsoft.Extensions.DependencyInjection IServiceProvider shape
+/// (M5 compat): non-generic resolution by Type. ServiceCollection
+/// implements it; the generic methods stay the convenience surface.
+/// </summary>
+public interface IServiceProvider
+{
+    /// <summary>Resolve a service by type, or null when absent.</summary>
+    object? GetService(Type serviceType);
+}
+
 /// <summary>Minimal service collection/provider (see file header).</summary>
-public sealed class ServiceCollection
+public sealed class ServiceCollection : IServiceProvider
 {
     private const int MaxServices = 24;
 
@@ -100,4 +111,7 @@ public sealed class ServiceCollection
 
     /// <summary>Number of registrations (diagnostics/tests).</summary>
     public int Count => _count;
+
+    /// <inheritdoc/>
+    object? IServiceProvider.GetService(Type serviceType) => Find(serviceType);
 }
