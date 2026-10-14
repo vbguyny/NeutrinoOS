@@ -513,20 +513,29 @@ its ReadOnlySequence test):**
   8443). JITTest `HostingTests.TestOpenApiCompat` adds 9 records
   (service registration, spec version, info customization, path items,
   path parameters, endpoint self-exclusion, brace balance + closed tail,
-  empty-paths document). Probes: webapi 34 -> 43 checks (document body,
+  empty-paths document). Probes: webapi 34 -> 45 checks (document body,
   200, content type, path parameter, self-exclusion, valid JSON via
   `json.tool`, HTTPS listener line + `https /api/v1/info` + the https
-  document valid) and m5 14 -> 18 (document over h1, content type, h2c
-  serves it, valid JSON).
+  document valid, and the two forced-sigalg TLS probes) and m5 14 -> 18
+  (document over h1, content type, h2c serves it, valid JSON).
 - **Fixed in the M6 follow-up**: the first cut's document ended after the
   `"paths"` close - the root `}` was missing - so every real parser
   rejected it ("expected ',' or '}' after property value" at EOF) while
   the substring-based checks all passed. The probes now parse the served
   document with `python3 -m json.tool` and HostingTests pins
   brace-balance + closed tail + the empty route table shape.
-- Boot numbers: JITTest 3128/0; AppTest 25/25 + echo 1048576/1048576;
-  webapi-probe 43/43; m5-transport-probe 18/18; m4-hosting-probe 14/14;
+- Boot numbers: JITTest 3135/0; AppTest 25/25 + echo 1048576/1048576;
+  webapi-probe 45/45; m5-transport-probe 18/18; m4-hosting-probe 14/14;
   sampleapi-probe 28/28.
+- **Schannel TLS adoption**: Windows Schannel clients do not offer
+  ed25519 in `signature_algorithms`, so the TLS 1.3 server now carries a
+  second scheme - ECDSA P-256 (`EcdsaP256.cs`, Montgomery CIOS + Jacobian
+  curve math; vectors pinned by the `Crypto/ECDSA` JITTest category) with
+  a P-256 certificate (`X509.BuildSelfSignedP256`). ed25519 remains the
+  preference; P-256 is selected only when the client omits 0x0807. The
+  ClientHello parse is isolated in `ParseClientHello` (small method, int
+  flag word) - the combined parse+handshake frame hit a Tier-0 JIT
+  stale-locals miscompile that broke every handshake until the split.
 - Note: the webapi probe boots `build/x64/neutrinoos-cli.img`, so run
   `build/rebuild-cli-image.sh` after kernel/DDK changes - it tested a
   stale image once (the document 404'd until the CLI image was rebuilt).

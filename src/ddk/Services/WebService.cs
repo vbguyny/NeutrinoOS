@@ -29,6 +29,8 @@ public static class WebService
     private const string ConfigPath = "/etc/webhost.conf";
     private const string CertPath = "/etc/ssl/certs/neutrinoos.crt";
     private const string KeyPath = "/etc/ssl/private/neutrinoos.key";
+    private const string P256CertPath = "/etc/ssl/certs/neutrinoos-p256.crt";
+    private const string P256KeyPath = "/etc/ssl/private/neutrinoos-p256.key";
     internal const string WwwRoot = "/var/www";
     private const int MaxConnections = 10;
 
@@ -48,6 +50,8 @@ public static class WebService
     private static readonly WebConnection[] _connections = new WebConnection[MaxConnections];
     private static byte[] _certDer;
     private static byte[] _keySeed;
+    private static byte[] _p256CertDer;
+    private static byte[] _p256Key;
     private static QuicServer _quic;
     private static ushort _httpPort = 80;
     private static ushort _httpsPort = 443;
@@ -211,7 +215,8 @@ public static class WebService
                 sock.Close();
                 continue;
             }
-            var conn = new WebConnection(sock, tls ? _certDer : null, tls ? _keySeed : null);
+            var conn = new WebConnection(sock, tls ? _certDer : null, tls ? _keySeed : null,
+                tls ? _p256CertDer : null, tls ? _p256Key : null);
             _connections[slot] = conn;
         }
     }
@@ -719,6 +724,74 @@ public static class WebService
 
     private static bool LoadOrGenerateCertificate()
     {
+        bool ok = LoadOrGenerateCertificateCore();
+        LoadOrGenerateP256();   // best effort: Ed25519 stays the fallback
+        return ok;
+    }
+
+    /// <summary>
+    /// Ensures the P-256 key pair exists (Schannel-compatible ECDSA
+    /// path; generated on first use). Failure leaves the pair null and
+    /// the TLS server simply keeps offering Ed25519 only.
+    /// </summary>
+    private static bool LoadOrGenerateP256()
+    {
+        try
+        {
+            if (File.Exists(P256CertPath) && File.Exists(P256KeyPath))
+            {
+                byte[] der = X509.FromPem(File.ReadAllText(P256CertPath));
+                byte[] keyDer = X509.FromPem(File.ReadAllText(P256KeyPath));
+                byte[] priv = X509.PeelP256Private(keyDer);
+                if (der != null && priv != null)
+                {
+                    _p256CertDer = der;
+                    _p256Key = priv;
+                    return true;
+                }
+                Console.WriteLine("[web] existing P-256 material unreadable - regenerating");
+            }
+        }
+        catch (Exception)
+        {
+        }
+
+        try
+        {
+            byte[] priv = EcdsaP256.GeneratePrivateKey();
+            if (priv == null)
+                return false;
+            var dns = new string[] { "neutrinoos", "localhost", "neutrinoos.local" };
+            var ips = new string[] { "127.0.0.1" };
+            byte[] cert = X509.BuildSelfSignedP256(priv, "NeutrinoOS", dns, ips);
+            _p256CertDer = cert;
+            _p256Key = priv;
+            try
+            {
+                if (!Directory.Exists("/etc/ssl"))
+                    Directory.CreateDirectory("/etc/ssl");
+                if (!Directory.Exists("/etc/ssl/certs"))
+                    Directory.CreateDirectory("/etc/ssl/certs");
+                if (!Directory.Exists("/etc/ssl/private"))
+                    Directory.CreateDirectory("/etc/ssl/private");
+                File.WriteAllText(P256CertPath, X509.ToPem(cert, "CERTIFICATE"));
+                File.WriteAllText(P256KeyPath, X509.ToPem(X509.BuildPkcs8P256(priv), "PRIVATE KEY"));
+                Console.WriteLine("[web] generated self-signed P-256 certificate (/etc/ssl/certs/neutrinoos-p256.crt)");
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("[web] warning: could not persist P-256 material to /etc/ssl");
+            }
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool LoadOrGenerateCertificateCore()
+    {
         try
         {
             if (File.Exists(CertPath) && File.Exists(KeyPath))
@@ -768,14 +841,19 @@ public static class WebService
     /// <summary>
     /// M5: ensure the shared server certificate exists (loads or generates
     /// it) and hand it to another endpoint - the Kestrel engine's HTTPS
-    /// listener uses the same Ed25519 certificate as the built-in server.
+    /// listener uses the same Ed25519 certificate as the built-in server,
+    /// plus the P-256 pair for clients that do not offer ed25519
+    /// (Windows Schannel; null when unavailable).
     /// </summary>
-    internal static bool EnsureCertificate(out byte[] certDer, out byte[] keySeed)
+    internal static bool EnsureCertificate(out byte[] certDer, out byte[] keySeed,
+        out byte[] p256CertDer, out byte[] p256Key)
     {
-        bool ok = LoadOrGenerateCertificate();
+        LoadOrGenerateCertificate();
         certDer = _certDer;
         keySeed = _keySeed;
-        return ok && certDer != null && keySeed != null;
+        p256CertDer = _p256CertDer;
+        p256Key = _p256Key;
+        return certDer != null && keySeed != null;
     }
 
     // ==================== tiny string helpers (JIT-world safe) ====================
@@ -1010,10 +1088,17 @@ public sealed unsafe class WebConnection : IH2Owner
 
     /// <summary>Creates a connection; tlsCert/tlsSeed null means plain HTTP.</summary>
     public WebConnection(TcpSocket sock, byte[] tlsCert, byte[] tlsSeed)
+        : this(sock, tlsCert, tlsSeed, null, null)
+    {
+    }
+
+    /// <summary>Creates a connection with optional P-256 material (Schannel clients).</summary>
+    public WebConnection(TcpSocket sock, byte[] tlsCert, byte[] tlsSeed,
+        byte[] tlsP256Cert, byte[] tlsP256Key)
     {
         _sock = sock;
         if (tlsCert != null && tlsSeed != null)
-            _tls = new Tls13Connection(sock, tlsCert, tlsSeed);
+            _tls = new Tls13Connection(sock, tlsCert, tlsSeed, tlsP256Cert, tlsP256Key);
         else
             _tlsReady = true;
         _lastActivity = Timer.GetUptimeMilliseconds();

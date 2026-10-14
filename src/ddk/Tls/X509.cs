@@ -84,6 +84,143 @@ public static class X509
         return d.ToArray();
     }
 
+    // ==================== P-256 (Schannel-compatible) ====================
+
+    /// <summary>OID 1.2.840.10045.2.1 (id-ecPublicKey) DER-encoded.</summary>
+    private static readonly byte[] EcPublicKeyOid = new byte[] { 0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01 };
+
+    /// <summary>OID 1.2.840.10045.3.1.7 (prime256v1 / secp256r1) DER-encoded.</summary>
+    private static readonly byte[] Prime256v1Oid = new byte[] { 0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07 };
+
+    /// <summary>OID 1.2.840.10045.4.3.2 (ecdsa-with-SHA256) DER-encoded.</summary>
+    private static readonly byte[] EcdsaSha256Oid = new byte[] { 0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02 };
+
+    /// <summary>
+    /// Builds a self-signed v3 certificate for a P-256 key pair (ECDSA
+    /// with SHA-256). Windows Schannel does not accept Ed25519 server
+    /// certificates, so the TLS server offers this one when the client
+    /// does not include ed25519 in signature_algorithms.
+    /// </summary>
+    public static byte[] BuildSelfSignedP256(byte[] priv, string commonName,
+        string[] dnsNames, string[] ipAddresses)
+    {
+        byte[] pub = EcdsaP256.PublicKeyFromPrivate(priv);
+
+        var tbs = new Der();
+        tbs.Sequence();
+        var version = new Der();
+        version.IntegerSmall(2);
+        tbs.RawWithTag(0xA0, version.ToArray());
+        var serial = Csprng.GetBytes(8);
+        serial[0] = (byte)(serial[0] & 0x7F);
+        tbs.Integer(serial);
+        tbs.Raw(BuildAlgIdEcdsa());
+        tbs.Raw(BuildName(commonName));
+        tbs.Raw(BuildValidity());
+        tbs.Raw(BuildName(commonName));
+        tbs.Raw(BuildSpkiP256(pub));
+        var exts = new Der();
+        exts.Sequence();
+        exts.Raw(BuildBasicConstraints());
+        exts.Raw(BuildKeyUsage());
+        exts.Raw(BuildSubjectAltName(dnsNames, ipAddresses));
+        exts.EndSequence();
+        tbs.RawWithTag(0xA3, exts.ToArray());
+        tbs.EndSequence();
+        byte[] tbsBytes = tbs.ToArray();
+
+        byte[] signature = EcdsaP256.Sign(priv, Sha256.Hash(tbsBytes));
+
+        var cert = new Der();
+        cert.Sequence();
+        cert.Raw(tbsBytes);
+        cert.Raw(BuildAlgIdEcdsa());
+        cert.BitString(signature);
+        cert.EndSequence();
+        return cert.ToArray();
+    }
+
+    /// <summary>AlgorithmIdentifier for ecdsa-with-SHA256 (no parameters).</summary>
+    private static byte[] BuildAlgIdEcdsa()
+    {
+        var d = new Der();
+        d.Sequence();
+        d.Raw(EcdsaSha256Oid);
+        d.EndSequence();
+        return d.ToArray();
+    }
+
+    /// <summary>SubjectPublicKeyInfo for P-256: id-ecPublicKey + prime256v1 + point.</summary>
+    private static byte[] BuildSpkiP256(byte[] point65)
+    {
+        var alg = new Der();
+        alg.Sequence();
+        alg.Raw(EcPublicKeyOid);
+        alg.Raw(Prime256v1Oid);
+        alg.EndSequence();
+        var d = new Der();
+        d.Sequence();
+        d.Raw(alg.ToArray());
+        d.BitString(point65);
+        d.EndSequence();
+        return d.ToArray();
+    }
+
+    /// <summary>
+    /// Wraps a 32-byte P-256 scalar in a PKCS#8 PrivateKeyInfo DER blob
+    /// (inner ECPrivateKey with version 1, the private OCTET STRING and
+    /// the [1] public key), ready for PEM wrapping.
+    /// </summary>
+    public static byte[] BuildPkcs8P256(byte[] priv)
+    {
+        byte[] pub = EcdsaP256.PublicKeyFromPrivate(priv);
+
+        var ec = new Der();
+        ec.Sequence();
+        ec.IntegerSmall(1);
+        ec.OctetString(priv);
+        var pubBs = new Der();
+        pubBs.BitString(pub);
+        ec.RawWithTag(0xA1, pubBs.ToArray());
+        ec.EndSequence();
+
+        var alg = new Der();
+        alg.Sequence();
+        alg.Raw(EcPublicKeyOid);
+        alg.Raw(Prime256v1Oid);
+        alg.EndSequence();
+
+        var pk = new Der();
+        pk.Sequence();
+        pk.IntegerSmall(0);
+        pk.Raw(alg.ToArray());
+        pk.OctetString(ec.ToArray());
+        pk.EndSequence();
+        return pk.ToArray();
+    }
+
+    /// <summary>
+    /// Extracts the 32-byte P-256 scalar from a PKCS#8 DER blob (the
+    /// ECPrivateKey private OCTET STRING: INTEGER 1 then OCTET STRING 32).
+    /// </summary>
+    public static byte[] PeelP256Private(byte[] pkcs8)
+    {
+        if (pkcs8 == null)
+            return null;
+        for (int i = 0; i + 37 < pkcs8.Length; i++)
+        {
+            if (pkcs8[i] == 0x02 && pkcs8[i + 1] == 0x01 && pkcs8[i + 2] == 0x01 &&
+                pkcs8[i + 3] == 0x04 && pkcs8[i + 4] == 0x20)
+            {
+                var priv = new byte[32];
+                for (int k = 0; k < 32; k++)
+                    priv[k] = pkcs8[i + 5 + k];
+                return priv;
+            }
+        }
+        return null;
+    }
+
     private static byte[] BuildName(string commonName)
     {
         byte[] cn = Ascii(commonName);

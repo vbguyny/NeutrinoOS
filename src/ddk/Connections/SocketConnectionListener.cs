@@ -27,6 +27,8 @@ public sealed class SocketConnectionListener : IConnectionListener
     private readonly bool _reuseAddress;
     private readonly byte[]? _tlsCertDer;
     private readonly byte[]? _tlsKeySeed;
+    private readonly byte[]? _tlsP256CertDer;
+    private readonly byte[]? _tlsP256Key;
     private readonly SocketConnectionContext?[] _pending = new SocketConnectionContext?[MaxPendingAccepts];
     private TcpServer? _server;
     private int _pendingCount;
@@ -48,12 +50,25 @@ public sealed class SocketConnectionListener : IConnectionListener
     /// </summary>
     public SocketConnectionListener(NetworkStack stack, ConnectionEndPoint endPoint,
         byte[]? certDer, byte[]? keySeed, bool reuseAddress = true)
+        : this(stack, endPoint, certDer, keySeed, null, null, reuseAddress)
+    {
+    }
+
+    /// <summary>
+    /// TLS variant with the optional P-256 pair served to clients that
+    /// do not offer ed25519 (Windows Schannel; see Tls13Connection).
+    /// </summary>
+    public SocketConnectionListener(NetworkStack stack, ConnectionEndPoint endPoint,
+        byte[]? certDer, byte[]? keySeed, byte[]? p256CertDer, byte[]? p256Key,
+        bool reuseAddress = true)
     {
         _stack = stack;
         EndPoint = endPoint;
         _reuseAddress = reuseAddress;
         _tlsCertDer = certDer;
         _tlsKeySeed = keySeed;
+        _tlsP256CertDer = p256CertDer;
+        _tlsP256Key = p256Key;
     }
 
     /// <inheritdoc/>
@@ -98,7 +113,7 @@ public sealed class SocketConnectionListener : IConnectionListener
             var accepted = new SocketConnectionContext(
                 socket, "socket-" + _nextConnectionId.ToString());
             if (_tlsCertDer != null && _tlsKeySeed != null)
-                accepted.EnableTls(_tlsCertDer, _tlsKeySeed);
+                accepted.EnableTls(_tlsCertDer, _tlsKeySeed, _tlsP256CertDer, _tlsP256Key);
             pending[_pendingCount] = accepted;
             _pendingCount++;
         }

@@ -102,6 +102,12 @@ case "$r" in *'"service":"webapi"'*) pass "GET https /api/v1/info (TLS 1.3)";; *
 jerr=$(body -k $S/openapi/v1.json | python3 -m json.tool 2>&1 >/dev/null | tail -1)
 [ -z "$jerr" ] && pass "https /openapi/v1.json is valid JSON" || fail "https openapi JSON ($jerr)"
 
+echo "=== P-256: ECDSA fallback for Schannel clients ==="
+sig=$(echo | openssl s_client -connect 127.0.0.1:18443 -sigalgs ed25519 2>/dev/null | grep -a 'Peer signature type' | tail -1)
+case "$sig" in *Ed25519*) pass "sigalgs ed25519 -> Ed25519 signature";; *) fail "ed25519 sigalg ($sig)";; esac
+sig=$(echo | openssl s_client -connect 127.0.0.1:18443 -sigalgs ecdsa_secp256r1_sha256 2>/dev/null | grep -a 'Peer signature type' | tail -1)
+case "$sig" in *ECDSA*) pass "sigalgs ecdsa_secp256r1_sha256 -> ECDSA P-256 signature";; *) fail "ecdsa sigalg ($sig)";; esac
+
 echo "=== M3: chunked + 100-continue (raw client) ==="
 if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py chunked > /tmp/m3-chunked.out 2>&1; then
   pass "chunked POST body (Transfer-Encoding)"

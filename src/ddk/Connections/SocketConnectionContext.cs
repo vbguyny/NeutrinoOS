@@ -82,9 +82,18 @@ public sealed class SocketConnectionContext : ConnectionContext
     /// </summary>
     public void EnableTls(byte[] certDer, byte[] keySeed)
     {
+        EnableTls(certDer, keySeed, null, null);
+    }
+
+    /// <summary>
+    /// TLS 1.3 variant with the optional P-256 pair (used for clients
+    /// that do not offer ed25519 - e.g. Windows Schannel).
+    /// </summary>
+    public void EnableTls(byte[] certDer, byte[] keySeed, byte[] p256CertDer, byte[] p256Key)
+    {
         if (certDer == null || keySeed == null)
             return;
-        _tls = new Tls13Connection(_socket, certDer, keySeed);
+        _tls = new Tls13Connection(_socket, certDer, keySeed, p256CertDer, p256Key);
         _tlsReady = false;
     }
 

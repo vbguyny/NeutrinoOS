@@ -192,6 +192,8 @@ public static class TestRunner
         // Web layer: Kestrel-port hosting (M4) - builder, DI, logging, hosted runtime
         RunCategory("Hosting/M4", HostingTests.RunAll);
 
+        RunCategory("Crypto/ECDSA", EcdsaP256Tests.RunAll);
+
         // Korlib: String formatting
         RunCategory("StringFormat", StringFormatTests.RunAll);
 

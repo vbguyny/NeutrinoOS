@@ -8,7 +8,12 @@ browser/curl/openssl clients connecting to the NeutrinoOS web host:
 - Key exchange: **X25519** (`key_share` group 0x001D), no HRR.
 - Cipher suites: `TLS_AES_128_GCM_SHA256` (0x1301) and
   `TLS_AES_256_GCM_SHA384` (0x1302) — server preference 0x1301.
-- Signature: **Ed25519** (`signature_algorithms` 0x0807) only.
+- Signatures: **Ed25519** (`signature_algorithms` 0x0807) by default,
+  with an **ECDSA P-256** (`ecdsa_secp256r1_sha256`, 0x0403) fallback:
+  Windows Schannel does not offer ed25519, so when the client omits
+  0x0807 (but offers 0x0403) the server signs with the P-256 key and
+  serves the P-256 certificate (`EcdsaP256.cs` + the P-256 builders in
+  `X509.cs`; pair persisted as `/etc/ssl/*-p256.*`).
 - SNI: parsed and exposed (`Tls13Connection.ServerName`); a single
   wildcard-less certificate is served (SNI-based cert selection is a
   configuration extension, not needed in Phase 6).
@@ -20,8 +25,8 @@ browser/curl/openssl clients connecting to the NeutrinoOS web host:
 
 | File | Contents |
 |------|----------|
-| `Tls13.cs` | `Tls13Connection` state machine, record layer, key schedule (`DeriveSecret`/`ExpandLabel`), `TlsReader`/`TlsWriter` |
-| `X509.cs` | DER writer, self-signed Ed25519 certificate generation, PEM encode/decode, targeted Ed25519 SPKI/seed extraction |
+| `Tls13.cs` | `Tls13Connection` state machine, record layer, key schedule (`DeriveSecret`/`ExpandLabel`), `TlsReader`/`TlsWriter`; ClientHello parse isolated in `ParseClientHello` (Tier-0 JIT stale-locals workaround - see the notes in the file) |
+| `X509.cs` | DER writer, self-signed Ed25519 + P-256 certificate generation, PEM encode/decode, targeted SPKI/seed extraction |
 
 ## Key schedule (verified against RFC 8448)
 
