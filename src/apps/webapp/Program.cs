@@ -20,6 +20,7 @@
 //   GET /urls    the port the builder resolved (--urls binding)
 //   GET /di      a service resolved from app.Services (DI shim)
 //   GET /log     the last rendered ILogger line (logging shim)
+//   GET /openapi/v1.json   the OpenAPI 3.1 document (AddOpenApi/MapOpenApi)
 //
 // Reach it from Windows 11 with
 //   -netdev user,id=n0,hostfwd=tcp::18090-:8090
@@ -55,6 +56,9 @@ public static class Program
         builder.Services.AddSingleton<ILoggerFactory>(loggerFactory);
         builder.Services.AddSingleton<AppInfo>(new AppInfo());
 
+        // M6: OpenAPI document services (doc name "v1"); MapOpenApi below.
+        builder.Services.AddOpenApi(new OpenApiOptions { Title = "NeutrinoOS webapp" });
+
         // Endpoint defaults; `--urls` (in args) overrides the HTTP port at
         // Build(). M5: HTTPS (TLS 1.3) on 8091 using the shared /etc/ssl
         // Ed25519 certificate.
@@ -74,6 +78,7 @@ public static class Program
         app.MapGet("/di", OnDi);
         app.MapGet("/log", OnLog);
         app.MapGet("/lifetime", OnLifetime);
+        app.MapOpenApi();   // GET /openapi/v1.json (M6 OpenAPI slice)
 
         // M5: IHostApplicationLifetime hook (fires inside Run -> Start).
         app.Lifetime.ApplicationStarted.Register(OnAppStarted);

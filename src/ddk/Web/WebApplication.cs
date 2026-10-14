@@ -76,6 +76,19 @@ public sealed class WebApplication
     /// <summary>The DI container (M4): app.Services.GetRequiredService&lt;T&gt;().</summary>
     public ServiceCollection Services => _services;
 
+    /// <summary>The engine behind this application (M6: OpenAPI plumbing).</summary>
+    internal WebHost Host => _host;
+
+    /// <summary>
+    /// The OpenAPI document JSON for the currently registered routes (the
+    /// body the MapOpenApi endpoint serves; also handy for tooling/tests).
+    /// See OpenApi.cs (M6).
+    /// </summary>
+    public string BuildOpenApiJson()
+    {
+        return _host.BuildOpenApiJson();
+    }
+
     /// <summary>The Kestrel-lite options this app was built with (M4).</summary>
     public KestrelServerOptions Options => _host.Options;
 

@@ -481,6 +481,46 @@ its ReadOnlySequence test):**
   output on a full window is retried in bounded passes rather than
   split mid-record.
 
+### M6 — OpenAPI document endpoint (DONE)
+
+- **The ASP.NET Core 10 shape** (docs: "Generate OpenAPI documents"):
+  `builder.Services.AddOpenApi()` registers the document services
+  (`AddOpenApi("internal")` renames the document;
+  `AddOpenApi(OpenApiOptions)` registers a prepared options instance);
+  `app.MapOpenApi()` maps the endpoint. Defaults mirror the package:
+  document name `v1`, route `/openapi/{documentName}.json`
+  (`MapOpenApi(pattern)` overrides it; `{documentName}` fills in), and
+  OpenAPI 3.1 JSON (the .NET 10 default; `OpenApiOptions.OpenApiVersion`
+  re-selects).
+- **Generated at request time from the live route table** (the engine's
+  ApiExplorer substitute): one path item per distinct pattern, one
+  operation per registered method, `{name}` segments described as
+  required string path parameters, and a default 200/OK response.
+  Unknown HTTP methods and the document endpoint itself are excluded
+  (both real package behaviors). `WebApplication.BuildOpenApiJson()`
+  exposes the generator to tooling/tests; `WebHost` carries the plumbing
+  (per-route kind + accessors) and both dispatch paths - HTTP/1.1 and
+  the shared h2 engine - serve the endpoint.
+- **Not ported (documented limitations)**: transformer APIs
+  (`AddOpenApi(configure)` delegates, `WithOpenApi`/`WithTags`/`WithName`),
+  YAML output, build-time document generation, multiple simultaneous
+  documents, and handler parameter/return-type introspection - the
+  engine has no ApiExplorer metadata, so the document describes methods,
+  paths and path parameters only.
+- **Sample/tests**: `TasksWebApp` (the `webapi` kernel service) and the
+  M4/M5 `webapp` sample both do AddOpenApi + MapOpenApi. JITTest
+  `HostingTests.TestOpenApiCompat` adds 7 records (service registration,
+  spec version, info customization, path items, path parameters,
+  endpoint self-exclusion). Probes: webapi 34 -> 39 checks (document
+  body, 200, content type, path parameter, self-exclusion) and m5 14 ->
+  17 (document over h1, content type, h2c serves it).
+- Boot numbers: JITTest 3126/0; AppTest 25/25 + echo 1048576/1048576;
+  webapi-probe 39/39; m5-transport-probe 17/17; m4-hosting-probe 14/14;
+  sampleapi-probe 28/28.
+- Note: the webapi probe boots `build/x64/neutrinoos-cli.img`, so run
+  `build/rebuild-cli-image.sh` after kernel/DDK changes - it tested a
+  stale image once (the document 404'd until the CLI image was rebuilt).
+
 ## Verification strategy (every milestone)
 
 - `build/webapi-probe.sh` (host-side HTTP matrix through slirp hostfwd) and

@@ -2,7 +2,8 @@
 # WebAPI sample verification probe (docs/samples/webapi, Kestrel port M1).
 # Boots the CLI image, starts the WebApplication-style `webapi` app (port
 # 8080) and runs the full CRUD matrix from the WSL host through slirp
-# hostfwd (18080 -> 8080), plus guest-side start/stop/status checks.
+# hostfwd (18080 -> 8080), plus guest-side start/stop/status checks and
+# the M6 OpenAPI document checks.
 # Prints PASS/FAIL per check + summary.
 set -u
 cd /root/neutrino
@@ -77,6 +78,18 @@ r=$(body -X DELETE $B/api/v1/tasks/1)
 [ "$(code -X PATCH $B/api/v1/tasks/2)" = 405 ] && pass "PATCH item -> 405 (route table)" || fail "PATCH item"
 [ "$(code $B/no/such/route)" = 404 ] && pass "unknown route -> 404" || fail "unknown route"
 [ "$(code $B/api/v1/tasks/abc)" = 404 ] && pass "non-numeric id -> 404 (app validation)" || fail "non-numeric id"
+
+echo "=== M6: OpenAPI document ==="
+r=$(body $B/openapi/v1.json)
+case "$r" in
+  *'"openapi": "3.1.0"'*'"title": "NeutrinoOS Tasks Web API"'*'"/api/v1/tasks/{id}"'*) pass "GET /openapi/v1.json (generated document)";;
+  *) fail "GET /openapi/v1.json ($r)";;
+esac
+[ "$(code $B/openapi/v1.json)" = 200 ] && pass "OpenAPI endpoint -> 200" || fail "OpenAPI endpoint code"
+ct=$(curl -sS -m 15 -o /dev/null -w '%{content_type}' $B/openapi/v1.json 2>/dev/null)
+case "$ct" in application/json*) pass "OpenAPI content-type application/json";; *) fail "OpenAPI content-type ($ct)";; esac
+case "$r" in *'"name": "id"'*'"in": "path"'*) pass "OpenAPI path parameter described";; *) fail "OpenAPI path parameter";; esac
+case "$r" in *'openapi/v1.json'*) fail "OpenAPI doc includes its own endpoint";; *) pass "OpenAPI doc excludes its own endpoint";; esac
 
 echo "=== M3: chunked + 100-continue (raw client) ==="
 if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py chunked > /tmp/m3-chunked.out 2>&1; then

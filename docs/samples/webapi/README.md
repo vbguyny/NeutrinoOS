@@ -14,21 +14,24 @@ from Windows 11 at **`http://127.0.0.1:18080`**.
 | File | What it is |
 |------|------------|
 | `src/ddk/Web/WebApplication.cs` | `WebApplication.CreateBuilder(args)` + `MapGet/MapPost/MapPut/MapDelete` (builder and app fused in M1) |
+| `src/ddk/Web/OpenApi.cs` | M6: `AddOpenApi()` / `MapOpenApi()` + the document generator (ASP.NET Core 10 OpenAPI shape) |
 | `src/ddk/Web/HttpContext.cs` | `HttpContext` / `HttpRequest` / `HttpResponse` / `RequestHandler` / `WebStatus` |
 | `src/ddk/Web/WebHost.cs` | The engine: listener, connection slots, head parse + body wait, route table with `{id}` captures, 404/405 semantics |
 | `src/ddk/Samples/TasksWebApp.cs` | **The app** — `Build()` wires the routes; ~9 handlers implement the API |
 | `src/utilities/webapi/Program.cs` | `webapi start \| stop \| status` |
 | `docs/samples/webapi/NeutrinoWebApi.postman_collection.json` | Postman v2.1 collection for every endpoint |
-| `build/webapi-probe.sh` | Automated end-to-end verification (29 checks) |
+| `build/webapi-probe.sh` | Automated end-to-end verification (39 checks) |
 
 ## The app, as you'd write it
 
 ```csharp
 private static WebApplication Build()
 {
-    var app = WebApplication.CreateBuilder(new string[0]);
+    var builder = WebApplication.CreateBuilder(new string[0]);
+    builder.Kestrel.Port = 8080;
+    builder.Services.AddOpenApi(new OpenApiOptions { Title = "NeutrinoOS Tasks Web API" });
+    var app = builder.Build();
     app.Name = "webapi";
-    app.Port = 8080;
 
     app.MapGet("/", OnRoot);
     app.MapGet("/api/v1/info", OnInfo);
@@ -39,6 +42,7 @@ private static WebApplication Build()
     app.MapGet("/api/v1/tasks/{id}", OnGetTask);       // {id} captured per route
     app.MapPut("/api/v1/tasks/{id}", OnRenameTask);
     app.MapDelete("/api/v1/tasks/{id}", OnDeleteTask);
+    app.MapOpenApi();                                  // GET /openapi/v1.json (M6)
     return app;
 }
 
@@ -60,6 +64,7 @@ business logic.
 | `WebApplication.CreateBuilder(args)` | `WebApplication.CreateBuilder(args)` |
 | (builder and app fused) | `builder.Build()` |
 | `app.MapGet(pattern, RequestHandler)` | `app.MapGet(pattern, lambda)` |
+| `builder.Services.AddOpenApi()` / `app.MapOpenApi()` | same (M6 OpenAPI slice, OpenAPI 3.1) |
 | `void Handler(HttpContext ctx)` | any `RequestDelegate` |
 | `ctx.Request.Query("k")` / `.Route("id")` | `ctx.Request.Query["k"]` / `RouteValues["id"]` |
 | `ctx.Response.Json(fragment)` | `Results.Json(...)` |
@@ -83,6 +88,7 @@ differ: `/api/v1/info` reports `"service":"webapi"`):
 | GET | `/api/v1/tasks` | `200` `{"count":N,"tasks":[...]}` | – |
 | POST | `/api/v1/tasks` | `201` `{"id":N,"name":"..."}` | `400` no name · `409` store full (8) |
 | GET/PUT/DELETE | `/api/v1/tasks/{id}` | `200` task / updated / `{"deleted":N}` | `400` · `404` |
+| GET | `/openapi/v1.json` | `200` the generated OpenAPI 3.1 document (M6) | – |
 | * | wrong method on a known path | – | `405` (engine route table) |
 | * | anything else | – | `404` `{"error":"not found"}` |
 

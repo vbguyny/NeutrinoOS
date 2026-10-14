@@ -7,6 +7,7 @@
 #   - HTTP/2 over TLS via ALPN (curl -k --http2, http_version=2)
 #   - HTTP/2 cleartext, prior knowledge (curl --http2-prior-knowledge)
 #   - the IHostApplicationLifetime hook firing in the guest log
+#   - the M6 OpenAPI document endpoint over HTTP/1.1 and h2c
 # Prints PASS/FAIL per check + summary.
 set -u
 cd /root/neutrino
@@ -74,6 +75,16 @@ case "$r" in *'"app":"webapp"'*) pass "h2c GET / blurb";; *) fail "h2c / ($r)";;
 echo "=== HTTP/1.1 regression (unchanged path) ==="
 r=$(body $H/health)
 [ "$r" = '{"status":"ok"}' ] && pass "plain http /health still works" || fail "http /health ($r)"
+
+echo "=== OpenAPI document (M6) ==="
+r=$(body $H/openapi/v1.json)
+case "$r" in
+  *'"openapi": "3.1.0"'*'"title": "NeutrinoOS webapp"'*'"/di"'*) pass "GET /openapi/v1.json (OpenAPI 3.1 doc for the routes)";;
+  *) fail "openapi doc ($r)";;
+esac
+ct=$(curl -sS -m 20 -o /dev/null -w '%{content_type}' $H/openapi/v1.json 2>/dev/null)
+case "$ct" in application/json*) pass "openapi content-type application/json";; *) fail "openapi content-type ($ct)";; esac
+[ "$(code --http2-prior-knowledge $H/openapi/v1.json)" = 200 ] && pass "h2c serves the document" || fail "h2c openapi"
 
 echo "=== summary ==="
 echo "PASSED=$PASSED FAILED=$FAILED"

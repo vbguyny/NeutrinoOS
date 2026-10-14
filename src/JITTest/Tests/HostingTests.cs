@@ -39,6 +39,7 @@ public static class HostingTests
         TestLogging();
         TestHostedRuntime();
         TestM5Compat();
+        TestOpenApiCompat();
     }
 
     private static void TestBuilderDefaults()
@@ -242,5 +243,42 @@ public static class HostingTests
             lifetime.ApplicationStopping.IsCancellationRequested &&
             lifetime.ApplicationStopped.IsCancellationRequested);
         TestTracker.Record("m5/lifetime-not-started-after-stop", !lifetime.IsStarted);
+    }
+
+    // ---- M6: OpenAPI document (AddOpenApi / MapOpenApi) ----
+
+    private static void OpenApiPing(HttpContext ctx)
+    {
+        ctx.Response.Json("{}\n");
+    }
+
+    private static void OpenApiThing(HttpContext ctx)
+    {
+        ctx.Response.Json("{}\n");
+    }
+
+    private static void TestOpenApiCompat()
+    {
+        var builder = WebApplication.CreateBuilder(new string[0]);
+        builder.Services.AddOpenApi(new OpenApiOptions { Title = "T-API", Version = "9.9" });
+        var app = builder.Build();
+        app.Name = "openapi-test";
+        app.MapGet("/ping", OpenApiPing);
+        app.MapPost("/things/{id}", OpenApiThing);
+        app.MapOpenApi();
+
+        TestTracker.Record("m6/openapi-service-registered",
+            app.Services.GetService<OpenApiOptions>() != null);
+
+        string json = app.BuildOpenApiJson();
+        TestTracker.Record("m6/openapi-spec-version", json.Contains("\"openapi\": \"3.1.0\""));
+        TestTracker.Record("m6/openapi-info-custom",
+            json.Contains("\"title\": \"T-API\"") && json.Contains("\"version\": \"9.9\""));
+        TestTracker.Record("m6/openapi-path-get",
+            json.Contains("\"/ping\": {") && json.Contains("\"get\": {"));
+        TestTracker.Record("m6/openapi-path-post",
+            json.Contains("\"/things/{id}\": {") && json.Contains("\"post\": {"));
+        TestTracker.Record("m6/openapi-path-parameter", json.Contains("\"name\": \"id\""));
+        TestTracker.Record("m6/openapi-doc-endpoint-excluded", !json.Contains("openapi/v1.json"));
     }
 }

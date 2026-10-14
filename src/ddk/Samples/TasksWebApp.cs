@@ -24,6 +24,7 @@
 //   GET    /api/v1/tasks/{id}     read one task    (404 when missing)
 //   PUT    /api/v1/tasks/{id}     rename one task  (404 when missing)
 //   DELETE /api/v1/tasks/{id}     delete one task  (404 when missing)
+//   GET    /openapi/v1.json       the OpenAPI 3.1 document (AddOpenApi/MapOpenApi)
 //
 // Run from the NeutrinoOS shell:   webapi start   (stop | status)
 // Reach it from Windows 11: boot QEMU with
@@ -107,6 +108,9 @@ public static class TasksWebApp
     {
         var builder = WebApplication.CreateBuilder(new string[0]);
         builder.Kestrel.Port = 8080;
+        // OpenAPI (ASP.NET Core 10 shape): AddOpenApi registers the doc
+        // services; MapOpenApi below maps GET /openapi/v1.json.
+        builder.Services.AddOpenApi(new OpenApiOptions { Title = "NeutrinoOS Tasks Web API" });
         var app = builder.Build();
         app.Name = "webapi";
 
@@ -121,6 +125,7 @@ public static class TasksWebApp
         app.MapDelete("/api/v1/tasks/{id}", OnDeleteTask);
         app.MapGet("/api/v1/wait", OnWaitAsync);
         app.MapGet("/api/v1/poke", OnPoke);
+        app.MapOpenApi();   // GET /openapi/v1.json - the generated OpenAPI document
 
         return app;
     }

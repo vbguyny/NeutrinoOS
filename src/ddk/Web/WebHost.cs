@@ -60,7 +60,9 @@ public sealed class WebHost
     private readonly string[] _routePatterns;
     private readonly RequestHandler[] _routeHandlers;
     private readonly RequestHandlerAsync[] _routeAsyncHandlers;
+    private readonly int[] _routeKinds;
     private int _routeCount;
+    private OpenApiOptions _openApiOptions;
 
     /// <summary>Creates a host with default options on <paramref name="port"/>.</summary>
     public WebHost(string name, ushort port)
@@ -110,6 +112,7 @@ public sealed class WebHost
         _routePatterns = new string[_maxRoutes];
         _routeHandlers = new RequestHandler[_maxRoutes];
         _routeAsyncHandlers = new RequestHandlerAsync[_maxRoutes];
+        _routeKinds = new int[_maxRoutes];
     }
 
     private static KestrelServerOptions NewOptions(ushort port)
@@ -146,6 +149,40 @@ public sealed class WebHost
         _routeAsyncHandlers[_routeCount] = handler;
         _routeCount++;
     }
+
+    // ====================================================================
+    // OpenAPI document endpoint (M6: app.MapOpenApi())
+    // ====================================================================
+
+    /// <summary>A normal handler route (the default kind).</summary>
+    internal const int RouteKindHandler = 0;
+
+    /// <summary>The generated OpenAPI document route (no handler; M6).</summary>
+    internal const int RouteKindOpenApi = 1;
+
+    /// <summary>Register the OpenAPI document endpoint (MapOpenApi).</summary>
+    internal void AddOpenApiRoute(string pattern, OpenApiOptions options)
+    {
+        _openApiOptions = options;
+        if (_routeCount >= _maxRoutes)
+            return;
+        _routeMethods[_routeCount] = "GET";
+        _routePatterns[_routeCount] = pattern;
+        _routeKinds[_routeCount] = RouteKindOpenApi;
+        _routeCount++;
+    }
+
+    /// <summary>The generated OpenAPI JSON for the current route table (M6).</summary>
+    internal string BuildOpenApiJson()
+    {
+        return OpenApiDocument.Build(this, _openApiOptions);
+    }
+
+    // Route-table accessors for the OpenAPI generator (M6 plumbing).
+    internal int RouteCount => _routeCount;
+    internal string RouteMethodAt(int index) => _routeMethods[index];
+    internal string RoutePatternAt(int index) => _routePatterns[index];
+    internal int RouteKindAt(int index) => _routeKinds[index];
 
     // ====================================================================
     // Service contract (driven by the kernel idle hook)
@@ -619,7 +656,12 @@ public sealed class WebHost
         ctx.Request.SetRoute(capNames, capValues, capCount);
 
         RequestHandler sync = _routeHandlers[matched];
-        if (sync != null)
+        if (_routeKinds[matched] == RouteKindOpenApi)
+        {
+            // M6: the endpoint is generated, not handler-backed.
+            ctx.Response.Json(BuildOpenApiJson());
+        }
+        else if (sync != null)
         {
             sync(ctx);
         }
@@ -785,7 +827,12 @@ public sealed class WebHost
         ctx.Request.SetRoute(capNames, capValues, capCount);
 
         RequestHandler sync = _routeHandlers[matched];
-        if (sync != null)
+        if (_routeKinds[matched] == RouteKindOpenApi)
+        {
+            // M6: the endpoint is generated, not handler-backed.
+            ctx.Response.Json(BuildOpenApiJson());
+        }
+        else if (sync != null)
         {
             sync(ctx);
         }
