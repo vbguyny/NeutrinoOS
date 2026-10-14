@@ -20,7 +20,7 @@ from Windows 11 at **`http://127.0.0.1:18080`**.
 | `src/ddk/Samples/TasksWebApp.cs` | **The app** — `Build()` wires the routes; ~9 handlers implement the API |
 | `src/utilities/webapi/Program.cs` | `webapi start \| stop \| status` |
 | `docs/samples/webapi/NeutrinoWebApi.postman_collection.json` | Postman v2.1 collection for every endpoint |
-| `build/webapi-probe.sh` | Automated end-to-end verification (39 checks) |
+| `build/webapi-probe.sh` | Automated end-to-end verification (40 checks) |
 
 ## The app, as you'd write it
 

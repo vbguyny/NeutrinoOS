@@ -85,6 +85,8 @@ esac
 ct=$(curl -sS -m 20 -o /dev/null -w '%{content_type}' $H/openapi/v1.json 2>/dev/null)
 case "$ct" in application/json*) pass "openapi content-type application/json";; *) fail "openapi content-type ($ct)";; esac
 [ "$(code --http2-prior-knowledge $H/openapi/v1.json)" = 200 ] && pass "h2c serves the document" || fail "h2c openapi"
+jerr=$(body $H/openapi/v1.json | python3 -m json.tool 2>&1 >/dev/null | tail -1)
+[ -z "$jerr" ] && pass "openapi document is valid JSON (json.tool)" || fail "openapi JSON invalid ($jerr)"
 
 echo "=== summary ==="
 echo "PASSED=$PASSED FAILED=$FAILED"

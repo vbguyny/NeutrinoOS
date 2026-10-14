@@ -509,13 +509,21 @@ its ReadOnlySequence test):**
   paths and path parameters only.
 - **Sample/tests**: `TasksWebApp` (the `webapi` kernel service) and the
   M4/M5 `webapp` sample both do AddOpenApi + MapOpenApi. JITTest
-  `HostingTests.TestOpenApiCompat` adds 7 records (service registration,
+  `HostingTests.TestOpenApiCompat` adds 9 records (service registration,
   spec version, info customization, path items, path parameters,
-  endpoint self-exclusion). Probes: webapi 34 -> 39 checks (document
-  body, 200, content type, path parameter, self-exclusion) and m5 14 ->
-  17 (document over h1, content type, h2c serves it).
-- Boot numbers: JITTest 3126/0; AppTest 25/25 + echo 1048576/1048576;
-  webapi-probe 39/39; m5-transport-probe 17/17; m4-hosting-probe 14/14;
+  endpoint self-exclusion, brace balance + closed tail, empty-paths
+  document). Probes: webapi 34 -> 40 checks (document body, 200, content
+  type, path parameter, self-exclusion, valid JSON via `json.tool`) and
+  m5 14 -> 18 (document over h1, content type, h2c serves it, valid
+  JSON).
+- **Fixed in the M6 follow-up**: the first cut's document ended after the
+  `"paths"` close - the root `}` was missing - so every real parser
+  rejected it ("expected ',' or '}' after property value" at EOF) while
+  the substring-based checks all passed. The probes now parse the served
+  document with `python3 -m json.tool` and HostingTests pins
+  brace-balance + closed tail + the empty route table shape.
+- Boot numbers: JITTest 3128/0; AppTest 25/25 + echo 1048576/1048576;
+  webapi-probe 40/40; m5-transport-probe 18/18; m4-hosting-probe 14/14;
   sampleapi-probe 28/28.
 - Note: the webapi probe boots `build/x64/neutrinoos-cli.img`, so run
   `build/rebuild-cli-image.sh` after kernel/DDK changes - it tested a

@@ -90,6 +90,8 @@ ct=$(curl -sS -m 15 -o /dev/null -w '%{content_type}' $B/openapi/v1.json 2>/dev/
 case "$ct" in application/json*) pass "OpenAPI content-type application/json";; *) fail "OpenAPI content-type ($ct)";; esac
 case "$r" in *'"name": "id"'*'"in": "path"'*) pass "OpenAPI path parameter described";; *) fail "OpenAPI path parameter";; esac
 case "$r" in *'openapi/v1.json'*) fail "OpenAPI doc includes its own endpoint";; *) pass "OpenAPI doc excludes its own endpoint";; esac
+jerr=$(body $B/openapi/v1.json | python3 -m json.tool 2>&1 >/dev/null | tail -1)
+[ -z "$jerr" ] && pass "OpenAPI document is valid JSON (json.tool)" || fail "OpenAPI JSON invalid ($jerr)"
 
 echo "=== M3: chunked + 100-continue (raw client) ==="
 if python3 /mnt/d/Projects/Code/NeutrinoOS/build/m3-http-check.py chunked > /tmp/m3-chunked.out 2>&1; then

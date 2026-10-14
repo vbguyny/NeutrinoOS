@@ -280,5 +280,30 @@ public static class HostingTests
             json.Contains("\"/things/{id}\": {") && json.Contains("\"post\": {"));
         TestTracker.Record("m6/openapi-path-parameter", json.Contains("\"name\": \"id\""));
         TestTracker.Record("m6/openapi-doc-endpoint-excluded", !json.Contains("openapi/v1.json"));
+
+        // Structural validity: balanced braces + a properly closed tail.
+        // (The first M6 cut shipped the document ending after the "paths"
+        // close - the root brace was missing - and every substring check
+        // above still passed.)
+        int opens = 0;
+        int closes = 0;
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (c == '{')
+                opens++;
+            else if (c == '}')
+                closes++;
+        }
+        bool closedTail = json.Length >= 2 && json[json.Length - 1] == '\n' && json[json.Length - 2] == '}';
+        TestTracker.Record("m6/openapi-structurally-closed", opens == closes && opens > 0 && closedTail,
+            "opens=" + opens.ToString() + " closes=" + closes.ToString());
+
+        // Empty route table: "paths" still renders as an empty object and
+        // the document stays closed.
+        var emptyApp = WebApplication.CreateBuilder(new string[0]).Build();
+        string emptyJson = emptyApp.BuildOpenApiJson();
+        TestTracker.Record("m6/openapi-empty-paths",
+            emptyJson.Contains("\"paths\": {\n  }\n}\n"));
     }
 }

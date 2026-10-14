@@ -184,9 +184,14 @@ internal static class OpenApiDocument
 
         string paths = BuildPaths(host);
         if (paths.Length > 0)
-            body += paths + "\n  ";
+            body += paths;
 
-        body += "}\n";
+        // Close "paths", then the root document. (The first M6 cut appended
+        // only one brace here, so every real JSON parser rejected the doc
+        // with "expected ',' or '}' after property value" at EOF while
+        // substring checks still passed - pinned now by json.tool checks in
+        // the probes and the brace-balance record in HostingTests.)
+        body += "\n  }\n}\n";
         return body;
     }
 
