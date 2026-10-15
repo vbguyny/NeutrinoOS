@@ -12,6 +12,10 @@
 // stop begins and Stopped once the listeners are down. StopApplication()
 // routes through WebApplication.Stop(), so a hosted app also releases
 // its kernel service registration (equivalent to `webhost stop`).
+//
+// The class implements BOTH NeutrinoOS.DDK.Web.IHostApplicationLifetime
+// and Microsoft.Extensions.Hosting.IHostApplicationLifetime (identical
+// member shapes): the Microsoft.AspNetCore shim exposes the latter.
 
 using System.Threading;
 
@@ -34,7 +38,8 @@ public interface IHostApplicationLifetime
 }
 
 /// <summary>Default lifetime implementation (see file header).</summary>
-public sealed class HostLifetime : IHostApplicationLifetime
+public sealed class HostLifetime : IHostApplicationLifetime,
+    Microsoft.Extensions.Hosting.IHostApplicationLifetime
 {
     private readonly CancellationTokenSource _started = new CancellationTokenSource();
     private readonly CancellationTokenSource _stopping = new CancellationTokenSource();

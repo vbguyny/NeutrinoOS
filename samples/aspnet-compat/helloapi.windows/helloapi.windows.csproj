@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Windows twin of src/apps/helloapi - the SAME Program.cs, compiled
+    against the REAL Microsoft.AspNetCore.App instead of the NeutrinoOS
+    DDK shim. Proves the "same code works on Windows and NeutrinoOS"
+    claim (see docs/KESTREL-PORT.md M7):
+
+      dotnet run            # listens on http://0.0.0.0:8092
+      curl http://127.0.0.1:8092/health
+
+    build/m7-aspnet-probe.sh builds and runs this next to the device
+    build and byte-compares the responses.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>helloapi</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The one and only source file: the device app's Program.cs. -->
+    <Compile Include="../../../src/apps/helloapi/Program.cs" />
+  </ItemGroup>
+
+</Project>

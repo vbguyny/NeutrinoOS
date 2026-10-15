@@ -192,6 +192,9 @@ public static class TestRunner
         // Web layer: Kestrel-port hosting (M4) - builder, DI, logging, hosted runtime
         RunCategory("Hosting/M4", HostingTests.RunAll);
 
+        // Web layer: ASP.NET Core namespace compat (M7) - Microsoft.AspNetCore.* shims
+        RunCategory("AspNetCore/Compat", AspNetCoreCompatTests.RunAll);
+
         RunCategory("Crypto/ECDSA", EcdsaP256Tests.RunAll);
 
         // Korlib: String formatting

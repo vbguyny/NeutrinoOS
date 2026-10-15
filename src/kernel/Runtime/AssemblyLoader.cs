@@ -6129,6 +6129,15 @@ public static unsafe class AssemblyLoader
                 name[15] == 'o' && name[16] == 'n' && name[17] == 's' && name[18] == 0)
                 return true;
 
+            // "System.ComponentModel" (M7: the net10 ref pack declares
+            // System.IServiceProvider here, so DDK/app TypeRefs for the
+            // BCL interface scope to this assembly)
+            if (name[7] == 'C' && name[8] == 'o' && name[9] == 'm' && name[10] == 'p' &&
+                name[11] == 'o' && name[12] == 'n' && name[13] == 'e' && name[14] == 'n' &&
+                name[15] == 't' && name[16] == 'M' && name[17] == 'o' && name[18] == 'd' &&
+                name[19] == 'e' && name[20] == 'l' && name[21] == 0)
+                return true;
+
             // "System.Console" (Phase 2: System.Console facade -> korlib
             // implementations, which are AOT-compiled into the kernel)
             if (name[7] == 'C' && name[8] == 'o' && name[9] == 'n' && name[10] == 's' &&

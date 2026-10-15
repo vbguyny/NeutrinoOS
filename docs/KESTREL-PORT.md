@@ -540,6 +540,69 @@ its ReadOnlySequence test):**
   `build/rebuild-cli-image.sh` after kernel/DDK changes - it tested a
   stale image once (the document 404'd until the CLI image was rebuilt).
 
+### M7 — ASP.NET Core namespace compatibility (DONE)
+
+- **The claim under test**: someone can create a Web API in ASP.NET Core
+  on Windows and the *same code* works on NeutrinoOS. The M7 layer adds
+  same-namespace shims in the DDK (`src/ddk/AspNetCore/`):
+  `Microsoft.AspNetCore.Builder`, `Microsoft.AspNetCore.Hosting`,
+  `Microsoft.AspNetCore.Http`, `Microsoft.Extensions.DependencyInjection`,
+  `Microsoft.Extensions.Hosting` and `Microsoft.Extensions.Logging` -
+  forwarding to the NeutrinoOS web engine. `src/apps/helloapi/Program.cs`
+  is the proof sample; `samples/aspnet-compat/helloapi.windows` compiles
+  the *same file* against the real `Microsoft.AspNetCore.App` (dotnet 10)
+  and both builds are clean.
+- **Implemented surface**: `WebApplication.CreateBuilder/Build/Run`,
+  `builder.Services`, `builder.WebHost.UseUrls("http[s]://host:port"` /
+  bare port; the https scheme enables the M5 TLS 1.3 listener),
+  `MapGet/MapPost/MapPut/MapDelete(pattern, RequestDelegate)` returning
+  the endpoint builder, `app.Services`/`ServiceProvider`, `app.Lifetime`
+  as `Microsoft.Extensions.Hosting.IHostApplicationLifetime`,
+  `HttpContext`/`HttpRequest`/`HttpResponse` wrappers (`Method`, `Path`,
+  `QueryString`, `Query[key]`, `RouteValues[key]`, `StatusCode`,
+  `ContentType`, `WriteAsync(string)`), the `PathString`/`QueryString`/
+  `StringValues` structs with the BCL conversions, DI (`AddSingleton<T>`,
+  `GetService<T>`/`GetRequiredService<T>` over **`System.IServiceProvider`**
+  - korlib gained that BCL type in M7), and `ILogger`/`ILoggerFactory`/
+  `LogLevel` + `LogInformation/...` extensions. `UseUrls` lives in
+  `Microsoft.AspNetCore.Hosting` (extension on `IWebHostBuilder`), the
+  same layout as the real framework, so the `using` directives match.
+- **Not ported (documented limits)**: handler overloads that bind to
+  `Delegate` - untyped-parameter lambdas, `() => "text"`, `Results.*`,
+  `TypedResults`, parameter/model binding; `MapGroup`, middleware
+  (`Use*`), `builder.Configuration/Environment/Host`; structured logging
+  (the shim's `ILogger.Log(LogLevel, string)` accepts interpolated
+  strings, not format args); factory/implementation-type DI
+  registrations (instance singletons only); `IQueryCollection`/
+  `IRouteValueDictionary` interfaces (the concrete shapes with the same
+  members are provided; storing the interface type in a variable does
+  not compile). Later milestones can deepen any of these.
+- **Verification**: `build/m7-aspnet-probe.sh` - builds and runs the
+  Windows twin in WSL, boots the CLI image, launches the device app via
+  `webhost /apps/webapp/helloapi.dll &` (hostfwd 18092 -> 8092) and
+  **byte-compares** the four endpoint responses against the twin, plus
+  404 parity, content-type and Server header. JITTest category
+  `AspNetCore/Compat` pins the layer on-device (builder/UseUrls mapping,
+  DI through the MS extensions, route registration via the OpenAPI doc,
+  context wrappers, request shapes, struct conversions, lifetime
+  interface, logger extensions, and the instance-bound async method ->
+  `RequestHandlerAsync` delegate pattern the shim's MapGet relies on).
+- **Loader note (kernel)**: the net10 reference pack declares
+  `System.IServiceProvider` in assembly **System.ComponentModel**, so DDK
+  and app metadata scope TypeRefs for it there; the loader's virtual-
+  assembly map (`IsVirtualAssembly`) now also routes `System.ComponentModel`
+  to korlib - without it every `GetRequiredService`-style call failed to
+  resolve on-device (`ResolveMethod FAILED`), which JIT-failed the app's
+  Main. The failure mode is pinned by the `AspNetCore/Compat` tests and the
+  probe.
+- Boot numbers: JITTest 3135 -> **3172/0**; AppTest 25/25 + echo
+  1048576/1048576; m7-aspnet-probe **11/11**; webapi-probe 45/45;
+  m5-transport-probe 18/18; m4-hosting-probe 14/14; sampleapi-probe 28/28.
+- **Twin workflow**: `cd samples/aspnet-compat/helloapi.windows &&
+  dotnet run` serves `http://0.0.0.0:8092` (Windows or WSL); the device
+  build of the same source is deployed to `/apps/webapp/helloapi.dll` by
+  the standard `build/p5-apps-build.sh` + `build/p5-deploy.sh` chain.
+
 ## Verification strategy (every milestone)
 
 - `build/webapi-probe.sh` (host-side HTTP matrix through slirp hostfwd) and

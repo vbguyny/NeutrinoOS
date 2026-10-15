@@ -5273,7 +5273,7 @@ public unsafe struct ILCompiler
         // Resolve the method
         if (!ResolveMethod(token, out ResolvedMethod method))
         {
-            // DebugConsole.Write("[JIT] ResolveMethod failed for call 0x");
+            DebugConsole.Write("[JIT] ResolveMethod FAILED for call 0x");
             DebugConsole.WriteHex(token);
             DebugConsole.WriteLine();
             return false;

@@ -38,7 +38,8 @@ public interface IServiceProvider
 }
 
 /// <summary>Minimal service collection/provider (see file header).</summary>
-public sealed class ServiceCollection : IServiceProvider
+public sealed class ServiceCollection : IServiceProvider, System.IServiceProvider,
+    Microsoft.Extensions.DependencyInjection.IServiceCollection
 {
     private const int MaxServices = 24;
 
@@ -112,6 +113,10 @@ public sealed class ServiceCollection : IServiceProvider
     /// <summary>Number of registrations (diagnostics/tests).</summary>
     public int Count => _count;
 
-    /// <inheritdoc/>
-    object? IServiceProvider.GetService(Type serviceType) => Find(serviceType);
+    /// <summary>
+    /// Resolve a service by type, or null when absent. Implements BOTH
+    /// the DDK shim interface and System.IServiceProvider (the shape the
+    /// Microsoft.Extensions.DependencyInjection extensions target).
+    /// </summary>
+    public object? GetService(Type serviceType) => Find(serviceType);
 }
