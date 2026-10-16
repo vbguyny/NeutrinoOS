@@ -6103,6 +6103,17 @@ public static unsafe class AssemblyLoader
                 name[11] == 'i' && name[12] == 'm' && name[13] == 'e' && name[14] == 0)
                 return true;
 
+            // "System.Runtime.InteropServices" (M8.1: CollectionsMarshal ->
+            // korlib, needed by packages like Tomlyn that take refs into
+            // Dictionary<TKey, TValue> value slots)
+            if (name[7] == 'R' && name[8] == 'u' && name[9] == 'n' && name[10] == 't' &&
+                name[11] == 'i' && name[12] == 'm' && name[13] == 'e' && name[14] == '.' &&
+                name[15] == 'I' && name[16] == 'n' && name[17] == 't' && name[18] == 'e' &&
+                name[19] == 'r' && name[20] == 'o' && name[21] == 'p' && name[22] == 'S' &&
+                name[23] == 'e' && name[24] == 'r' && name[25] == 'v' && name[26] == 'i' &&
+                name[27] == 'c' && name[28] == 'e' && name[29] == 's' && name[30] == 0)
+                return true;
+
             // "System.Private.CoreLib"
             if (name[7] == 'P' && name[8] == 'r' && name[9] == 'i' && name[10] == 'v' &&
                 name[11] == 'a' && name[12] == 't' && name[13] == 'e' && name[14] == '.' &&
@@ -7378,8 +7389,12 @@ public static unsafe class AssemblyLoader
                     byte argCount = 0;
                     if (sig != null && sigLen > 1)
                     {
-                        // sig[0] = calling convention, sig[1] = param count
-                        argCount = sig[1];
+                        // sig[0] = calling convention, sig[1] = param count.
+                        // For generic methods (GENERIC flag 0x10 in sig[0]) sig[1]
+                        // holds the generic parameter count and the real parameter
+                        // count is in sig[2] (e.g. String.Create<TState>(int, TState,
+                        // SpanAction<char, TState>) has sig[1]==1, sig[2]==3).
+                        argCount = ((sig[0] & 0x10) != 0 && sigLen > 2) ? sig[2] : sig[1];
                     }
 
                     // Build "System.TypeName" for AOT lookup

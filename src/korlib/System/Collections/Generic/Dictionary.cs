@@ -308,6 +308,58 @@ public class Dictionary<TKey, TValue> : IDictionary<TKey, TValue>, IReadOnlyDict
         return true;
     }
 
+    /// <summary>
+    /// Returns a reference to the value slot for the given key, adding a
+    /// default-valued entry when the key is not present (the storage behind
+    /// CollectionsMarshal.GetValueRefOrAddDefault).
+    /// </summary>
+    internal ref TValue GetValueRefOrAddDefault(TKey key, out bool exists)
+    {
+        if (key == null) throw new ArgumentNullException(nameof(key));
+
+        int i = FindEntry(key);
+        if (i >= 0)
+        {
+            exists = true;
+            return ref _entries![i].value;
+        }
+
+        exists = false;
+
+        if (_buckets == null) Initialize(0);
+
+        Entry[]? entries = _entries;
+        int hashCode = _comparer.GetHashCode(key) & 0x7FFFFFFF;
+        int targetBucket = hashCode % _buckets!.Length;
+
+        int index;
+        if (_freeCount > 0)
+        {
+            index = _freeList;
+            _freeList = StartOfFreeList - entries![_freeList].next;
+            _freeCount--;
+        }
+        else
+        {
+            if (_count == entries!.Length)
+            {
+                Resize();
+                targetBucket = hashCode % _buckets.Length;
+            }
+            index = _count;
+            _count++;
+        }
+
+        entries = _entries;
+        entries![index].hashCode = hashCode;
+        entries[index].next = _buckets[targetBucket] - 1;
+        entries[index].key = key;
+        entries[index].value = default!;
+        _buckets[targetBucket] = index + 1;
+        _version++;
+        return ref entries[index].value;
+    }
+
     private void Resize() => Resize(ExpandPrime(_count));
 
     private void Resize(int newSize)

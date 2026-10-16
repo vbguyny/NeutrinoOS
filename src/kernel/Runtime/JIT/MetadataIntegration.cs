@@ -2594,6 +2594,12 @@ public static unsafe class MetadataIntegration
         // Skip the calling convention, just need the parameter count
         _ = callConv; // HasThis flag at (callConv & 0x20) - not needed for lookup
 
+        // Generic methods (GENERIC flag 0x10) carry the generic parameter
+        // count before the real parameter count (e.g. String.Create<TState>
+        // has [0x10|0x00][01][03][...]: 1 generic param, 3 real params).
+        if ((callConv & 0x10) != 0)
+            sigPos++;
+
         // Decode compressed parameter count
         byte paramCount = 0;
         byte b = sig[sigPos++];
@@ -2631,7 +2637,8 @@ public static unsafe class MetadataIntegration
         // pointer-sized reference elements. Byte-wide T keeps the default entry.
         int spanElemSizeVariant = 0;
         if ((NameEquals(typeName, "System.Span`1") || NameEquals(typeName, "System.ReadOnlySpan`1")) &&
-            (NameEquals(memberName, "get_Item") || NameEquals(memberName, "Slice") || NameEquals(memberName, "CopyTo")))
+            (NameEquals(memberName, "get_Item") || NameEquals(memberName, "set_Item") ||
+             NameEquals(memberName, "Slice") || NameEquals(memberName, "CopyTo")))
         {
             switch (firstGenericArgElemType)
             {
@@ -3441,7 +3448,12 @@ public static unsafe class MetadataIntegration
                         fullTypeName[pos++] = typeName[i];
                     fullTypeName[pos] = 0;
 
-                    byte argCount = (sig != null && sigLen > 1) ? sig[1] : (byte)0;
+                    // Same generic-method signature shape as the loader: sig[1] is
+                    // the generic parameter count when the GENERIC flag is set
+                    // (real parameter count follows in sig[2]).
+                    byte argCount = 0;
+                    if (sig != null && sigLen > 1)
+                        argCount = ((sig[0] & 0x10) != 0 && sigLen > 2) ? sig[2] : sig[1];
 
                     bool aotFound = AotMethodRegistry.TryLookup(fullTypeName, memberName, argCount, out AotMethodEntry entry);
                     if (!aotFound)
@@ -3499,7 +3511,14 @@ public static unsafe class MetadataIntegration
         // Switch to target assembly context
         SetCurrentAssembly(targetAsmId);
 
-        // Check if the method is already compiled in the registry
+        // Check if the method is already compiled in the registry.
+        // STRICT lookup here (deliberately not LookupTolerant): accepting an
+        // arbitrary same-token entry would return another generic
+        // instantiation's compiled code to the caller (observed: NIC boot
+        // crashed executing the wrong method - a virtual call dereferenced
+        // the value 1). Drift-tolerant matching is only applied where the
+        // token/assembly identify the exact method being compiled (the
+        // post-JIT and recursion paths below).
         uint methodRowId = methodToken & 0x00FFFFFF;
         CompiledMethodInfo* info = CompiledMethodRegistry.Lookup(methodToken, targetAsmId);
 
@@ -3758,7 +3777,7 @@ public static unsafe class MetadataIntegration
                     if (jitResult.Success)
                     {
                         // Method was successfully compiled, try to get from registry again
-                        info = CompiledMethodRegistry.Lookup(methodToken, targetAsmId);
+                        info = CompiledMethodRegistry.LookupTolerant(methodToken, targetAsmId);
                         if (info != null)
                         {
                             result.NativeCode = info->NativeCode;
@@ -5051,6 +5070,51 @@ public static unsafe class MetadataIntegration
             }
         }
 
+        // Check for Array.AsReadOnly<T>(T[]) - JIT intrinsic. Tomlyn's
+        // TomlSerializerOptions static constructor wraps Array.Empty<T>()
+        // with AsReadOnly; korlib's System.Array has no IL body to JIT, so
+        // the ReadOnlyCollection<T> wrapper is allocated inline (M8.1).
+        if (tag == 1 && _methodTypeArgCount == 1)  // MemberRef with 1 type arg
+        {
+            if (IsArrayAsReadOnlyMemberRef(underlyingRowId))
+            {
+                MethodTable* readonlyElemMT = _methodTypeArgMTs[0];
+                if (readonlyElemMT != null)
+                {
+                    DebugConsole.WriteLine("[MetaInt] Detected Array.AsReadOnly<T>!");
+                    result.IsArrayAsReadOnly = true;
+                    result.ArrayAsReadOnlyElementMT = readonlyElemMT;
+                    result.IsValid = true;
+                    result.NativeCode = null;  // JIT intrinsic
+                    result.ArgCount = 1;  // Takes the source array
+                    result.HasThis = false;
+                    result.RegistryEntry = null;
+                    result.ReturnKind = ReturnKind.IntPtr;  // ReadOnlyCollection<T> reference
+                    RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
+                    return true;
+                }
+            }
+        }
+
+        // Check for MemoryMarshal.GetReference<T>(Span<T>) - JIT intrinsic
+        // returning the span's data pointer (Tomlyn's syntax path).
+        if (tag == 1 && _methodTypeArgCount == 1)  // MemberRef with 1 type arg
+        {
+            if (IsMemoryMarshalGetReferenceMemberRef(underlyingRowId))
+            {
+                DebugConsole.WriteLine("[MetaInt] Detected MemoryMarshal.GetReference<T>!");
+                result.IsMemoryMarshalGetReference = true;
+                result.IsValid = true;
+                result.NativeCode = null;  // JIT intrinsic
+                result.ArgCount = 1;  // Takes the span by value
+                result.HasThis = false;
+                result.RegistryEntry = null;
+                result.ReturnKind = ReturnKind.IntPtr;  // ref T
+                RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
+                return true;
+            }
+        }
+
         // For generic methods (MethodDef with type args), we need to handle code sharing correctly.
         // Different instantiations with different-sized value types need different native code
         // because operations like sizeof(T) and Unsafe.Add<T> depend on the actual type size.
@@ -5241,6 +5305,102 @@ public static unsafe class MetadataIntegration
             return false;
         if (typeNs[0] != 'S' || typeNs[1] != 'y' || typeNs[2] != 's' || typeNs[3] != 't' ||
             typeNs[4] != 'e' || typeNs[5] != 'm' || typeNs[6] != 0)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a MemberRef row refers to System.Array.AsReadOnly&lt;T&gt;.
+    /// </summary>
+    private static bool IsArrayAsReadOnlyMemberRef(uint memberRefRowId)
+    {
+        if (_tablesHeader == null || _tableSizes == null || _metadataRoot == null)
+            return false;
+
+        // Name must be exactly "AsReadOnly"
+        uint nameIdx = MetadataReader.GetMemberRefName(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
+        if (name == null)
+            return false;
+        if (name[0] != 'A' || name[1] != 's' || name[2] != 'R' || name[3] != 'e' ||
+            name[4] != 'a' || name[5] != 'd' || name[6] != 'O' || name[7] != 'n' ||
+            name[8] != 'l' || name[9] != 'y' || name[10] != 0)
+            return false;
+
+        // Parent must be a TypeRef to System.Array
+        CodedIndex classRef = MetadataReader.GetMemberRefClass(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        if (classRef.Table != MetadataTableId.TypeRef)
+            return false;
+
+        uint typeNameIdx = MetadataReader.GetTypeRefName(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        uint typeNsIdx = MetadataReader.GetTypeRefNamespace(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        byte* typeName = MetadataReader.GetString(ref *_metadataRoot, typeNameIdx);
+        byte* typeNs = MetadataReader.GetString(ref *_metadataRoot, typeNsIdx);
+        if (typeName == null || typeNs == null)
+            return false;
+
+        // "Array"
+        if (typeName[0] != 'A' || typeName[1] != 'r' || typeName[2] != 'r' ||
+            typeName[3] != 'a' || typeName[4] != 'y' || typeName[5] != 0)
+            return false;
+
+        // "System"
+        if (typeNs[0] != 'S' || typeNs[1] != 'y' || typeNs[2] != 's' || typeNs[3] != 't' ||
+            typeNs[4] != 'e' || typeNs[5] != 'm' || typeNs[6] != 0)
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Check if a MemberRef row refers to
+    /// System.Runtime.InteropServices.MemoryMarshal.GetReference&lt;T&gt;.
+    /// </summary>
+    private static bool IsMemoryMarshalGetReferenceMemberRef(uint memberRefRowId)
+    {
+        if (_tablesHeader == null || _tableSizes == null || _metadataRoot == null)
+            return false;
+
+        // Name must be exactly "GetReference"
+        uint nameIdx = MetadataReader.GetMemberRefName(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
+        if (name == null)
+            return false;
+        if (name[0] != 'G' || name[1] != 'e' || name[2] != 't' || name[3] != 'R' ||
+            name[4] != 'e' || name[5] != 'f' || name[6] != 'e' || name[7] != 'r' ||
+            name[8] != 'e' || name[9] != 'n' || name[10] != 'c' || name[11] != 'e' ||
+            name[12] != 0)
+            return false;
+
+        // Parent must be a TypeRef to System.Runtime.InteropServices.MemoryMarshal
+        CodedIndex classRef = MetadataReader.GetMemberRefClass(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        if (classRef.Table != MetadataTableId.TypeRef)
+            return false;
+
+        uint typeNameIdx = MetadataReader.GetTypeRefName(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        uint typeNsIdx = MetadataReader.GetTypeRefNamespace(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        byte* typeName = MetadataReader.GetString(ref *_metadataRoot, typeNameIdx);
+        byte* typeNs = MetadataReader.GetString(ref *_metadataRoot, typeNsIdx);
+        if (typeName == null || typeNs == null)
+            return false;
+
+        // "MemoryMarshal"
+        if (typeName[0] != 'M' || typeName[1] != 'e' || typeName[2] != 'm' || typeName[3] != 'o' ||
+            typeName[4] != 'r' || typeName[5] != 'y' || typeName[6] != 'M' || typeName[7] != 'a' ||
+            typeName[8] != 'r' || typeName[9] != 's' || typeName[10] != 'h' || typeName[11] != 'a' ||
+            typeName[12] != 'l' || typeName[13] != 0)
+            return false;
+
+        // "System.Runtime.InteropServices"
+        if (typeNs[0] != 'S' || typeNs[1] != 'y' || typeNs[2] != 's' || typeNs[3] != 't' ||
+            typeNs[4] != 'e' || typeNs[5] != 'm' || typeNs[6] != '.' || typeNs[7] != 'R' ||
+            typeNs[8] != 'u' || typeNs[9] != 'n' || typeNs[10] != 't' || typeNs[11] != 'i' ||
+            typeNs[12] != 'm' || typeNs[13] != 'e' || typeNs[14] != '.' || typeNs[15] != 'I' ||
+            typeNs[16] != 'n' || typeNs[17] != 't' || typeNs[18] != 'e' || typeNs[19] != 'r' ||
+            typeNs[20] != 'o' || typeNs[21] != 'p' || typeNs[22] != 'S' || typeNs[23] != 'e' ||
+            typeNs[24] != 'r' || typeNs[25] != 'v' || typeNs[26] != 'i' || typeNs[27] != 'c' ||
+            typeNs[28] != 'e' || typeNs[29] != 's' || typeNs[30] != 0)
             return false;
 
         return true;
@@ -6528,7 +6688,7 @@ public static unsafe class MetadataIntegration
             if (!jitResult.Success)
             {
                 // Check if it failed because of recursion (method being compiled)
-                info = CompiledMethodRegistry.Lookup(token, _currentAssemblyId);
+                info = CompiledMethodRegistry.LookupTolerant(token, _currentAssemblyId);
                 if (info != null && info->IsBeingCompiled)
                 {
                     // Recursive call - return info for indirect call
@@ -6548,7 +6708,29 @@ public static unsafe class MetadataIntegration
 
             // Now look it up again - should be registered
             // IMPORTANT: Use the same assembly ID we passed to CompileMethod
-            info = CompiledMethodRegistry.Lookup(token, _currentAssemblyId);
+            info = CompiledMethodRegistry.LookupTolerant(token, _currentAssemblyId);
+            if (info != null && !info->IsCompiled && info->IsBeingCompiled && info->NativeCode != null)
+            {
+                // Mutual recursion between methods being compiled (A -> B -> A).
+                // The reserve path pre-allocated a code buffer and reported it as
+                // the compilation result; the outer compilation copies the real
+                // code into that buffer on completion (CompleteCompilation).
+                // Emit an indirect call through the registry entry.
+                result.NativeCode = null;
+                result.ArgCount = info->ArgCount;
+                result.ReturnKind = info->ReturnKind;
+                result.ReturnStructSize = info->ReturnStructSize;
+                result.HasThis = info->HasThis;
+                result.IsValid = true;
+                result.IsVirtual = info->IsVirtual;
+                result.VtableSlot = info->VtableSlot;
+                result.MethodTable = info->MethodTable;
+                result.IsInterfaceMethod = info->IsInterfaceMethod;
+                result.InterfaceMT = info->InterfaceMT;
+                result.InterfaceMethodSlot = info->InterfaceMethodSlot;
+                result.RegistryEntry = info;  // Indirect call through the buffer
+                return true;
+            }
             if (info == null || !info->IsCompiled)
             {
                 DebugConsole.Write("[MetaInt] Method 0x");

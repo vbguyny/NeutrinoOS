@@ -672,6 +672,38 @@ public static unsafe class CompiledMethodRegistry
     }
 
     /// <summary>
+    /// Find the in-flight (reserved, not yet compiled) entry for a method.
+    /// Used by CompleteCompilation/CancelCompilation when the type-arg context
+    /// hash has drifted since the reservation was made (ReserveForCompilation
+    /// can run inside nested generic resolution where the current context
+    /// differs from the one captured at reserve time).
+    /// </summary>
+    private static CompiledMethodInfo* FindInFlightEntry(uint token, uint assemblyId)
+    {
+        if (!_initialized || token == 0)
+            return null;
+
+        for (int b = 0; b < _blockCount; b++)
+        {
+            MethodBlock* block = _blocks[b];
+            if (block == null || block->IsEmpty)
+                continue;
+
+            CompiledMethodInfo* entries = block->GetEntries();
+            for (int i = 0; i < MethodBlock.EntriesPerBlock; i++)
+            {
+                if (entries[i].Token == token &&
+                    entries[i].AssemblyId == assemblyId &&
+                    entries[i].IsBeingCompiled)
+                {
+                    return &entries[i];
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Complete a reserved method compilation.
     /// Sets the native code pointer and marks as compiled.
     /// If a buffer was pre-allocated for recursive calls, copies code there.
@@ -679,6 +711,11 @@ public static unsafe class CompiledMethodRegistry
     public static bool CompleteCompilation(uint token, void* code, uint assemblyId = 0, uint codeSize = 0)
     {
         CompiledMethodInfo* entry = Lookup(token, assemblyId);
+        if (entry == null)
+        {
+            // Context-hash drift: fall back to the in-flight reservation.
+            entry = FindInFlightEntry(token, assemblyId);
+        }
         if (entry == null)
             return false;
 
@@ -702,12 +739,69 @@ public static unsafe class CompiledMethodRegistry
     }
 
     /// <summary>
+    /// Look up a compiled method tolerant of type-arg-context drift. Call
+    /// resolution can run with a different ambient type-arg context than the
+    /// one captured when the method was compiled (nested generic resolution
+    /// leaks type-arg state into the enclosing compile), so the exact-hash
+    /// lookup can miss an entry that is actually present. Tries, in order:
+    /// exact hash, non-generic entry (hash 0), any compiled entry, and finally
+    /// an in-flight reservation. Used by call resolution paths only.
+    /// </summary>
+    public static CompiledMethodInfo* LookupTolerant(uint token, uint assemblyId)
+    {
+        if (!_initialized || token == 0)
+            return null;
+
+        // The exact-hash lookup can return a stub entry (an uncompiled virtual
+        // definition registered for vtable purposes, or the internal virtual
+        // fallback in Lookup) instead of the compiled entry stored under a
+        // drifted hash. Only accept the exact result when it is usable;
+        // otherwise keep scanning for a compiled/in-flight entry.
+        CompiledMethodInfo* exact = Lookup(token, assemblyId);
+        if (exact != null && (exact->IsCompiled || exact->IsBeingCompiled))
+            return exact;
+
+        CompiledMethodInfo* hashZero = null;
+        CompiledMethodInfo* anyCompiled = null;
+        CompiledMethodInfo* inFlight = null;
+        for (int b = 0; b < _blockCount; b++)
+        {
+            MethodBlock* block = _blocks[b];
+            if (block == null || block->IsEmpty)
+                continue;
+
+            CompiledMethodInfo* entries = block->GetEntries();
+            for (int i = 0; i < MethodBlock.EntriesPerBlock; i++)
+            {
+                if (entries[i].Token != token || entries[i].AssemblyId != assemblyId)
+                    continue;
+                if (hashZero == null && entries[i].TypeArgHash == 0 && entries[i].IsCompiled)
+                    hashZero = &entries[i];
+                if (anyCompiled == null && entries[i].IsCompiled)
+                    anyCompiled = &entries[i];
+                if (inFlight == null && entries[i].IsBeingCompiled)
+                    inFlight = &entries[i];
+            }
+        }
+        if (hashZero != null)
+            return hashZero;
+        if (anyCompiled != null)
+            return anyCompiled;
+        return inFlight;
+    }
+
+    /// <summary>
     /// Cancel a reserved compilation (e.g., on failure).
     /// Clears the IsBeingCompiled flag so the method can be retried later.
     /// </summary>
     public static bool CancelCompilation(uint token, uint assemblyId = 0)
     {
         CompiledMethodInfo* entry = Lookup(token, assemblyId);
+        if (entry == null)
+        {
+            // Context-hash drift: fall back to the in-flight reservation.
+            entry = FindInFlightEntry(token, assemblyId);
+        }
         if (entry == null)
             return false;
 
@@ -807,6 +901,13 @@ public static unsafe class CompiledMethodRegistry
     /// <summary>
     /// Set the MethodTable for an already-registered method (typically a constructor).
     /// Called after JIT compilation to associate the constructor with its type.
+    /// This runs after the compilation context is restored, so the ambient
+    /// type-arg hash can differ from the reservation's: the exact lookup is
+    /// preferred, and only on a miss does it fall back to the in-flight
+    /// reservation. Deliberately NOT LookupTolerant: accepting an arbitrary
+    /// same-token entry here attaches the MethodTable to ANOTHER generic
+    /// instantiation's entry (observed: corrupted interface dispatch on the
+    /// NIC boot path - a virtual call dereferenced the value 1).
     /// </summary>
     /// <param name="token">Metadata token of the method.</param>
     /// <param name="methodTable">MethodTable of the declaring type.</param>
@@ -818,6 +919,12 @@ public static unsafe class CompiledMethodRegistry
             return false;
 
         CompiledMethodInfo* info = Lookup(token, assemblyId);
+        if (info == null || (!info->IsCompiled && !info->IsBeingCompiled))
+        {
+            CompiledMethodInfo* inFlight = FindInFlightEntry(token, assemblyId);
+            if (inFlight != null)
+                info = inFlight;
+        }
         if (info == null)
             return false;
 

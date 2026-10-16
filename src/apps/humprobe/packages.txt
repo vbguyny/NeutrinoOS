@@ -1,0 +1,3 @@
+# humprobe - M8.1 Humanizer boundary probe (docs/NUGET.md).
+# One "<PackageId> <Version>" per line; net10.0 assets only.
+Humanizer.Core 3.0.10

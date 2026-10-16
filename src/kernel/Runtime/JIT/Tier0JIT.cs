@@ -549,6 +549,28 @@ public static unsafe class Tier0JIT
                 CompiledMethodRegistry.CompleteCompilation(
                     methodToken, (void*)tokenEntry.NativeCode, assemblyId, 0);
             }
+
+            // Constructors need their declaring type's MethodTable so newobj can
+            // allocate the object before calling the (already native) ctor body.
+            // The JIT-compile path below handles this; the bridge path returns
+            // early, so it must do the same.
+            {
+                uint bridgeNameIdx = MetadataReader.GetMethodDefName(ref assembly->Tables, ref assembly->Sizes, methodRid);
+                byte* bridgeName = MetadataReader.GetString(ref assembly->Metadata, bridgeNameIdx);
+                if (IsConstructor(bridgeName))
+                {
+                    uint bridgedDeclType = AssemblyLoader.FindDeclaringType(assemblyId, methodToken);
+                    if (bridgedDeclType != 0)
+                    {
+                        MethodTable* bridgedMt = AssemblyLoader.ResolveType(assemblyId, bridgedDeclType);
+                        if (bridgedMt != null)
+                        {
+                            CompiledMethodRegistry.SetMethodTable(methodToken, bridgedMt, assemblyId);
+                        }
+                    }
+                }
+            }
+
             RestoreContext(savedAsmId);
             return JitResult.Ok((void*)tokenEntry.NativeCode, 0);
         }

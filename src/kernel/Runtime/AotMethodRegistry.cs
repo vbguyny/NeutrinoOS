@@ -495,6 +495,17 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string, int, int, char[]>)&StringHelpers.ToCharArrayRange,
             2, ReturnKind.IntPtr, true, false);
 
+        // String.Create<TState>(int length, TState state, SpanAction<char, TState> action)
+        // (static, generic) - the JIT resolves the generic MethodSpec to this entry.
+        // Allocates the string and invokes the callback through the raw delegate
+        // layout (target +0x08, function pointer +0x20); the char span is passed
+        // as a pointer to a 16-byte {data, length} descriptor, matching the JIT's
+        // by-pointer convention for 16-byte struct arguments.
+        Register(
+            "System.String", "Create",
+            (nint)(delegate*<int, object?, object?, string>)&StringHelpers.CreateString,
+            3, ReturnKind.IntPtr, false, false);
+
         // String.IsNullOrEmpty (static method)
         Register(
             "System.String", "IsNullOrEmpty",
@@ -506,6 +517,59 @@ public static unsafe class AotMethodRegistry
             "System.String", "Equals",
             (nint)(delegate*<string, string?, bool>)&StringHelpers.Equals,
             1, ReturnKind.Int32, true, false);
+
+        // String.Equals(string, string, StringComparison) - static 3-arg overload
+        // (used by Tomlyn's serializer reader; TomlReader::Read). The signature
+        // hash keeps it distinct from the other Equals registrations.
+        RegisterWithSignature(
+            "System.String", "Equals",
+            (nint)(delegate*<string?, string?, StringComparison, bool>)&StringHelpers.EqualsStatic,
+            3, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_STRING, ELEMENT_TYPE_VALUETYPE));
+
+        // String.Equals(string, string) - static 2-arg overload.
+        Register(
+            "System.String", "Equals",
+            (nint)(delegate*<string?, string?, bool>)&StringHelpers.EqualsStatic2,
+            2, ReturnKind.Int32, false, false);
+
+        // Char.ConvertToUtf32(char, char) - static; Tomlyn's lexer combines
+        // UTF-16 surrogate pairs while decoding \u escapes. Signature hash
+        // separates it from the (string, int) overload.
+        RegisterWithSignature(
+            "System.Char", "ConvertToUtf32",
+            (nint)(delegate*<char, char, int>)&StringHelpers.ConvertToUtf32Chars,
+            2, ReturnKind.Int32, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_CHAR, ELEMENT_TYPE_CHAR));
+
+        // Char.ConvertFromUtf32(int) - static; counterpart used when the lexer
+        // re-encodes code points while unescaping.
+        Register(
+            "System.Char", "ConvertFromUtf32",
+            (nint)(delegate*<int, string>)&StringHelpers.ConvertFromUtf32String,
+            1, ReturnKind.IntPtr, false, false);
+
+        // Char classification statics used by package lexers/parsers.
+        Register(
+            "System.Char", "IsDigit",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsDigit,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsControl",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsControl,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsSurrogate",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsSurrogate,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsHighSurrogate",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsHighSurrogate,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsLowSurrogate",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsLowSurrogate,
+            1, ReturnKind.Int32, false, false);
 
         // String.op_Equality (static) - 2 string parameters
         Register(
@@ -675,6 +739,41 @@ public static unsafe class AotMethodRegistry
             "System.String", "ToUpper",
             (nint)(delegate*<string, string>)&StringHelpers.ToUpperString,
             0, ReturnKind.IntPtr, true, false);
+
+        // String.ToUpperInvariant() / ToLowerInvariant() - 0 parameters,
+        // HasThis=true (the device has no culture data; casing is ASCII).
+        Register(
+            "System.String", "ToUpperInvariant",
+            (nint)(delegate*<string, string>)&StringHelpers.ToUpperInvariantString,
+            0, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.String", "ToLowerInvariant",
+            (nint)(delegate*<string, string>)&StringHelpers.ToLowerInvariantString,
+            0, ReturnKind.IntPtr, true, false);
+
+        // String.EndsWith(string, StringComparison) / StartsWith(string, StringComparison)
+        // - 2 parameters, HasThis=true. Culture modes approximate to ordinal /
+        // ordinal-ignore-case (no culture data on device).
+        Register(
+            "System.String", "EndsWith",
+            (nint)(delegate*<string, string?, StringComparison, bool>)&StringHelpers.EndsWithComparison,
+            2, ReturnKind.Int32, true, false);
+        Register(
+            "System.String", "StartsWith",
+            (nint)(delegate*<string, string?, StringComparison, bool>)&StringHelpers.StartsWithComparison,
+            2, ReturnKind.Int32, true, false);
+
+        // String.IsNullOrWhiteSpace(string) - static 1-arg.
+        Register(
+            "System.String", "IsNullOrWhiteSpace",
+            (nint)(delegate*<string?, bool>)&StringHelpers.IsNullOrWhiteSpaceString,
+            1, ReturnKind.Int32, false, false);
+
+        // String.TrimEnd(char[]) - 1 parameter, HasThis=true.
+        Register(
+            "System.String", "TrimEnd",
+            (nint)(delegate*<string, char[]?, string>)&StringHelpers.TrimEndChars,
+            1, ReturnKind.IntPtr, true, false);
 
         // String.Split(char separator, StringSplitOptions options) - instance
         // method, 2 parameters, returns string[]. Roslyn binds "s.Split(',')"
@@ -1480,6 +1579,112 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<nint, string>)&PrimitiveHelpers.Double_ToString,
             0, ReturnKind.IntPtr, true, true);
 
+        // ToString(IFormatProvider) / ToString(string, IFormatProvider) variants -
+        // packages (Tomlyn) pass culture objects while formatting values.
+        // Providers (and float format strings) are ignored on device.
+        Register(
+            "System.Int32", "ToString",
+            (nint)(delegate*<nint, object?, string>)&PrimitiveHelpers.Int32_ToString_Provider,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Int64", "ToString",
+            (nint)(delegate*<nint, object?, string>)&PrimitiveHelpers.Int64_ToString_Provider,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.UInt32", "ToString",
+            (nint)(delegate*<nint, object?, string>)&PrimitiveHelpers.UInt32_ToString_Provider,
+            1, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Single", "ToString",
+            (nint)(delegate*<nint, string?, object?, string>)&PrimitiveHelpers.Single_ToString_Format,
+            2, ReturnKind.IntPtr, true, false);
+        Register(
+            "System.Double", "ToString",
+            (nint)(delegate*<nint, string?, object?, string>)&PrimitiveHelpers.Double_ToString_Format,
+            2, ReturnKind.IntPtr, true, false);
+
+        // System.Math - korlib's Math.cs is excluded from korlib.dll IL;
+        // Tomlyn's lexer validates numeric tokens with Abs/Max/Min.
+        Register(
+            "System.Math", "Abs",
+            (nint)(delegate*<double, double>)&MathHelpers.AbsDouble,
+            1, ReturnKind.Float64, false, false);
+        Register(
+            "System.Math", "Max",
+            (nint)(delegate*<int, int, int>)&MathHelpers.MaxInt,
+            2, ReturnKind.Int32, false, false);
+        Register(
+            "System.Math", "Min",
+            (nint)(delegate*<int, int, int>)&MathHelpers.MinInt,
+            2, ReturnKind.Int32, false, false);
+
+        // System.Globalization.CultureInfo.get_InvariantCulture - korlib's
+        // CultureInfo.cs is excluded from korlib.dll IL; Tomlyn passes the
+        // invariant culture while parsing/formatting values.
+        Register(
+            "System.Globalization.CultureInfo", "get_InvariantCulture",
+            (nint)(delegate*<System.Globalization.CultureInfo>)&CultureHelpers.GetInvariantCulture,
+            0, ReturnKind.IntPtr, false, false);
+
+        // DateTime.TryParseExact(string, string, IFormatProvider, DateTimeStyles,
+        // out DateTime) - Tomlyn's lexer parses TOML datetime tokens with it.
+        // The device bridge parses the ISO/TOML subset directly (the format
+        // string is treated as a hint; unsupported inputs return false).
+        Register(
+            "System.DateTime", "TryParseExact",
+            (nint)(delegate*<string?, string?, object?, int, nint, bool>)&DateTimeHelpers.TryParseExact,
+            5, ReturnKind.Int32, false, false);
+
+        // DateTime.TryParse(string, IFormatProvider, DateTimeStyles, out DateTime)
+        // - culture-free ISO/TOML subset (same parser, format ignored).
+        Register(
+            "System.DateTime", "TryParse",
+            (nint)(delegate*<string?, object?, int, nint, bool>)&DateTimeHelpers.TryParse,
+            4, ReturnKind.Int32, false, false);
+
+        // MemoryExtensions.AsSpan<char>(char[], int, int) - spans over the
+        // package's read buffers (Tomlyn's lexer). Hidden-return convention:
+        // (retBuf, array, start, length).
+        Register(
+            "System.MemoryExtensions", "AsSpan",
+            (nint)(delegate*<nint, char[]?, int, int, void>)&SpanHelpers.AsSpanCharArrayRange,
+            3, ReturnKind.Struct, false, false, 17);
+
+        // MemoryExtensions.AsSpan<char>(string) / AsSpan<char>(char[]) - the
+        // 1-arg overloads (StringValues' joiner spans each element string and
+        // Tomlyn spans freshly allocated char[] buffers). Signature hash keeps
+        // the two overloads apart; hidden-return convention (retBuf, source).
+        RegisterWithSignature(
+            "System.MemoryExtensions", "AsSpan",
+            (nint)(delegate*<nint, string?, void>)&SpanHelpers.AsSpanString,
+            1, ReturnKind.Struct, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING), 17);
+        RegisterWithSignature(
+            "System.MemoryExtensions", "AsSpan",
+            (nint)(delegate*<nint, char[]?, void>)&SpanHelpers.InitSpanFromCharArray,
+            1, ReturnKind.Struct, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_SZARRAY), 17);
+
+        // MemoryExtensions.AsSpan<char>(string, int, int) - the range overload
+        // over strings. MUST be signature-hashed: without an exact-hash entry
+        // the resolver's arg-count fallback binds string calls to the
+        // AsSpan(char[], int, int) bridge above, which reinterprets the string
+        // as an array (strings keep chars at +12, arrays their data at +16, so
+        // the span data landed two chars into the buffer - StringSegment's
+        // StartsWith/Equals/IndexOf all returned wrong values on device).
+        RegisterWithSignature(
+            "System.MemoryExtensions", "AsSpan",
+            (nint)(delegate*<nint, string?, int, int, void>)&SpanHelpers.AsSpanStringRange,
+            3, ReturnKind.Struct, false, false,
+            ComputeSignatureHash(ELEMENT_TYPE_STRING, ELEMENT_TYPE_I4, ELEMENT_TYPE_I4), 17);
+
+        // Double.TryParse(ReadOnlySpan<char>, NumberStyles, IFormatProvider,
+        // out double) - culture-free float parsing for TOML values.
+        Register(
+            "System.Double", "TryParse",
+            (nint)(delegate*<nint, int, object?, nint, bool>)&PrimitiveHelpers.Double_TryParse_NumberStyles,
+            4, ReturnKind.Int32, false, false);
+
         // =========================================================================
         // GetHashCode methods for all primitive types
         // =========================================================================
@@ -2204,6 +2409,55 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan8,
             1, ReturnKind.Struct, true, false, 17);
 
+        // System.Span`1.Slice(int, int) / ReadOnlySpan`1.Slice(int, int) - 2 explicit
+        // params (start, length), same hidden-return convention as the 1-arg form.
+        // Used by packages that slice with explicit lengths (Tomlyn's lexer).
+        Register(
+            "System.ReadOnlySpan`1", "Slice",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan1,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i2",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan2,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i4",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan4,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i8",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan8,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan1,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i2",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan2,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i4",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan4,
+            2, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i8",
+            (nint)(delegate*<nint, nint, int, int, void>)&SpanHelpers.SliceLenSpan8,
+            2, ReturnKind.Struct, true, false, 17);
+
+        // ReadOnlySpan`1.op_Implicit(Span`1) / Span`1.op_Implicit(Span`1) -
+        // the implicit span conversion copies the {data, length} descriptor
+        // through the hidden return buffer (Tomlyn assigns AsSpan() results
+        // to ReadOnlySpan<char> locals).
+        Register(
+            "System.ReadOnlySpan`1", "op_Implicit",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.SpanToReadOnlySpan,
+            1, ReturnKind.Struct, false, false, 17);
+        Register(
+            "System.Span`1", "op_Implicit",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.SpanToReadOnlySpan,
+            1, ReturnKind.Struct, false, false, 17);
+
         // System.Span`1.CopyTo(ReadOnlySpan<T>) / ReadOnlySpan`1.CopyTo(ReadOnlySpan<T>)
         // - 1 explicit param (destination span, passed by reference per the
         // x64 struct-arg convention). $iN variants selected by element size.
@@ -2271,6 +2525,28 @@ public static unsafe class AotMethodRegistry
             "System.Span`1", "get_IsEmpty",
             (nint)(delegate*<nint, bool>)&SpanHelpers.IsEmpty,
             0, ReturnKind.Int32, true, false);
+
+        // System.Span`1.set_Item - 2 explicit params (index, value).
+        // Used by string.Create callbacks (SpanAction<char, TState> lambdas
+        // write through the span indexer). Element-size variants mirror
+        // get_Item: byte-strided default plus 2/4/8-byte element variants
+        // selected by the resolver from the span's generic argument.
+        Register(
+            "System.Span`1", "set_Item",
+            (nint)(delegate*<nint, int, byte, void>)&SpanHelpers.SetByte,
+            2, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "set_Item$i2",
+            (nint)(delegate*<nint, int, short, void>)&SpanHelpers.SetShort,
+            2, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "set_Item$i4",
+            (nint)(delegate*<nint, int, int, void>)&SpanHelpers.SetInt,
+            2, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "set_Item$i8",
+            (nint)(delegate*<nint, int, long, void>)&SpanHelpers.SetLong,
+            2, ReturnKind.Void, true, false);
 
         // System.Span`1.GetPinnableReference - 0 explicit params (returns ref to first element)
         // Used by 'fixed' statement - returns pointer to span data
@@ -2839,6 +3115,19 @@ public static unsafe class AotMethodRegistry
         if (StringMatches(typeName, "System.GC"))
             return true;
 
+        // Math / DateTime / CultureInfo bridges (packages like Tomlyn call
+        // these from lexers and serializers; the kernel supplies AOT helpers)
+        if (StringMatches(typeName, "System.Math"))
+            return true;
+        if (StringMatches(typeName, "System.DateTime"))
+            return true;
+        if (StringMatches(typeName, "System.Globalization.CultureInfo"))
+            return true;
+
+        // MemoryExtensions.AsSpan over package buffers
+        if (StringMatches(typeName, "System.MemoryExtensions"))
+            return true;
+
         // Span types (for UTF-8 literals and inline array support)
         if (StringMatches(typeName, "System.Span`1"))
             return true;
@@ -3012,7 +3301,17 @@ public static unsafe class AotMethodRegistry
         int pos = 0;
 
         // Skip calling convention byte
+        byte callConv = sig[pos];
         pos++;
+
+        // Generic methods (GENERIC flag 0x10) carry a compressed generic
+        // parameter count before the real parameter count (same shape the
+        // param-count parsing in MetadataIntegration handles). Skipping it
+        // keeps the hash aligned with the real parameter types; without
+        // this the first hashed byte lands on the return type marker and
+        // every generic method hashes identically for its leading shape.
+        if ((callConv & 0x10) != 0)
+            pos++;
 
         // Read parameter count (compressed uint)
         int paramCount = 0;
@@ -3297,6 +3596,150 @@ public static unsafe class StringHelpers
     }
 
     /// <summary>
+    /// Wrapper for the static String.Equals(string, string, StringComparison) overload.
+    /// The kernel compiles against the korlib String surface (no 3-arg
+    /// string.Equals, no culture data), so culture modes are approximated with
+    /// ordinal / ordinal-ignore-case compares.
+    /// </summary>
+    public static bool EqualsStatic(string? a, string? b, StringComparison comparisonType)
+    {
+        if (ReferenceEquals(a, b))
+            return true;
+        if (a == null || b == null)
+            return false;
+
+        bool ignoreCase = comparisonType == StringComparison.OrdinalIgnoreCase ||
+                          comparisonType == StringComparison.InvariantCultureIgnoreCase ||
+                          comparisonType == StringComparison.CurrentCultureIgnoreCase;
+
+        if (!ignoreCase)
+            return OpEquality(a, b);
+
+        int len = a.Length;
+        if (len != b.Length)
+            return false;
+        for (int i = 0; i < len; i++)
+        {
+            if (char.ToUpper(a[i]) != char.ToUpper(b[i]))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Wrapper for Char.ConvertToUtf32(char, char) - combines a UTF-16 surrogate
+    /// pair (0x10000 + ((high - 0xD800) &lt;&lt; 10) + (low - 0xDC00)). The lexer
+    /// only combines pairs it already classified as valid surrogates.
+    /// </summary>
+    public static int ConvertToUtf32Chars(char highSurrogate, char lowSurrogate)
+    {
+        return (((int)highSurrogate - 0xD800) << 10) + ((int)lowSurrogate - 0xDC00) + 0x10000;
+    }
+
+    /// <summary>
+    /// Wrapper for Char.ConvertFromUtf32(int) - encodes a code point as a one-
+    /// or two-char UTF-16 string (the kernel compiles against korlib, so this
+    /// builds the char array and goes through String.Ctor_CharArray).
+    /// </summary>
+    public static string ConvertFromUtf32String(int utf32)
+    {
+        if (utf32 < 0 || utf32 > 0x10FFFF || (utf32 >= 0xD800 && utf32 <= 0xDFFF))
+            throw new ArgumentOutOfRangeException(nameof(utf32));
+
+        if (utf32 <= 0xFFFF)
+        {
+            char[] single = new char[1];
+            single[0] = (char)utf32;
+            return string.Ctor_CharArray(single);
+        }
+
+        utf32 -= 0x10000;
+        char[] pair = new char[2];
+        pair[0] = (char)((utf32 >> 10) + 0xD800);
+        pair[1] = (char)((utf32 & 0x3FF) + 0xDC00);
+        return string.Ctor_CharArray(pair);
+    }
+
+    /// <summary>Wrapper for Char.IsDigit(char).</summary>
+    public static bool Char_IsDigit(char c) => c >= '0' && c <= '9';
+
+    /// <summary>Wrapper for Char.IsControl(char).</summary>
+    public static bool Char_IsControl(char c) => c < 0x20 || (c >= 0x7F && c < 0xA0);
+
+    /// <summary>Wrapper for Char.IsSurrogate(char).</summary>
+    public static bool Char_IsSurrogate(char c) => c >= 0xD800 && c <= 0xDFFF;
+
+    /// <summary>Wrapper for Char.IsHighSurrogate(char).</summary>
+    public static bool Char_IsHighSurrogate(char c) => c >= 0xD800 && c <= 0xDBFF;
+
+    /// <summary>Wrapper for Char.IsLowSurrogate(char).</summary>
+    public static bool Char_IsLowSurrogate(char c) => c >= 0xDC00 && c <= 0xDFFF;
+
+    /// <summary>
+    /// Wrapper for the static String.Equals(string, string) overload.
+    /// </summary>
+    public static bool EqualsStatic2(string? a, string? b)
+    {
+        if (ReferenceEquals(a, b))
+            return true;
+        if (a == null || b == null)
+            return false;
+        return OpEquality(a, b);
+    }
+
+    /// <summary>
+    /// Wrapper for String.IsNullOrWhiteSpace (korlib implements it over the
+    /// ASCII whitespace set).
+    /// </summary>
+    public static bool IsNullOrWhiteSpaceString(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value);
+    }
+
+    private static bool IsWhitespaceChar(char c)
+    {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+    }
+
+    /// <summary>
+    /// Wrapper for String.TrimEnd(char[]) - trims any of the given characters
+    /// (or whitespace when the set is null/empty) from the end of the string.
+    /// </summary>
+    public static string TrimEndChars(string s, char[]? trimChars)
+    {
+        if (s == null)
+            return null;
+
+        int len = s.Length;
+        if (trimChars == null || trimChars.Length == 0)
+        {
+            int e = len;
+            while (e > 0 && IsWhitespaceChar(s[e - 1]))
+                e--;
+            return s.Substring(0, e);
+        }
+
+        int end = len;
+        while (end > 0)
+        {
+            char c = s[end - 1];
+            bool inSet = false;
+            for (int k = 0; k < trimChars.Length; k++)
+            {
+                if (trimChars[k] == c)
+                {
+                    inSet = true;
+                    break;
+                }
+            }
+            if (!inSet)
+                break;
+            end--;
+        }
+        return s.Substring(0, end);
+    }
+
+    /// <summary>
     /// Wrapper for String.op_Equality (== operator).
     /// </summary>
     public static bool OpEquality(string? a, string? b)
@@ -3355,6 +3798,78 @@ public static unsafe class StringHelpers
         fixed (char* ptr = &s.GetPinnableReference())
         {
             return (nint)ptr;
+        }
+    }
+
+    /// <summary>
+    /// 16-byte descriptor for a Span&lt;char&gt; argument. The JIT passes 16-byte
+    /// structs (spans) by pointer with a {data, length} layout; this mirrors
+    /// what SpanHelpers reads when it operates on a span.
+    /// </summary>
+    private struct RawCharSpan
+    {
+        public nint Data;
+        public int Length;
+        public int Pad;
+    }
+
+    /// <summary>
+    /// Wrapper for String.Create&lt;TState&gt;(int length, TState state,
+    /// SpanAction&lt;char, TState&gt; action). Allocates the destination string and
+    /// invokes the callback with a span over its characters. The invocation is
+    /// performed with a raw call to the delegate's function pointer because the
+    /// callback's argument (Span&lt;char&gt;) is a ref-like type that the JIT's
+    /// regular delegate Invoke path cannot marshal; the delegate layout is
+    /// target at +0x08 and function pointer at +0x20 (see JIT delegate ABI).
+    /// </summary>
+    public static unsafe string CreateString(int length, object? state, object? action)
+    {
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
+        if (length < 0)
+            throw new ArgumentOutOfRangeException(nameof(length));
+
+        if (length == 0)
+        {
+            InvokeSpanAction(action, null, 0, state);
+            return string.Empty;
+        }
+
+        string result = string.FastNewString(length);
+        fixed (char* chars = &result.GetPinnableReference())
+        {
+            InvokeSpanAction(action, chars, length, state);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Invokes a delegate whose signature is (Span&lt;char&gt;, TState) directly
+    /// from its raw layout. register usage follows the JIT's call convention:
+    /// instance target -> RCX = target, RDX = &amp;span, R8 = state;
+    /// static target -> RCX = &amp;span, RDX = state.
+    /// </summary>
+    private static unsafe void InvokeSpanAction(object action, char* chars, int length, object? state)
+    {
+        // Load the delegate's target and function pointer from its object layout.
+        byte* obj = *(byte**)System.Runtime.CompilerServices.Unsafe.AsPointer(ref action);
+        nint target = *(nint*)(obj + 8);
+        nint functionPointer = *(nint*)(obj + 32);
+
+        RawCharSpan span;
+        span.Data = (nint)chars;
+        span.Length = length;
+        span.Pad = 0;
+
+        if (target != 0)
+        {
+            ((delegate* managed<nint, nint, object?, void>)functionPointer)(
+                target, (nint)(&span), state);
+        }
+        else
+        {
+            ((delegate* managed<nint, object?, void>)functionPointer)(
+                (nint)(&span), state);
         }
     }
 
@@ -3571,6 +4086,88 @@ public static unsafe class StringHelpers
     public static string ToUpperString(string s)
     {
         return s == null ? null : s.ToUpper();
+    }
+
+    /// <summary>Wrapper for String.ToUpperInvariant() (ASCII casing on device).</summary>
+    public static string ToUpperInvariantString(string s)
+    {
+        return s == null ? null : s.ToUpper();
+    }
+
+    /// <summary>Wrapper for String.ToLowerInvariant() (ASCII casing on device).</summary>
+    public static string ToLowerInvariantString(string s)
+    {
+        return s == null ? null : s.ToLower();
+    }
+
+    /// <summary>
+    /// Wrapper for String.EndsWith(string, StringComparison); culture modes are
+    /// approximated with ordinal / ordinal-ignore-case compares.
+    /// </summary>
+    public static bool EndsWithComparison(string s, string? value, StringComparison comparisonType)
+    {
+        if (s == null)
+            return value == null;
+        if (value == null)
+            return false;
+
+        int len = s.Length;
+        int vlen = value.Length;
+        if (vlen > len)
+            return false;
+
+        bool ignoreCase = comparisonType == StringComparison.OrdinalIgnoreCase ||
+                          comparisonType == StringComparison.InvariantCultureIgnoreCase ||
+                          comparisonType == StringComparison.CurrentCultureIgnoreCase;
+
+        int start = len - vlen;
+        for (int i = 0; i < vlen; i++)
+        {
+            char a = s[start + i];
+            char b = value[i];
+            if (ignoreCase)
+            {
+                a = char.ToUpper(a);
+                b = char.ToUpper(b);
+            }
+            if (a != b)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Wrapper for String.StartsWith(string, StringComparison); culture modes are
+    /// approximated with ordinal / ordinal-ignore-case compares.
+    /// </summary>
+    public static bool StartsWithComparison(string s, string? value, StringComparison comparisonType)
+    {
+        if (s == null)
+            return value == null;
+        if (value == null)
+            return false;
+
+        int vlen = value.Length;
+        if (vlen > s.Length)
+            return false;
+
+        bool ignoreCase = comparisonType == StringComparison.OrdinalIgnoreCase ||
+                          comparisonType == StringComparison.InvariantCultureIgnoreCase ||
+                          comparisonType == StringComparison.CurrentCultureIgnoreCase;
+
+        for (int i = 0; i < vlen; i++)
+        {
+            char a = s[i];
+            char b = value[i];
+            if (ignoreCase)
+            {
+                a = char.ToUpper(a);
+                b = char.ToUpper(b);
+            }
+            if (a != b)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -4404,11 +5001,151 @@ public static unsafe class PrimitiveHelpers
     }
 
     /// <summary>
+    /// Single.ToString(string, IFormatProvider) - format/provider ignored
+    /// (parity with the 0-arg placeholder).
+    /// </summary>
+    public static string Single_ToString_Format(nint thisPtr, string? format, object? provider)
+    {
+        return "Single";  // TODO: Implement proper float formatting
+    }
+
+    /// <summary>
     /// Double.ToString() - placeholder for double formatting.
     /// </summary>
     public static string Double_ToString(nint thisPtr)
     {
         return "Double";  // TODO: Implement proper double formatting
+    }
+
+    /// <summary>
+    /// Double.ToString(string, IFormatProvider) - format/provider ignored
+    /// (parity with the 0-arg placeholder).
+    /// </summary>
+    public static string Double_ToString_Format(nint thisPtr, string? format, object? provider)
+    {
+        return "Double";  // TODO: Implement proper double formatting
+    }
+
+    /// <summary>
+    /// Int32.ToString(IFormatProvider) - provider ignored on device.
+    /// </summary>
+    public static string Int32_ToString_Provider(nint thisPtr, object? provider)
+    {
+        if (thisPtr == 0) return "0";
+        int value = *(int*)(thisPtr + 8);
+        return System.Int32.FormatInt32(value);
+    }
+
+    /// <summary>
+    /// Int64.ToString(IFormatProvider) - provider ignored on device.
+    /// </summary>
+    public static string Int64_ToString_Provider(nint thisPtr, object? provider)
+    {
+        if (thisPtr == 0) return "0";
+        long value = *(long*)(thisPtr + 8);
+        return System.Int64.FormatInt64(value);
+    }
+
+    /// <summary>
+    /// UInt32.ToString(IFormatProvider) - provider ignored on device.
+    /// </summary>
+    public static string UInt32_ToString_Provider(nint thisPtr, object? provider)
+    {
+        if (thisPtr == 0) return "0";
+        uint value = *(uint*)(thisPtr + 8);
+        return System.UInt32.FormatUInt32(value);
+    }
+
+    private static unsafe bool ParseDoubleChars(char* data, int len, out double result)
+    {
+        result = 0;
+        if (data == null)
+            return false;
+
+        int i = 0;
+        bool neg = false;
+        if (i < len && (data[i] == '+' || data[i] == '-'))
+        {
+            neg = data[i] == '-';
+            i++;
+        }
+
+        double value = 0;
+        bool any = false;
+        while (i < len && data[i] >= '0' && data[i] <= '9')
+        {
+            value = value * 10 + (data[i] - '0');
+            i++;
+            any = true;
+        }
+        if (i < len && data[i] == '.')
+        {
+            i++;
+            double scale = 0.1;
+            while (i < len && data[i] >= '0' && data[i] <= '9')
+            {
+                value += (data[i] - '0') * scale;
+                scale *= 0.1;
+                i++;
+                any = true;
+            }
+        }
+        if (!any)
+            return false;
+
+        if (i < len && (data[i] == 'e' || data[i] == 'E'))
+        {
+            i++;
+            bool eneg = false;
+            if (i < len && (data[i] == '+' || data[i] == '-'))
+            {
+                eneg = data[i] == '-';
+                i++;
+            }
+            int exp = 0;
+            bool edig = false;
+            while (i < len && data[i] >= '0' && data[i] <= '9')
+            {
+                exp = exp * 10 + (data[i] - '0');
+                i++;
+                edig = true;
+            }
+            if (!edig)
+                return false;
+            double p = 1;
+            for (int k = 0; k < exp; k++)
+                p *= 10;
+            value = eneg ? value / p : value * p;
+        }
+
+        while (i < len && (data[i] == ' ' || data[i] == '\t'))
+            i++;
+        if (i != len)
+            return false;
+
+        result = neg ? -value : value;
+        return true;
+    }
+
+    /// <summary>
+    /// Double.TryParse(ReadOnlySpan&lt;char&gt;, NumberStyles, IFormatProvider, out double)
+    /// - culture-free ASCII float parsing (Tomlyn parses TOML floats with it).
+    /// The span arrives as a pointer to its 16-byte descriptor.
+    /// </summary>
+    public static unsafe bool Double_TryParse_NumberStyles(nint spanPtr, int styles, object? provider, nint outPtr)
+    {
+        if (spanPtr == 0)
+            return false;
+
+        byte* src = (byte*)spanPtr;
+        char* data = (char*)*(nint*)src;
+        int len = *(int*)(src + 8);
+
+        double value;
+        bool ok = ParseDoubleChars(data, len, out value);
+        if (outPtr != 0)
+            *(double*)outPtr = ok ? value : 0;
+        return ok;
     }
 
     // =========================================================================
@@ -5947,6 +6684,155 @@ public static unsafe class ArgIteratorHelpers
 /// Span<T> is a ref struct with layout: [0..7] = pointer to data, [8..11] = length
 /// These helpers operate on the raw memory layout to support JIT-compiled code.
 /// </summary>
+/// <summary>
+/// Math helpers: korlib's System/Math.cs is excluded from korlib.dll IL
+/// (it is compiled into the kernel), so Math members used by JIT-loaded
+/// packages resolve to these AOT bridges.
+/// </summary>
+public static class MathHelpers
+{
+    public static double AbsDouble(double value)
+    {
+        if (value < 0)
+            return -value;
+        return value;
+    }
+
+    public static int MaxInt(int a, int b) => a >= b ? a : b;
+    public static int MinInt(int a, int b) => a <= b ? a : b;
+}
+
+/// <summary>
+/// Culture helpers: CultureInfo.cs is excluded from korlib.dll IL, and the
+/// kernel compiler cannot code-generate the korlib CultureInfo static
+/// initializer (bflat fails on CultureInfo.get_InvariantCulture). Every
+/// kernel bridge that receives an IFormatProvider ignores it, so the
+/// invariant-culture getter hands out null.
+/// </summary>
+public static class CultureHelpers
+{
+    public static System.Globalization.CultureInfo GetInvariantCulture()
+    {
+        return null;
+    }
+}
+
+/// <summary>
+/// DateTime helpers: parses the ISO/TOML datetime subset the Tomlyn lexer
+/// feeds to DateTime.TryParseExact (date-only, time-only, and combined
+/// forms with optional fractional seconds and Z/±HH:MM offsets).
+/// </summary>
+public static unsafe class DateTimeHelpers
+{
+    private static bool IsDigitChar(char c) => c >= '0' && c <= '9';
+
+    private static int ParseNDigits(string s, int pos, int count)
+    {
+        int value = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (pos + i >= s.Length || !IsDigitChar(s[pos + i]))
+                return -1;
+            value = value * 10 + (s[pos + i] - '0');
+        }
+        return value;
+    }
+
+    public static bool TryParseExact(string? s, string? format, object? provider, int styles, nint outDateTime)
+    {
+        return TryParseIso(s, outDateTime);
+    }
+
+    /// <summary>
+    /// DateTime.TryParse(string, IFormatProvider, DateTimeStyles, out DateTime)
+    /// - culture-free; parses the same ISO/TOML subset.
+    /// </summary>
+    public static bool TryParse(string? s, object? provider, int styles, nint outDateTime)
+    {
+        return TryParseIso(s, outDateTime);
+    }
+
+    private static bool TryParseIso(string? s, nint outDateTime)
+    {
+        if (s == null || s.Length < 5)
+            return false;
+
+        int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millis = 0;
+        bool hasDate = false, hasTime = false;
+        var kind = DateTimeKind.Unspecified;
+        int p = 0;
+
+        // Date: yyyy-MM-dd
+        if (s.Length >= 10 && IsDigitChar(s[0]) && IsDigitChar(s[1]) && IsDigitChar(s[2]) &&
+            IsDigitChar(s[3]) && s[4] == '-')
+        {
+            year = ParseNDigits(s, 0, 4);
+            month = ParseNDigits(s, 5, 2);
+            day = ParseNDigits(s, 8, 2);
+            if (year < 0 || month < 1 || month > 12 || day < 1 || day > 31)
+                return false;
+            hasDate = true;
+            p = 10;
+            if (p < s.Length && (s[p] == 'T' || s[p] == 't' || s[p] == ' '))
+                p++;
+        }
+
+        // Time: HH:mm:ss[.fff...]
+        if (p + 8 <= s.Length && IsDigitChar(s[p]) && IsDigitChar(s[p + 1]) && s[p + 2] == ':')
+        {
+            hour = ParseNDigits(s, p, 2);
+            minute = ParseNDigits(s, p + 3, 2);
+            second = ParseNDigits(s, p + 6, 2);
+            if (hour > 23 || minute > 59 || second > 60)
+                return false;
+            hasTime = true;
+            p += 8;
+
+            if (p < s.Length && s[p] == '.')
+            {
+                p++;
+                int ms = 0, digits = 0;
+                while (p < s.Length && IsDigitChar(s[p]) && digits < 3)
+                {
+                    ms = ms * 10 + (s[p] - '0');
+                    p++;
+                    digits++;
+                }
+                while (p < s.Length && IsDigitChar(s[p]))
+                    p++;
+                while (digits < 3)
+                {
+                    ms *= 10;
+                    digits++;
+                }
+                millis = ms;
+            }
+
+            if (p < s.Length && (s[p] == 'Z' || s[p] == 'z'))
+            {
+                kind = DateTimeKind.Utc;
+                p++;
+            }
+            else if (p < s.Length && (s[p] == '+' || s[p] == '-'))
+            {
+                // ±HH:MM local offset - skip (device stores unspecified kind).
+                p += 6;
+            }
+        }
+
+        if (p != s.Length || (!hasDate && !hasTime))
+            return false;
+
+        DateTime dt = hasDate
+            ? new DateTime(year, month, day, hour, minute, second, millis, kind)
+            : new DateTime(1, 1, 1, hour, minute, second, millis, kind);
+
+        if (outDateTime != 0)
+            *(DateTime*)outDateTime = dt;
+        return true;
+    }
+}
+
 public static unsafe class SpanHelpers
 {
     /// <summary>
@@ -6022,6 +6908,73 @@ public static unsafe class SpanHelpers
     }
 
     /// <summary>
+    /// MemoryExtensions.AsSpan&lt;char&gt;(char[], int, int) - creates a span over
+    /// the given array range, written to the hidden return buffer.
+    /// </summary>
+    public static void AsSpanCharArrayRange(nint resultPtr, char[]? array, int start, int length)
+    {
+        byte* dst = (byte*)resultPtr;
+
+        if (array == null || (uint)start > (uint)array.Length || (uint)length > (uint)(array.Length - start))
+        {
+            *(nint*)dst = 0;
+            *(int*)(dst + 8) = 0;
+            return;
+        }
+
+        char* arrayPtr = (char*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref array[0]);
+        *(nint*)dst = (nint)(arrayPtr + start);
+        *(int*)(dst + 8) = length;
+    }
+
+    /// <summary>
+    /// MemoryExtensions.AsSpan&lt;char&gt;(string) - creates a span over the
+    /// string's characters, written to the hidden return buffer. Works on the
+    /// pinned interior data (strings never move on device; no GC exists).
+    /// </summary>
+    public static unsafe void AsSpanString(nint resultPtr, string? s)
+    {
+        byte* dst = (byte*)resultPtr;
+
+        if (s == null || s.Length == 0)
+        {
+            *(nint*)dst = 0;
+            *(int*)(dst + 8) = 0;
+            return;
+        }
+
+        fixed (char* p = &s.GetPinnableReference())
+        {
+            *(nint*)dst = (nint)p;
+            *(int*)(dst + 8) = s.Length;
+        }
+    }
+
+    /// <summary>
+    /// MemoryExtensions.AsSpan&lt;char&gt;(string, int, int) - span over a string
+    /// range, written to the hidden return buffer. String characters live at
+    /// offset 12 (unlike arrays at 16), so this must never be resolved to the
+    /// char[] range bridge (see the registration comment).
+    /// </summary>
+    public static unsafe void AsSpanStringRange(nint resultPtr, string? s, int start, int length)
+    {
+        byte* dst = (byte*)resultPtr;
+
+        if (s == null || (uint)start > (uint)s.Length || (uint)length > (uint)(s.Length - start))
+        {
+            *(nint*)dst = 0;
+            *(int*)(dst + 8) = 0;
+            return;
+        }
+
+        fixed (char* p = &s.GetPinnableReference())
+        {
+            *(nint*)dst = (nint)(p + start);
+            *(int*)(dst + 8) = length;
+        }
+    }
+
+    /// <summary>
     /// Initialize a Span/ReadOnlySpan&lt;char&gt; from a char array range.
     /// </summary>
     public static void InitSpanFromCharArrayRange(nint spanPtr, char[]? array, int start, int length)
@@ -6063,6 +7016,44 @@ public static unsafe class SpanHelpers
     public static void SliceSpan2(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 2);
     public static void SliceSpan4(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 4);
     public static void SliceSpan8(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 8);
+
+    /// <summary>
+    /// Core of Slice(resultPtr, spanPtr, start, length): writes the sliced span
+    /// (data + start * elemSize, length clamped to the remaining elements) into
+    /// the hidden return buffer at resultPtr.
+    /// </summary>
+    private static void SliceLengthCore(nint resultPtr, nint spanPtr, int start, int length, int elemSize)
+    {
+        byte* src = (byte*)spanPtr;
+        nint data = *(nint*)src;
+        int len = *(int*)(src + 8);
+
+        if (start < 0) start = 0;
+        if (start > len) start = len;
+        if (length < 0 || (uint)length > (uint)(len - start)) length = len - start;
+
+        byte* dst = (byte*)resultPtr;
+        *(nint*)dst = data + (nint)start * elemSize;
+        *(int*)(dst + 8) = length;
+    }
+
+    public static void SliceLenSpan1(nint resultPtr, nint spanPtr, int start, int length) => SliceLengthCore(resultPtr, spanPtr, start, length, 1);
+    public static void SliceLenSpan2(nint resultPtr, nint spanPtr, int start, int length) => SliceLengthCore(resultPtr, spanPtr, start, length, 2);
+    public static void SliceLenSpan4(nint resultPtr, nint spanPtr, int start, int length) => SliceLengthCore(resultPtr, spanPtr, start, length, 4);
+    public static void SliceLenSpan8(nint resultPtr, nint spanPtr, int start, int length) => SliceLengthCore(resultPtr, spanPtr, start, length, 8);
+
+    /// <summary>
+    /// ReadOnlySpan&lt;T&gt;.op_Implicit(Span&lt;T&gt;) - both spans share the
+    /// {data, length} descriptor layout, so the conversion copies it.
+    /// Hidden-return convention: (retBuf, source span pointer).
+    /// </summary>
+    public static void SpanToReadOnlySpan(nint resultPtr, nint spanPtr)
+    {
+        byte* src = (byte*)spanPtr;
+        byte* dst = (byte*)resultPtr;
+        *(nint*)dst = *(nint*)src;
+        *(int*)(dst + 8) = *(int*)(src + 8);
+    }
 
     /// <summary>
     /// Core of CopyTo(thisPtr, destSpanPtr): copies min(dest length, this
@@ -6218,6 +7209,35 @@ public static unsafe class SpanHelpers
             Environment.FailFast(null);
 
         int* data = (int*)*(nint*)spanPtr;
+        data[index] = value;
+    }
+
+    /// <summary>
+    /// Set a 2-byte element (char/short/ushort) in a span at the specified
+    /// index; selected for 2-byte element types by the resolver (the byte
+    /// helper would write only the low half of the element).
+    /// </summary>
+    public static void SetShort(nint spanPtr, int index, short value)
+    {
+        int length = *(int*)((byte*)spanPtr + 8);
+        if ((uint)index >= (uint)length)
+            Environment.FailFast(null);
+
+        short* data = (short*)*(nint*)spanPtr;
+        data[index] = value;
+    }
+
+    /// <summary>
+    /// Set an 8-byte element (long/ulong/double or reference) in a span at
+    /// the specified index; same selection story as SetShort.
+    /// </summary>
+    public static void SetLong(nint spanPtr, int index, long value)
+    {
+        int length = *(int*)((byte*)spanPtr + 8);
+        if ((uint)index >= (uint)length)
+            Environment.FailFast(null);
+
+        long* data = (long*)*(nint*)spanPtr;
         data[index] = value;
     }
 

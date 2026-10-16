@@ -1761,8 +1761,12 @@ public static unsafe class ExceptionHandling
         // Read the EHInfo RVA
         uint ehInfoRva = *(uint*)p;
 
-        // Validate the RVA - it should be non-zero and point to a reasonable address
-        if (ehInfoRva == 0 || ehInfoRva > 0x100000)  // Max 1MB RVA, reasonable for kernel
+        // Validate the RVA - it should be non-zero and point to a reasonable address.
+        // NOTE: JIT code lives in the CodeHeap which grows past 1MB of compiled
+        // code; RVAs there are relative to the CodeHeap base and routinely
+        // exceed 0x100000 (observed on x64: method at RVA 0x2573C0 lost its EH
+        // info to the old 1MB cap - its catch clauses were silently skipped).
+        if (ehInfoRva == 0 || ehInfoRva > 0x4000000)  // Max 64MB RVA
         {
             return null;
         }

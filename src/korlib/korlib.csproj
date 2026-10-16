@@ -60,7 +60,10 @@
     <!-- <Compile Remove="System/TypedReference.cs" /> -->
     <!-- <Compile Remove="System/ArgIterator.cs" /> -->
     <!-- <Compile Remove="System/RuntimeArgumentHandle.cs" /> -->
-    <Compile Remove="System/Globalization/CultureInfo.cs" />
+    <!-- M8.1: CultureInfo stays IN the IL - packages (Humanizer) reference
+         it as a type argument / field type, and excluding it made TypeRef
+         resolution fail ("type not found in target asm"). The kernel still
+         compiles the same source (all korlib sources). -->
     <Compile Remove="System/Buffer.cs" />
     <Compile Remove="Internal/Runtime/CompilerHelpers/InteropHelpers.cs" />
     <!-- Files using bflat-specific attributes -->

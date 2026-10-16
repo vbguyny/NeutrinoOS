@@ -1,0 +1,4 @@
+# thirdprobe - M8.1 third-party boundary probes (docs/NUGET.md).
+# One "<PackageId> <Version>" per line; net10.0 assets only.
+Tomlyn 2.10.1
+Microsoft.Extensions.Primitives 10.0.13

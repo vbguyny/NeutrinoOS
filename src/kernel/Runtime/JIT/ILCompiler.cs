@@ -400,6 +400,15 @@ public unsafe struct ResolvedMethod
     /// <summary>True if this is MemoryMarshal.CreateSpan&lt;T&gt;(ref T, int) (JIT intrinsic).</summary>
     public bool IsCreateSpan;
 
+    /// <summary>True if this is Array.AsReadOnly&lt;T&gt;(T[]) (JIT intrinsic, M8.1).</summary>
+    public bool IsArrayAsReadOnly;
+
+    /// <summary>MethodTable pointer for the ELEMENT type T in Array.AsReadOnly&lt;T&gt;().</summary>
+    public void* ArrayAsReadOnlyElementMT;
+
+    /// <summary>True if this is MemoryMarshal.GetReference&lt;T&gt;(Span&lt;T&gt;) (JIT intrinsic, M8.1).</summary>
+    public bool IsMemoryMarshalGetReference;
+
     /// <summary>True if this is RuntimeHelpers.InitializeArray (JIT intrinsic).</summary>
     public bool IsInitializeArray;
 
@@ -5379,6 +5388,22 @@ public unsafe struct ILCompiler
             return CompileCreateSpan();
         }
 
+        // Handle Array.AsReadOnly<T>(T[]) as JIT intrinsic (M8.1: Tomlyn's
+        // TomlSerializerOptions static constructor wraps Array.Empty<T>()
+        // with AsReadOnly; korlib's System.Array IL is not shipped, so the
+        // ReadOnlyCollection<T> wrapper is allocated inline)
+        if (method.IsArrayAsReadOnly)
+        {
+            return CompileArrayAsReadOnly((MethodTable*)method.ArrayAsReadOnlyElementMT);
+        }
+
+        // Handle MemoryMarshal.GetReference<T>(Span<T>) as JIT intrinsic
+        // Stack: [Span<T>] -> [ref T] (the span's data pointer)
+        if (method.IsMemoryMarshalGetReference)
+        {
+            return CompileMemoryMarshalGetReference();
+        }
+
         // Handle RuntimeHelpers.InitializeArray as JIT intrinsic
         if (method.IsInitializeArray)
         {
@@ -5663,6 +5688,16 @@ public unsafe struct ILCompiler
         bool needsLargeStructPtrInRcx = false;
         bool needsLargeStructPtrInRdx = false;
 
+        // Deferred struct pointers for the 4-arg shape (arg2 -> R8, arg3 -> R9)
+        // and the explicit offset for a large arg1 in that shape. Offsets are
+        // relative to the top of the eval stack (arg3's data), matching the
+        // no-pop staging used when large structs sit above small args.
+        bool needsLargeStructPtrInR8 = false;
+        bool needsLargeStructPtrInR9 = false;
+        int largeStructArg1Offset = 0;
+        int largeStructArg2Offset = 0;
+        int largeStructArg3Offset = 0;
+
         // Deferred by-ref slots for the 2-arg + hidden-buffer shape: large
         // value-type args are passed by pointer with their bytes retained, so
         // the LEAs are emitted after the frame allocation. Values are the
@@ -5928,6 +5963,55 @@ public unsafe struct ILCompiler
                 largeStructArgBytes = arg0Entry.ByteSize;
                 needsLargeStructPtrInRcx = true;
             }
+            else if (arg2Entry.ByteSize > 8)
+            {
+                // arg2 (top of stack) is a large struct - e.g. Tomlyn's
+                // Parser.Open<T>(T, SyntaxTokenValue) called from
+                // Open(SyntaxTokenValue) with (this, syntax, token).
+                // Same no-pop staging as the 4-arg shape: all argument
+                // bytes stay on the eval stack, small args are read by
+                // offset, large structs are passed BY POINTER via the
+                // deferred LEAs. Previously this fell into the all-small
+                // path below, popping struct qwords straight into
+                // R8/RDX/RCX - 'this' in RCX became a SyntaxTokenValue
+                // qword and the callee faulted loading Parser._lexer.
+                int s2 = (arg2Entry.ByteSize > 0 ? arg2Entry.ByteSize : 8); s2 = (s2 + 7) & ~7;
+                int s1 = (arg1Entry.ByteSize > 0 ? arg1Entry.ByteSize : 8); s1 = (s1 + 7) & ~7;
+                int s0 = (arg0Entry.ByteSize > 0 ? arg0Entry.ByteSize : 8); s0 = (s0 + 7) & ~7;
+
+                int off2 = 0;
+                int off1 = off2 + s2;
+                int off0 = off1 + s1;
+
+                // arg0 -> RCX
+                if (s0 > 8)
+                {
+                    needsLargeStructPtrInRcx = true;
+                    largeStructArg0Offset = off0;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, off0);
+                }
+                // arg1 -> RDX
+                if (s1 > 8)
+                {
+                    needsLargeStructPtrInRdx = true;
+                    largeStructArg1Offset = off1;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, off1);
+                }
+                // arg2 -> R8
+                needsLargeStructPtrInR8 = true;
+                largeStructArg2Offset = off2;
+
+                // All three argument blocks stay on the eval stack; the
+                // post-call cleanup removes shadow + pad + these bytes.
+                largeStructArgBytes = s0 + s1 + s2;
+                PopEntry(); PopEntry(); PopEntry();
+            }
             else if (arg1Entry.ByteSize > 8)
             {
                 // arg1 is a large struct: pass by pointer in RDX
@@ -6062,6 +6146,75 @@ public unsafe struct ILCompiler
                 // Leave struct on stack, pass pointer in RDX after shadow space
                 largeStructArgBytes = arg1Entry.ByteSize + 8;  // struct + arg0 slot
                 needsLargeStructPtrInRdx = true;
+            }
+            else if ((arg2Entry.ByteSize > 8 || arg3Entry.ByteSize > 8))
+            {
+                // Large structs at arg2/arg3 - e.g. Tomlyn's
+                // SourceSpan..ctor(string, TextPosition, TextPosition) reached
+                // from Parser.Open. NOTHING is popped: every argument is
+                // addressed relative to the current RSP (arg3's data is at the
+                // top), small args are loaded with MOV, and large structs are
+                // passed BY POINTER - their bytes stay on the stack and the
+                // deferred LEAs in the shadow-space block point at them.
+                // Previously this shape fell into the all-small path below,
+                // which popped struct qwords straight into the argument
+                // registers ('this' in RCX became a TextPosition qword, so the
+                // constructor wrote to [0] => NullReferenceException).
+                int s3 = (arg3Entry.ByteSize > 0 ? arg3Entry.ByteSize : 8); s3 = (s3 + 7) & ~7;
+                int s2 = (arg2Entry.ByteSize > 0 ? arg2Entry.ByteSize : 8); s2 = (s2 + 7) & ~7;
+                int s1 = (arg1Entry.ByteSize > 0 ? arg1Entry.ByteSize : 8); s1 = (s1 + 7) & ~7;
+                int s0 = (arg0Entry.ByteSize > 0 ? arg0Entry.ByteSize : 8); s0 = (s0 + 7) & ~7;
+
+                int off3 = 0;
+                int off2 = off3 + s3;
+                int off1 = off2 + s2;
+                int off0 = off1 + s1;
+
+                // arg0 -> RCX
+                if (s0 > 8)
+                {
+                    needsLargeStructPtrInRcx = true;
+                    largeStructArg0Offset = off0;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, off0);
+                }
+                // arg1 -> RDX
+                if (s1 > 8)
+                {
+                    needsLargeStructPtrInRdx = true;
+                    largeStructArg1Offset = off1;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, off1);
+                }
+                // arg2 -> R8
+                if (s2 > 8)
+                {
+                    needsLargeStructPtrInR8 = true;
+                    largeStructArg2Offset = off2;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R3, VReg.SP, off2);
+                }
+                // arg3 -> R9
+                if (s3 > 8)
+                {
+                    needsLargeStructPtrInR9 = true;
+                    largeStructArg3Offset = off3;
+                }
+                else
+                {
+                    X64Emitter.MovRM(ref _code, VReg.R4, VReg.SP, off3);
+                }
+
+                // All four argument blocks stay on the eval stack; the
+                // post-call cleanup removes shadow + pad + these bytes.
+                largeStructArgBytes = s0 + s1 + s2 + s3;
+                PopEntry(); PopEntry(); PopEntry(); PopEntry();
             }
             else
             {
@@ -6373,11 +6526,21 @@ public unsafe struct ILCompiler
                 {
                     X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32 + loadArgAlignmentPad + largeStructArg0Offset);
                 }
-                // If we deferred setting up RDX for a large struct pointer (2-arg case), do it now
-                // arg1 is always at RSP + 32 + pad (start of struct data area)
+                // If we deferred setting up RDX for a large struct pointer (2-arg
+                // case), do it now. largeStructArg1Offset is 0 for the pop-based
+                // arg1-large path (arg1's data is the first retained block).
                 if (needsLargeStructPtrInRdx)
                 {
-                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32 + loadArgAlignmentPad);
+                    X64Emitter.Lea(ref _code, VReg.R2, VReg.SP, 32 + loadArgAlignmentPad + largeStructArg1Offset);
+                }
+                // 4-arg no-pop shape: deferred pointers for arg2 (R8) / arg3 (R9).
+                if (needsLargeStructPtrInR8)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R3, VReg.SP, 32 + loadArgAlignmentPad + largeStructArg2Offset);
+                }
+                if (needsLargeStructPtrInR9)
+                {
+                    X64Emitter.Lea(ref _code, VReg.R4, VReg.SP, 32 + loadArgAlignmentPad + largeStructArg3Offset);
                 }
             }
         }
@@ -8360,7 +8523,7 @@ public unsafe struct ILCompiler
         int delegateArgCount = method.ArgCount;  // Args to pass to target function (not including delegate)
         int totalStackArgs = delegateArgCount + 1;  // +1 for delegate reference
 
-        if (totalStackArgs > 5)  // Max 4 real args + delegate
+        if (delegateArgCount > 8)
         {
             DebugConsole.Write("[JIT] delegate Invoke: too many args ");
             DebugConsole.WriteDecimal((uint)delegateArgCount);
@@ -8374,21 +8537,39 @@ public unsafe struct ILCompiler
         // Wait - need to check. Stack: ..., delegate, arg0, arg1, ... (delegate pushed first, args after)
         // When popping: first pop arg (N-1), then arg (N-2), ..., then arg0, then delegate
 
-        // Save args to temp registers, then delegate
+        // Save args to temp registers, then delegate. Args 0-3 go to
+        // R8-R11; args 4+ go to frame temp slots (they are passed on the
+        // machine stack at the call site, laid out per path below).
         VReg[] tempRegs = { VReg.R7, VReg.R8, VReg.R9, VReg.R10, VReg.R11 };
+        int extraArgBaseOffset = -(X64Emitter.CalleeSaveSize + (_localCount + 2) * 64);
 
         // Pop in reverse order: argN-1, ..., arg0, delegate
         for (int i = delegateArgCount - 1; i >= 0; i--)
         {
-            X64Emitter.Pop(ref _code, tempRegs[i + 1]);  // args go to R8-R11
+            if (i < 4)
+            {
+                X64Emitter.Pop(ref _code, tempRegs[i + 1]);  // args go to R8-R11
+            }
+            else
+            {
+                X64Emitter.Pop(ref _code, VReg.R0);
+                X64Emitter.MovMR(ref _code, VReg.FP, extraArgBaseOffset + (i - 4) * 8, VReg.R0);
+            }
             PopEntry();
         }
         // Pop delegate reference
         X64Emitter.Pop(ref _code, tempRegs[0]);  // R7 = delegate
         PopEntry();
 
-        // Reserve shadow space
-        X64Emitter.SubRI(ref _code, VReg.SP, 32);
+        // Reserve shadow space + stack arg slots. The instance path passes
+        // (target + n args): args 3+ go on the stack. The static path passes
+        // n args: args 4+ go on the stack. Reserve for the worst case
+        // (instance layout: n - 3 slots) and keep RSP 16-byte aligned.
+        int stackArgSlots = delegateArgCount > 3 ? delegateArgCount - 3 : 0;
+        int shadowReserve = 32 + stackArgSlots * 8;
+        if ((shadowReserve & 15) != 0)
+            shadowReserve += 8;
+        X64Emitter.SubRI(ref _code, VReg.SP, shadowReserve);
 
         // Load _firstParameter from delegate (offset 8)
         X64Emitter.MovRM(ref _code, VReg.R0, VReg.R7, 8);  // RAX = delegate._firstParameter
@@ -8427,6 +8608,14 @@ public unsafe struct ILCompiler
             X64Emitter.MovRR(ref _code, VReg.R3, VReg.R9);  // R8 = arg1
         if (delegateArgCount >= 3)
             X64Emitter.MovRR(ref _code, VReg.R4, VReg.R10);  // R9 = arg2
+        // Instance stack args: arg3 -> [RSP+32], arg4 -> [RSP+40], ...
+        if (delegateArgCount >= 4)
+            X64Emitter.MovMR(ref _code, VReg.SP, 32, VReg.R11);  // arg3 (kept in R11)
+        for (int i = 4; i < delegateArgCount; i++)
+        {
+            X64Emitter.MovRM(ref _code, VReg.R0, VReg.FP, extraArgBaseOffset + (i - 4) * 8);
+            X64Emitter.MovMR(ref _code, VReg.SP, 32 + (i - 3) * 8, VReg.R0);
+        }
         // jmp to call
         _code.EmitByte(0xEB);  // JMP rel8
         int jmpToCall = _code.Position;
@@ -8446,6 +8635,12 @@ public unsafe struct ILCompiler
             X64Emitter.MovRR(ref _code, VReg.R3, VReg.R10);  // R8 = arg2
         if (delegateArgCount >= 4)
             X64Emitter.MovRR(ref _code, VReg.R4, VReg.R11);  // R9 = arg3
+        // Static stack args: arg4 -> [RSP+32], arg5 -> [RSP+40], ...
+        for (int i = 4; i < delegateArgCount; i++)
+        {
+            X64Emitter.MovRM(ref _code, VReg.R0, VReg.FP, extraArgBaseOffset + (i - 4) * 8);
+            X64Emitter.MovMR(ref _code, VReg.SP, 32 + (i - 4) * 8, VReg.R0);
+        }
 
         // === Call site ===
         int callSite = _code.Position;
@@ -8457,7 +8652,7 @@ public unsafe struct ILCompiler
         RecordSafePoint();
 
         // Restore shadow space
-        X64Emitter.AddRI(ref _code, VReg.SP, 32);
+        X64Emitter.AddRI(ref _code, VReg.SP, shadowReserve);
 
         // Handle return value
         switch (method.ReturnKind)
@@ -11511,6 +11706,22 @@ public unsafe struct ILCompiler
         }
 
         // Failed to resolve newobj token - this is a compilation error
+        if (token == 0x0A000109)
+        {
+            DebugConsole.Write("[DBG109] newobj resolved=");
+            DebugConsole.Write(resolved ? "Y" : "N");
+            DebugConsole.Write(" valid=");
+            DebugConsole.Write(ctor.IsValid ? "Y" : "N");
+            DebugConsole.Write(" nc=0x");
+            DebugConsole.WriteHex((ulong)ctor.NativeCode);
+            DebugConsole.Write(" mt=0x");
+            DebugConsole.WriteHex((ulong)ctor.MethodTable);
+            DebugConsole.Write(" hasThis=");
+            DebugConsole.Write(ctor.HasThis ? "Y" : "N");
+            DebugConsole.Write(" isAot=");
+            DebugConsole.Write(ctor.IsAotTarget ? "Y" : "N");
+            DebugConsole.WriteLine();
+        }
         DebugConsole.Write("[JIT newobj] FAIL: unresolved token 0x");
         DebugConsole.WriteHex(token);
         DebugConsole.WriteLine();
@@ -14820,6 +15031,92 @@ public unsafe struct ILCompiler
         X64Emitter.AddRI(ref _code, VReg.SP, 32);
 
         // Push the allocated array reference onto the eval stack
+        X64Emitter.Push(ref _code, VReg.R0);
+        PushEntry(EvalStackEntry.NativeInt);
+        return true;
+    }
+
+    /// <summary>
+    /// Compile Array.AsReadOnly&lt;T&gt;(T[] array) as a JIT intrinsic: allocate
+    /// a ReadOnlyCollection&lt;T&gt; for the intrinsic's element type and store
+    /// the array into its _list field. Stack: [T[]] -&gt; [ReadOnlyCollection&lt;T&gt;]
+    /// </summary>
+    private bool CompileArrayAsReadOnly(MethodTable* elementMT)
+    {
+        if (elementMT == null)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayAsReadOnly: null elementMT");
+            return false;
+        }
+
+        LoadedAssembly* coreLib = AssemblyLoader.GetCoreLib();
+        if (coreLib == null)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayAsReadOnly: no corelib");
+            return false;
+        }
+
+        uint typeDefToken = AssemblyLoader.FindTypeDefByFullName(
+            coreLib->AssemblyId, "System.Collections.ObjectModel", "ReadOnlyCollection`1");
+        if (typeDefToken == 0)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayAsReadOnly: ReadOnlyCollection`1 not found");
+            return false;
+        }
+
+        MethodTable** collectionTypeArgs = stackalloc MethodTable*[1];
+        collectionTypeArgs[0] = elementMT;
+        MethodTable* collectionMT = AssemblyLoader.GetOrCreateGenericInstMethodTable(
+            typeDefToken, collectionTypeArgs, 1, false);
+        if (collectionMT == null)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayAsReadOnly: no collection MT");
+            return false;
+        }
+
+        // Pop the array reference into a callee-saved register (survives the
+        // allocation call)
+        X64Emitter.Pop(ref _code, VReg.R8);   // R12 = array
+        PopEntry();
+
+        // Allocate the wrapper: RCX = MethodTable*, call RhpNewFast
+        X64Emitter.MovRI64(ref _code, VReg.R1, (ulong)collectionMT);
+        X64Emitter.SubRI(ref _code, VReg.SP, 32);
+        X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)_rhpNewFast);
+        X64Emitter.CallR(ref _code, VReg.R0);
+        RecordSafePoint();
+        X64Emitter.AddRI(ref _code, VReg.SP, 32);
+
+        // Initialize the wrapper's fields. ReadOnlyCollection<T> layout is
+        // [MethodTable*][_list @8][_concreteList @16]: _list = array,
+        // _concreteList = null (the argument is an array, never a List<T>).
+        X64Emitter.MovMR(ref _code, VReg.R0, 8, VReg.R8);
+        X64Emitter.XorRR(ref _code, VReg.R2, VReg.R2);
+        X64Emitter.MovMR(ref _code, VReg.R0, 16, VReg.R2);
+
+        // Push the wrapper reference onto the eval stack
+        X64Emitter.Push(ref _code, VReg.R0);
+        PushEntry(EvalStackEntry.ObjRef);
+        return true;
+    }
+
+    /// <summary>
+    /// Compile MemoryMarshal.GetReference&lt;T&gt;(Span&lt;T&gt; span) as a JIT
+    /// intrinsic: the span value (16-byte {pointer, length} struct) is on the
+    /// eval stack; the result is the span's data pointer.
+    /// Stack: [Span&lt;T&gt;] -&gt; [ref T]
+    /// </summary>
+    private bool CompileMemoryMarshalGetReference()
+    {
+        // Load the span's data pointer (first qword of the 16-byte struct;
+        // the pointer sits at the lowest address per CompileCreateSpan's
+        // push order)
+        X64Emitter.MovRM(ref _code, VReg.R0, VReg.SP, 0);
+        // Drop the span value from the eval stack
+        X64Emitter.AddRI(ref _code, VReg.SP, 16);
+        PopEntry();
+
+        // Push the data pointer (ref T)
         X64Emitter.Push(ref _code, VReg.R0);
         PushEntry(EvalStackEntry.NativeInt);
         return true;

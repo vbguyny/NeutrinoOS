@@ -94,6 +94,8 @@ public class ArgumentOutOfRangeException : ArgumentException
 {
     public ArgumentOutOfRangeException() : base() { }
     public ArgumentOutOfRangeException(string? paramName) : base(paramName) { }
+    public ArgumentOutOfRangeException(string? paramName, string? message) : base(message) { }
+    public ArgumentOutOfRangeException(string? paramName, object? actualValue, string? message) : base(message) { }
     public ArgumentOutOfRangeException(string? message, Exception? innerException) : base(message, innerException) { }
 }
 
