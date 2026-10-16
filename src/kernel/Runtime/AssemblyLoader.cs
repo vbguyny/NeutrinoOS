@@ -1462,6 +1462,44 @@ public static unsafe class AssemblyLoader
                 return null;
             }
 
+            // Span<T>/ReadOnlySpan<T> are synthesized well-known types with no
+            // TypeDef in any loaded assembly. Route every instantiation here to
+            // the single span MT (Object-shaped vtable with a REAL ToString
+            // slot). The generic-instantiation factory would otherwise build a
+            // minimal MT whose slot 0 is the Object placeholder - and a
+            // constrained. callvirt Object::ToString on a span (Roslyn's shape
+            // for span.ToString()) ended up calling that placeholder, making
+            // every span ToString() return the literal "object".
+            if (((genericTypeToken >> 24) & 0xFF) == 0x01 && asm != null)
+            {
+                uint gtRow = genericTypeToken & 0x00FFFFFF;
+                if (gtRow != 0)
+                {
+                    byte* gtName = MetadataReader.GetString(ref asm->Metadata,
+                        MetadataReader.GetTypeRefName(ref asm->Tables, ref asm->Sizes, gtRow));
+                    if (gtName != null &&
+                        (StringEqualsLiteral(gtName, "ReadOnlySpan`1") || StringEqualsLiteral(gtName, "Span`1")))
+                    {
+                        byte* gtNs = MetadataReader.GetString(ref asm->Metadata,
+                            MetadataReader.GetTypeRefNamespace(ref asm->Tables, ref asm->Sizes, gtRow));
+                        if (gtNs != null && IsSystemNamespace(gtNs))
+                        {
+                            MethodTable* spanMT = TryResolveWellKnownType(gtName, gtNs);
+                            if (spanMT != null)
+                            {
+                                if (JitDiag.VerboseJit)
+                                {
+                                    DebugConsole.Write("[AsmLoader] TypeSpec GENERICINST -> well-known span MT=0x");
+                                    DebugConsole.WriteHex((ulong)spanMT);
+                                    DebugConsole.WriteLine();
+                                }
+                                return spanMT;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Normalize the generic type token to a canonical form for cache consistency
             // TypeRef tokens need to be resolved to TypeDef tokens
             uint normalizedGenericToken = NormalizeGenericDefToken(asm, genericTypeToken);
@@ -6357,8 +6395,14 @@ public static unsafe class AssemblyLoader
     /// </summary>
     private static MethodTable* CreateSpanTypeMethodTable(uint wellKnownToken)
     {
-        // Allocate minimal MethodTable (just header, no vtable slots needed for simple value types)
-        MethodTable* mt = (MethodTable*)HeapAllocator.AllocZeroed((ulong)MethodTable.HeaderSize);
+        // Allocate MethodTable WITH the Object-shaped vtable slots (3).
+        // Spans must carry real slots: a constrained. callvirt (Roslyn emits
+        // it for value types) resolves Object::ToString/Equals/GetHashCode
+        // and ECMA-335 says the receiver type's override wins - with zero
+        // slots the lookup fell through to the Object placeholder and every
+        // char-span ToString() returned the literal "object" (the Tomlyn
+        // lexer's token text extraction hit exactly this).
+        MethodTable* mt = (MethodTable*)HeapAllocator.AllocZeroed((ulong)(MethodTable.HeaderSize + 3 * sizeof(nint)));
         if (mt == null)
             return null;
 
@@ -6372,9 +6416,13 @@ public static unsafe class AssemblyLoader
         // ComponentSize for primitives; not used for spans
         mt->_usComponentSize = 0;
 
-        // No vtable slots needed for these simple value types
-        mt->_usNumVtableSlots = 0;
+        mt->_usNumVtableSlots = 3;
         mt->_usNumInterfaces = 0;
+
+        nint* vtable = mt->GetVtablePtr();
+        vtable[0] = AotMethodRegistry.LookupByName("System.ReadOnlySpan`1", "ToString");
+        vtable[1] = AotMethodRegistry.LookupByName("System.ValueType", "Equals");
+        vtable[2] = AotMethodRegistry.LookupByName("System.ValueType", "GetHashCode");
 
         // Register in the type registry
         JIT.MetadataIntegration.RegisterType(wellKnownToken, mt);

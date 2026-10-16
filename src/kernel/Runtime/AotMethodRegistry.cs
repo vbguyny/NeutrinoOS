@@ -2348,6 +2348,16 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<nint, bool>)&SpanHelpers.IsEmpty,
             0, ReturnKind.Int32, true, false);
 
+        // System.ReadOnlySpan`1.ToString() - 0 explicit params. MUST be
+        // registered: a callvirt ToString on a span with no registry entry
+        // falls into the generic virtual-dispatch fallback and returns
+        // Object's "object" placeholder (that is how every parsed Tomlyn
+        // string became "object").
+        Register(
+            "System.ReadOnlySpan`1", "ToString",
+            (nint)(delegate*<nint, string>)&SpanHelpers.ToStringUtf16,
+            0, ReturnKind.IntPtr, true, false);
+
         // System.ReadOnlySpan`1.GetPinnableReference - 0 explicit params (returns ref to first element)
         // Used by 'fixed' statement - returns pointer to span data
         Register(
@@ -2525,6 +2535,12 @@ public static unsafe class AotMethodRegistry
             "System.Span`1", "get_IsEmpty",
             (nint)(delegate*<nint, bool>)&SpanHelpers.IsEmpty,
             0, ReturnKind.Int32, true, false);
+
+        // System.Span`1.ToString() - see the ReadOnlySpan`1 registration.
+        Register(
+            "System.Span`1", "ToString",
+            (nint)(delegate*<nint, string>)&SpanHelpers.ToStringUtf16,
+            0, ReturnKind.IntPtr, true, false);
 
         // System.Span`1.set_Item - 2 explicit params (index, value).
         // Used by string.Create callbacks (SpanAction<char, TState> lambdas
@@ -7099,6 +7115,25 @@ public static unsafe class SpanHelpers
     public static nint GetPointer(nint spanPtr)
     {
         return *(nint*)spanPtr;
+    }
+
+    /// <summary>
+    /// ReadOnlySpan&lt;char&gt;/Span&lt;char&gt;.ToString() - materializes the
+    /// span's characters into a fresh string (see the registrations: without
+    /// this entry span ToString calls fall into the virtual-dispatch
+    /// fallback and return Object's "object" placeholder).
+    /// </summary>
+    public static unsafe string ToStringUtf16(nint spanPtr)
+    {
+        byte* p = (byte*)spanPtr;
+        char* data = (char*)*(nint*)p;
+        int len = *(int*)(p + 8);
+        if (len <= 0 || data == null)
+            return string.Empty;
+        char[] arr = new char[len];
+        for (int i = 0; i < len; i++)
+            arr[i] = data[i];
+        return new string(arr);
     }
 
     /// <summary>

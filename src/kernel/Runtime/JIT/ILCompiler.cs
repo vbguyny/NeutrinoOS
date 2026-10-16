@@ -7019,6 +7019,23 @@ public unsafe struct ILCompiler
             // Resolve the constraint type to get its MethodTable
             void* resolvedPtr;
             bool resolveResult = _typeResolver(constrainedToken, out resolvedPtr);
+            if (JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[Constrained] tok=0x");
+                DebugConsole.WriteHex(constrainedToken);
+                DebugConsole.Write(" res=");
+                DebugConsole.Write(resolveResult ? "Y" : "N");
+                DebugConsole.Write(" MT=0x");
+                DebugConsole.WriteHex((ulong)resolvedPtr);
+                if (resolveResult && resolvedPtr != null)
+                {
+                    DebugConsole.Write(" isVT=");
+                    DebugConsole.Write(((MethodTable*)resolvedPtr)->IsValueType ? "Y" : "N");
+                    DebugConsole.Write(" slots=");
+                    DebugConsole.WriteDecimal(((MethodTable*)resolvedPtr)->_usNumVtableSlots);
+                }
+                DebugConsole.WriteLine();
+            }
             if (resolveResult && resolvedPtr != null)
             {
                 MethodTable* constraintMT = (MethodTable*)resolvedPtr;
@@ -7083,6 +7100,18 @@ public unsafe struct ILCompiler
                     {
                         // Use GetVirtualSlot which handles both regular vtable and sealed virtual slots
                         nint vtableEntry = constraintMT->GetVirtualSlot(tempMethod.VtableSlot);
+                        if (JitDiag.VerboseJit)
+                        {
+                            DebugConsole.Write("[ConstrainedVT] MT=0x");
+                            DebugConsole.WriteHex((ulong)constraintMT);
+                            DebugConsole.Write(" slot=");
+                            DebugConsole.WriteDecimal((uint)tempMethod.VtableSlot);
+                            DebugConsole.Write(" entry=0x");
+                            DebugConsole.WriteHex((ulong)vtableEntry);
+                            DebugConsole.Write(" numSlots=");
+                            DebugConsole.WriteDecimal(constraintMT->_usNumVtableSlots);
+                            DebugConsole.WriteLine();
+                        }
                         // DebugConsole.Write("[JIT] VT entry: vtable[");
                         // DebugConsole.WriteDecimal((uint)tempMethod.VtableSlot);
                         // DebugConsole.Write("]=0x");

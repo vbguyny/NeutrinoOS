@@ -6853,8 +6853,10 @@ public static unsafe class MetadataIntegration
 
             if (_spanMT == null)
             {
-                // Create a minimal MethodTable for span types
-                _spanMT = (MethodTable*)HeapAllocator.AllocZeroed((nuint)sizeof(MethodTable));
+                // Create a minimal MethodTable for span types (with the
+                // Object-shaped vtable slots - see CreateSpanTypeMethodTable
+                // in AssemblyLoader for why spans MUST carry a real slot 0).
+                _spanMT = (MethodTable*)HeapAllocator.AllocZeroed((nuint)(sizeof(MethodTable) + 3 * sizeof(nint)));
                 if (_spanMT != null)
                 {
                     // Span layout: pointer(8) + length(4) = 12, aligned to 16 bytes actual size
@@ -6862,8 +6864,12 @@ public static unsafe class MetadataIntegration
                     _spanMT->_uBaseSize = 24;  // 16 (actual) + 8 (header)
                     // MTFlags.IsValueType is 0x00200000, high 16 bits go in _usFlags
                     _spanMT->_usFlags = (ushort)(MTFlags.IsValueType >> 16);  // 0x0020
-                    _spanMT->_usNumVtableSlots = 0;
+                    _spanMT->_usNumVtableSlots = 3;
                     _spanMT->_usNumInterfaces = 0;
+                    nint* vtable = _spanMT->GetVtablePtr();
+                    vtable[0] = AotMethodRegistry.LookupByName("System.ReadOnlySpan`1", "ToString");
+                    vtable[1] = AotMethodRegistry.LookupByName("System.ValueType", "Equals");
+                    vtable[2] = AotMethodRegistry.LookupByName("System.ValueType", "GetHashCode");
                     // Register so all paths use the same MT
                     RegisterType(WellKnownTypes.Span, _spanMT);
                 }
@@ -6880,8 +6886,10 @@ public static unsafe class MetadataIntegration
 
             if (_spanMT == null)
             {
-                // Create a minimal MethodTable for span types
-                _spanMT = (MethodTable*)HeapAllocator.AllocZeroed((nuint)sizeof(MethodTable));
+                // Create a minimal MethodTable for span types (with the
+                // Object-shaped vtable slots - see CreateSpanTypeMethodTable
+                // in AssemblyLoader for why spans MUST carry a real slot 0).
+                _spanMT = (MethodTable*)HeapAllocator.AllocZeroed((nuint)(sizeof(MethodTable) + 3 * sizeof(nint)));
                 if (_spanMT != null)
                 {
                     // Span layout: pointer(8) + length(4) = 12, aligned to 16 bytes actual size
@@ -6889,8 +6897,12 @@ public static unsafe class MetadataIntegration
                     _spanMT->_uBaseSize = 24;  // 16 (actual) + 8 (header)
                     // MTFlags.IsValueType is 0x00200000, high 16 bits go in _usFlags
                     _spanMT->_usFlags = (ushort)(MTFlags.IsValueType >> 16);  // 0x0020
-                    _spanMT->_usNumVtableSlots = 0;
+                    _spanMT->_usNumVtableSlots = 3;
                     _spanMT->_usNumInterfaces = 0;
+                    nint* vtable = _spanMT->GetVtablePtr();
+                    vtable[0] = AotMethodRegistry.LookupByName("System.ReadOnlySpan`1", "ToString");
+                    vtable[1] = AotMethodRegistry.LookupByName("System.ValueType", "Equals");
+                    vtable[2] = AotMethodRegistry.LookupByName("System.ValueType", "GetHashCode");
                     // Register so all paths use the same MT
                     RegisterType(WellKnownTypes.ReadOnlySpan, _spanMT);
                 }

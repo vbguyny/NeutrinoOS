@@ -134,14 +134,48 @@ chain, S3 Tomlyn syntax) and `src/apps/humprobe` (Humanizer boundary).
    `SpanAction<T, TArg>` (korlib), plus culture/date/char/math registry
    entries exercised by the packages.
 
+### M8.2: span dispatch fixes (Tomlyn typed values)
+
+Three device bugs in span handling made every parsed Tomlyn string
+read back as `"object"` (`SyntaxParser.Parse` produced correct trees,
+but `StringValueSyntax.Value` and token texts were wrong):
+
+1. **Span MethodTables had no vtable slots**
+   (`AssemblyLoader.CreateSpanTypeMethodTable`): a `constrained.`
+   `callvirt Object::ToString` on a `ReadOnlySpan<char>` (Roslyn's
+   shape for `span.ToString()`) looks up slot 0 on the constraint
+   type's MethodTable; with zero slots the lookup fell through to the
+   Object placeholder (`ObjectHelpers.ToString` -> the literal
+   `"object"`). Span MTs now carry the Object-shaped slots
+   (ToString/Equals/GetHashCode) with a real
+   `SpanHelpers.ToStringUtf16` bridge in slot 0.
+2. **Span TypeSpecs resolved through the generic-instantiation factory**
+   (`AssemblyLoader.ResolveTypeSpec`): `ReadOnlySpan<T>` has no TypeDef
+   anywhere, so the factory built a minimal MT with the placeholder in
+   slot 0 - the constrained call then direct-called it. Span TypeSpecs
+   now route to the single well-known span MT.
+3. **`Span<T>.ToString` had no AOT entry**: added the
+   `SpanHelpers.ToStringUtf16` bridge plus `ToString` registrations for
+   `System.Span`1`/`System.ReadOnlySpan`1`. The string-range
+   `AsSpan(string, int, int)` overload also got its signature-hashed
+   registration so string calls stop binding to the char[]-range
+   bridge (which had shifted span data two characters into the
+   buffer).
+
+`src/apps/thirdprobe` gained S2d/S2e (span-string/BCL isolation), S3x
+(typed value getters) and S3y (BCL mimics) sections pinning these
+paths.
+
 ### Remaining boundaries
 
-- **Tomlyn deeper model access**: syntax *structure* works, but typed
-  value getters on the syntax nodes (`StringValueSyntax.Value` and
-  friends) return wrong data on device, and `SyntaxNode.ToString()`
-  (the `WriteTo`/`GetChild` walk) faults. Both are one open
-  investigation: cross-assembly property/virtual dispatch for these
-  node types.
+- **Tomlyn deeper model access**: string, key, boolean and date/time
+  syntax nodes now return correct values on device (`S3: stringvalue=`
+  prints the parsed string). Still open: `IntegerValueSyntax.Value` /
+  `FloatValueSyntax.Value` read 0 (the lexer's digit path fails inside
+  `ReadNumberOrDate` - a crowded-frame codegen issue; the identical
+  algorithm works in isolated device tests), negative numbers and
+  floats throw during parse, and `SyntaxNode.ToString()`
+  (the `WriteTo`/`GetChild` walk) is not re-tested yet.
 - **Humanizer.Core 3.0.10** (net10.0 asset exists) still needs `Regex`
   (11 member refs), `Immutable`, and culture data - beyond the current
   surface; `src/apps/humprobe` tracks the boundary (its `Main` currently
