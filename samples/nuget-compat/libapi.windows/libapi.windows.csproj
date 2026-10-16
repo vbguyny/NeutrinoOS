@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Windows twin of src/apps/libapi - the SAME Program.cs and the SAME
+    NuGet packages as the device build, running on the real
+    Microsoft.AspNetCore.App (see docs/NUGET.md):
+
+      dotnet run            # listens on http://0.0.0.0:8098
+      curl http://127.0.0.1:8098/config
+
+    build/m8-nuget-probe.sh builds and runs this next to the device
+    build and byte-compares the responses.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>libapi</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- NU1510: both packages ship inside the ASP.NET shared framework on
+         Windows, but the DEVICE build consumes them as real NuGet packages. -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The one and only source file: the device app's Program.cs. -->
+    <Compile Include="../../../src/apps/libapi/Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same package set as src/apps/libapi/packages.txt. -->
+    <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Primitives" Version="10.0.13" />
+  </ItemGroup>
+
+</Project>

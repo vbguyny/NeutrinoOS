@@ -235,4 +235,20 @@ public static unsafe class Interlocked
     [DllImport("*", EntryPoint = "Interlocked_CompareExchangePointer", CallingConvention = CallingConvention.Cdecl)]
     private static extern void* Interlocked_CompareExchangePointer(void** location, void* value, void* comparand);
 #endif
+
+    /// <summary>
+    /// Compares two reference-typed values for equality and, if they are
+    /// equal, replaces the first value. M8: consumed by packages like
+    /// Microsoft.Extensions.ObjectPool (fast-path first-item CAS).
+    /// The compare/replace itself is a plain read/compare/write: managed
+    /// threads on NeutrinoOS run cooperatively (no preemption inside a
+    /// method body), so the sequence cannot interleave with itself.
+    /// </summary>
+    public static T CompareExchange<T>(ref T location1, T value, T comparand) where T : class
+    {
+        T old = location1;
+        if (ReferenceEquals(old, comparand))
+            location1 = value;
+        return old;
+    }
 }

@@ -6138,6 +6138,16 @@ public static unsafe class AssemblyLoader
                 name[19] == 'e' && name[20] == 'l' && name[21] == 0)
                 return true;
 
+            // "System.Collections.Concurrent" (M8: ConcurrentQueue<T> lives
+            // in korlib for packages like Microsoft.Extensions.ObjectPool)
+            if (name[7] == 'C' && name[8] == 'o' && name[9] == 'l' && name[10] == 'l' &&
+                name[11] == 'e' && name[12] == 'c' && name[13] == 't' && name[14] == 'i' &&
+                name[15] == 'o' && name[16] == 'n' && name[17] == 's' && name[18] == '.' &&
+                name[19] == 'C' && name[20] == 'o' && name[21] == 'n' && name[22] == 'c' &&
+                name[23] == 'u' && name[24] == 'r' && name[25] == 'r' && name[26] == 'e' &&
+                name[27] == 'n' && name[28] == 't' && name[29] == 0)
+                return true;
+
             // "System.Console" (Phase 2: System.Console facade -> korlib
             // implementations, which are AOT-compiled into the kernel)
             if (name[7] == 'C' && name[8] == 'o' && name[9] == 'n' && name[10] == 's' &&
@@ -7536,6 +7546,12 @@ public static unsafe class AssemblyLoader
                                     DebugConsole.WriteLine();
                                 }
                                 typeDefToken = FindTypeDefByName(targetAsm, typeName, typeNs);
+                                DebugConsole.Write("[AsmLoader] WKT korlib fallback tdt=0x");
+                                DebugConsole.WriteHex(typeDefToken);
+                                DebugConsole.Write(" name=");
+                                for (int dbgi = 0; typeName != null && typeName[dbgi] != 0 && dbgi < 32; dbgi++)
+                                    DebugConsole.WriteChar((char)typeName[dbgi]);
+                                DebugConsole.WriteLine();
                                 if (JitDiag.VerboseJit)
                                 {
                                     DebugConsole.Write("[AsmLoader] FindTypeDefByName returned 0x");
@@ -7577,7 +7593,11 @@ public static unsafe class AssemblyLoader
             }
             // If AOT lookup failed for well-known types, we can't fall through because
             // there's no target assembly to search in
-            DebugConsole.WriteLine("[AsmLoader] Well-known type method not found in AOT registry");
+            DebugConsole.Write("[AsmLoader] WKT unresolved: asm=");
+            DebugConsole.WriteHex((ulong)targetAsm);
+            DebugConsole.Write(" tdt=0x");
+            DebugConsole.WriteHex(typeDefToken);
+            DebugConsole.WriteLine();
             return false;
         }
 

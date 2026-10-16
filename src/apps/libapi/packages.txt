@@ -1,0 +1,6 @@
+# libapi - NuGet/third-party packages for device apps.
+# One "<PackageId> <Version>" per line. Policy: net10.0 assets only
+# (docs/NUGET.md); p5-apps-build turns this into PackageReferences and
+# p5-deploy ships every non-app dll to ::/lib for the kernel loader.
+Microsoft.Extensions.ObjectPool 10.0.13
+Microsoft.Extensions.Primitives 10.0.13

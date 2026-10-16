@@ -10,6 +10,26 @@ public static partial class Environment
     /// <summary>Gets the newline string defined for this environment.</summary>
     public static string NewLine => "\n";
 
+    /// <summary>
+    /// Number of processors available to the managed runtime (M8: consumed
+    /// by packages like Microsoft.Extensions.ObjectPool to size default
+    /// pools). The kernel schedules on one logical CPU per managed thread;
+    /// report 1 so default pool sizes stay small and deterministic.
+    /// </summary>
+    public static int ProcessorCount => 1;
+
+    /// <summary>
+    /// Current stack trace text (M8: referenced by ObjectPool paths that
+    /// are diagnostic-only on the device; "" keeps it side-effect free).
+    /// </summary>
+    public static string StackTrace => "";
+
+    /// <summary>
+    /// True once the runtime has started shutting down (M8: ObjectPool
+    /// consults this in its pool-return path; the device never has).
+    /// </summary>
+    public static bool HasShutdownStarted => false;
+
 #if KORLIB_IL
     // Stubs for IL build - actual implementation is in AOT kernel
     // These stubs should never actually be called because the AOT registry

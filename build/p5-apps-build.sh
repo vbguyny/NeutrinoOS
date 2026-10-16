@@ -100,6 +100,33 @@ if [ -d "$APPSRC" ]; then
     name="$(basename "$dir")"
     [ -f "$APPWORK/$name/Program.cs" ] || continue
 
+    # Optional NuGet packages: src/apps/<name>/packages.txt, one
+    # "PackageId [Version]" per line (# comments and blanks allowed).
+    # The kernel resolves app dependencies from ::/lib by assembly name
+    # (see p5-deploy.sh), so package dlls ship there.
+    pkgrefs=""
+    if [ -f "$APPWORK/$name/packages.txt" ]; then
+      while IFS= read -r line; do
+        line="$(printf '%s' "$line" | sed 's/#.*//' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        [ -n "$line" ] || continue
+        pkgid="${line%% *}"
+        pkgver=""
+        if [ "$pkgid" != "$line" ]; then pkgver="${line#* }"; fi
+        if [ -n "$pkgver" ]; then
+          pkgrefs="${pkgrefs}    <PackageReference Include=\"${pkgid}\" Version=\"${pkgver}\" />
+"
+        else
+          pkgrefs="${pkgrefs}    <PackageReference Include=\"${pkgid}\" />
+"
+        fi
+      done < "$APPWORK/$name/packages.txt"
+    fi
+    pkgblock=""
+    if [ -n "$pkgrefs" ]; then
+      pkgblock="  <ItemGroup>
+${pkgrefs}  </ItemGroup>"
+    fi
+
     cat > "$APPWORK/$name/$name.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -117,7 +144,7 @@ if [ -d "$APPSRC" ]; then
   <ItemGroup>
     <ProjectReference Include="../../ddk/DDK.csproj" />
   </ItemGroup>
-</Project>
+${pkgblock}</Project>
 EOF
 
     if dotnet build "$APPWORK/$name/$name.csproj" -c Release -o "$APPBIN" --nologo -v q $TRACEARG; then

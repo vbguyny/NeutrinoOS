@@ -2623,15 +2623,15 @@ public static unsafe class MetadataIntegration
             return false;  // Fall through to JIT for value types
         }
 
-        // Span<T>/ReadOnlySpan<T>.get_Item: the plain AOT entry indexes BYTES
-        // (GetByteRef), which reads misaligned elements for any T wider than
-        // one byte (observed: summing a ReadOnlySpan<int> of [1,2,3,4] gave
-        // 0x02020201). Pick the element-strided variant that matches the
-        // span's generic argument: 2/4/8-byte primitives and pointer-sized
-        // reference elements. Byte-wide T keeps the default entry.
+        // Span<T>/ReadOnlySpan<T>.get_Item/Slice: the plain AOT entry is
+        // byte-strided (GetByteRef), which reads misaligned elements for any T
+        // wider than one byte (observed: summing a ReadOnlySpan<int> of
+        // [1,2,3,4] gave 0x02020201). Pick the element-strided variant that
+        // matches the span's generic argument: 2/4/8-byte primitives and
+        // pointer-sized reference elements. Byte-wide T keeps the default entry.
         int spanElemSizeVariant = 0;
         if ((NameEquals(typeName, "System.Span`1") || NameEquals(typeName, "System.ReadOnlySpan`1")) &&
-            NameEquals(memberName, "get_Item"))
+            (NameEquals(memberName, "get_Item") || NameEquals(memberName, "Slice") || NameEquals(memberName, "CopyTo")))
         {
             switch (firstGenericArgElemType)
             {
@@ -2655,6 +2655,25 @@ public static unsafe class MetadataIntegration
                 case 0x1D:  // SZARRAY
                     spanElemSizeVariant = 8;
                     break;
+            }
+
+            // The span's element type is a generic parameter when this
+            // memberref sits inside a generic method body (e.g.
+            // MemoryExtensions.IndexOf<T> compiled for T=char: the parent is
+            // ReadOnlySpan<!0>). The current instantiation's type argument
+            // size tells us the element stride - without this the byte-strided
+            // default entry is picked and reads misalign (IndexOf<char> found
+            // 'l' at byte index 4 instead of 2).
+            if (spanElemSizeVariant == 0 &&
+                (firstGenericArgElemType == 0x1E || firstGenericArgElemType == 0x13))
+            {
+                if (_methodTypeArgCount > 0 && _methodTypeArgSizes[0] > 0)
+                {
+                    ushort elemSize = _methodTypeArgSizes[0];
+                    if (elemSize == 2) spanElemSizeVariant = 2;
+                    else if (elemSize == 4) spanElemSizeVariant = 4;
+                    else if (elemSize == 8) spanElemSizeVariant = 8;
+                }
             }
         }
 
@@ -4924,6 +4943,32 @@ public static unsafe class MetadataIntegration
             }
         }
 
+        // Check for Array.Empty<T>() - JIT intrinsic (M8: packages like
+        // Tomlyn call it from option-container static initialization).
+        // korlib's System.Array is not part of the shipped korlib.dll IL,
+        // so without this the generic method has no body to JIT.
+        if (tag == 1 && _methodTypeArgCount == 1)  // MemberRef with 1 type arg
+        {
+            if (IsArrayEmptyMemberRef(underlyingRowId))
+            {
+                MethodTable* elemMT = _methodTypeArgMTs[0];
+                if (elemMT != null)
+                {
+                    DebugConsole.WriteLine("[MetaInt] Detected Array.Empty<T>!");
+                    result.IsArrayEmpty = true;
+                    result.ArrayElementMT = elemMT;
+                    result.IsValid = true;
+                    result.NativeCode = null;  // JIT intrinsic
+                    result.ArgCount = 0;
+                    result.HasThis = false;
+                    result.RegistryEntry = null;
+                    result.ReturnKind = ReturnKind.IntPtr;  // T[] reference
+                    RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
+                    return true;
+                }
+            }
+        }
+
         // Check for Unsafe.As<TFrom, TTo>(ref TFrom) - JIT intrinsic for type coercion
         // Takes ref TFrom (1 arg) and returns ref TTo - we just pass through the reference
         if (tag == 1 && _methodTypeArgCount == 2)  // MemberRef with 2 type args
@@ -4938,6 +4983,26 @@ public static unsafe class MetadataIntegration
                 result.HasThis = false;
                 result.RegistryEntry = null;
                 result.ReturnKind = ReturnKind.IntPtr;  // Returns ref TTo (pointer)
+                RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
+                return true;
+            }
+        }
+
+        // Check for Unsafe.As<T>(object) - legacy single-type-arg form
+        // (Microsoft.Extensions.Primitives uses it to reinterpret an object
+        // field as string[]); the object reference passes through unchanged.
+        if (tag == 1 && _methodTypeArgCount == 1)  // MemberRef with 1 type arg
+        {
+            if (IsUnsafeAsObjectMemberRef(underlyingRowId))
+            {
+                DebugConsole.WriteLine("[MetaInt] Detected Unsafe.As<T>(object)!");
+                result.IsUnsafeAs = true;
+                result.IsValid = true;
+                result.NativeCode = null;  // No native code - JIT intrinsic
+                result.ArgCount = 1;  // Takes the object reference
+                result.HasThis = false;
+                result.RegistryEntry = null;
+                result.ReturnKind = ReturnKind.IntPtr;  // Returns the same reference
                 RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
                 return true;
             }
@@ -5135,6 +5200,50 @@ public static unsafe class MetadataIntegration
         RestoreMethodTypeArgContext(savedOuterCount, savedOuterMTs, savedOuterTypes, savedOuterSizes);
 
         return success;
+    }
+
+    /// <summary>
+    /// Check if a MemberRef row refers to System.Array.Empty&lt;T&gt;.
+    /// </summary>
+    private static bool IsArrayEmptyMemberRef(uint memberRefRowId)
+    {
+        if (_tablesHeader == null || _tableSizes == null || _metadataRoot == null)
+            return false;
+
+        // Name must be exactly "Empty"
+        uint nameIdx = MetadataReader.GetMemberRefName(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
+        if (name == null)
+            return false;
+        if (name[0] != 'E' || name[1] != 'm' || name[2] != 'p' || name[3] != 't' ||
+            name[4] != 'y' || name[5] != 0)
+            return false;
+
+        // Parent must be a TypeRef to System.Array
+        CodedIndex classRef = MetadataReader.GetMemberRefClass(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        if (classRef.Table != MetadataTableId.TypeRef)
+            return false;
+
+        uint typeNameIdx = MetadataReader.GetTypeRefName(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        uint typeNsIdx = MetadataReader.GetTypeRefNamespace(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        byte* typeName = MetadataReader.GetString(ref *_metadataRoot, typeNameIdx);
+        byte* typeNs = MetadataReader.GetString(ref *_metadataRoot, typeNsIdx);
+        if (typeName == null)
+            return false;
+
+        // "Array"
+        if (typeName[0] != 'A' || typeName[1] != 'r' || typeName[2] != 'r' ||
+            typeName[3] != 'a' || typeName[4] != 'y' || typeName[5] != 0)
+            return false;
+
+        // "System"
+        if (typeNs == null)
+            return false;
+        if (typeNs[0] != 'S' || typeNs[1] != 'y' || typeNs[2] != 's' || typeNs[3] != 't' ||
+            typeNs[4] != 'e' || typeNs[5] != 'm' || typeNs[6] != 0)
+            return false;
+
+        return true;
     }
 
     /// <summary>
@@ -5362,6 +5471,79 @@ public static unsafe class MetadataIntegration
         if (name == null) return false;
         // "As" = 2 chars
         return name[0] == 'A' && name[1] == 's' && name[2] == 0;
+    }
+
+    /// <summary>
+    /// Check if a MemberRef row refers to the legacy single-arg
+    /// System.Runtime.CompilerServices.Unsafe.As&lt;T&gt;(object) form.
+    /// Distinguishable from the ref form by the single type argument and
+    /// the object parameter element type (0x1C).
+    /// </summary>
+    private static bool IsUnsafeAsObjectMemberRef(uint memberRefRowId)
+    {
+        if (_tablesHeader == null || _tableSizes == null || _metadataRoot == null)
+            return false;
+
+        // Get the member name
+        uint nameIdx = MetadataReader.GetMemberRefName(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        byte* name = MetadataReader.GetString(ref *_metadataRoot, nameIdx);
+        if (!IsAsName(name))
+            return false;
+
+        // Must be a TypeRef to Unsafe in System.Runtime.CompilerServices
+        CodedIndex classRef = MetadataReader.GetMemberRefClass(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        if (classRef.Table != MetadataTableId.TypeRef)
+            return false;
+
+        uint typeNameIdx = MetadataReader.GetTypeRefName(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        uint typeNsIdx = MetadataReader.GetTypeRefNamespace(ref *_tablesHeader, ref *_tableSizes, classRef.RowId);
+        byte* typeName = MetadataReader.GetString(ref *_metadataRoot, typeNameIdx);
+        byte* typeNs = MetadataReader.GetString(ref *_metadataRoot, typeNsIdx);
+        if (!IsUnsafeName(typeName) || !IsCompilerServicesNamespace(typeNs))
+            return false;
+
+        // Signature check: 1 parameter whose element type is Object (0x1C).
+        // Blob layout: callingConv [genCount] paramCount retType param0...
+        uint sigIdx = MetadataReader.GetMemberRefSignature(ref *_tablesHeader, ref *_tableSizes, memberRefRowId);
+        byte* sig = MetadataReader.GetBlob(ref *_metadataRoot, sigIdx, out uint sigLen);
+        if (sig == null || sigLen < 4)
+            return false;
+
+        uint pos = 0;
+        byte callingConv = sig[pos++];
+        if ((callingConv & 0x10) != 0)
+        {
+            // Skip generic parameter count (compressed)
+            if (pos >= sigLen) return false;
+            byte b0 = sig[pos];
+            if ((b0 & 0x80) == 0) pos += 1;
+            else if ((b0 & 0xC0) == 0x80) pos += 2;
+            else pos += 4;
+        }
+        if (pos >= sigLen)
+            return false;
+
+        uint paramCount = 0;
+        byte pb = sig[pos];
+        if ((pb & 0x80) == 0) { paramCount = pb; pos += 1; }
+        else if ((pb & 0xC0) == 0x80) { pos += 2; paramCount = 1; }
+        else pos += 4;
+        if (paramCount != 1 || pos >= sigLen)
+            return false;
+
+        // Skip the return type. For this method it is the generic parameter
+        // form (MVAR 0x1E or VAR 0x13) followed by a compressed index byte
+        // (e.g. "1E 00"); other element types are a single byte here.
+        byte retElem = sig[pos++];
+        if (retElem == 0x1E || retElem == 0x13)
+        {
+            if (pos >= sigLen) return false;
+            pos++; // compressed index (single byte for these signatures)
+        }
+        if (pos >= sigLen)
+            return false;
+
+        return sig[pos] == 0x1C;  // ELEMENT_TYPE_OBJECT
     }
 
     /// <summary>Check if name equals "Add".</summary>

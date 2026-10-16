@@ -58,6 +58,15 @@ namespace System
         public virtual RuntimeTypeHandle TypeHandle => default;
 
         /// <summary>
+        /// True when an instance of <paramref name="c"/> can be assigned to a
+        /// variable of this type (M8: packages like ObjectPool probe
+        /// interface/class assignability). Walks the runtime base-type chain;
+        /// interface-target checks return false (the kernel keeps no
+        /// interface table - see TypeCast in korlib/Internal/Stubs.cs).
+        /// </summary>
+        public virtual bool IsAssignableFrom(Type? c) => false;
+
+        /// <summary>
         /// Gets all public methods of the current type.
         /// </summary>
         public virtual MethodInfo[] GetMethods() => GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
@@ -261,6 +270,26 @@ namespace System
         }
 
         public override RuntimeTypeHandle TypeHandle => new RuntimeTypeHandle((nint)_pMethodTable);
+
+        /// <inheritdoc/>
+        public override bool IsAssignableFrom(Type? c)
+        {
+            if (c == null)
+                return false;
+            if (ReferenceEquals(this, c))
+                return true;
+            var other = c as RuntimeType;
+            if (other == null)
+                return false;
+            MethodTable* chain = other._pMethodTable;
+            while (chain != null)
+            {
+                if (chain == _pMethodTable)
+                    return true;
+                chain = chain->_relatedType;
+            }
+            return false;
+        }
 
         public override string? Name
         {

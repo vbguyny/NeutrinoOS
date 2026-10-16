@@ -1,0 +1,119 @@
+# NuGet packages on NeutrinoOS (M8)
+
+**Policy: .NET 10 or newer, nothing less.** Packages are used through
+their normal `lib/net10.0` (or `lib/net10.0+`) assets. Anything whose
+newest asset targets net8.0/net9.0 or lower is out of scope.
+
+The end-to-end example is `src/apps/libapi` with its Windows twin in
+`samples/nuget-compat/libapi.windows`, using two real NuGet packages:
+
+| Package | Version | What the app uses |
+|---|---|---|
+| Microsoft.Extensions.ObjectPool | 10.0.13 | `DefaultObjectPoolProvider`, `DefaultObjectPool<T>`, `StringBuilderPooledObjectPolicy` |
+| Microsoft.Extensions.Primitives | 10.0.13 | `StringValues` (ctor/`Count`/`ToArray`), `StringSegment` (ctor/`StartsWith`/`Equals`/`IndexOf`/`Value`) |
+
+`bash build/m8-nuget-probe.sh` byte-compares the device responses against
+the Windows twin (same `Program.cs`, same packages).
+
+## How a package dll reaches the device
+
+1. **Declare** — `src/apps/<app>/packages.txt`, one `PackageId [Version]`
+   per line (`#` comments allowed). Example (`src/apps/libapi`):
+   ```
+   Microsoft.Extensions.ObjectPool 10.0.13
+   Microsoft.Extensions.Primitives 10.0.13
+   ```
+2. **Build** — `build/p5-apps-build.sh` turns `packages.txt` into
+   `PackageReference` items in the generated app project and publishes
+   the app plus its package closure into `/root/appsbin`.
+3. **Deploy** — `build/p5-deploy.sh` copies the app dll to
+   `::/apps/webapp` and every dependency dll to **`::/lib`** (the boot
+   volume's package library).
+4. **Load** — the kernel resolves a missing assembly reference by name:
+   `TryLoadAssemblyFromLib` reads `/lib/<name>.dll` through the kernel
+   file bridge and loads it as a JIT assembly. BCL scopes are mapped to
+   korlib ("virtual assemblies": `System.Runtime`, `System.Memory`,
+   `System.Collections`, `System.Collections.Concurrent`,
+   `System.Runtime.CompilerServices.Unsafe`, ...).
+5. **Execute** — methods are JIT-compiled lazily on first call; member
+   references resolve against the loaded assembly's IL metadata, the
+   korlib IL metadata, or the AOT method registry for korlib types that
+   are not part of the shipped korlib.dll IL.
+
+## Device surface added for these packages
+
+korlib / kernel additions made during M8 (all exercised by the two
+packages above):
+
+- `System.AppContext` (`TryGetSwitch`, `GetData`), `System.Resources.ResourceManager`
+  (`ctor(Type)`, `GetString`) — used by generated `SR` resource helpers.
+- `Exception` family: `ThrowIfNull`, `ThrowIfNullOrEmpty`,
+  `ArgumentOutOfRangeException` constructors (AOT registry).
+- `String.ToCharArray` (AOT registry wrapper around the AOT-compiled korlib body).
+- `Span<T>`/`ReadOnlySpan<T>`: `ctor(char[])`, `ctor(char[], int, int)`,
+  `Slice(int)`, `CopyTo(ReadOnlySpan<T>)` with element-size variants
+  (`$i2/$i4/$i8`); `String.GetPinnableReference` bridging.
+- `Unsafe.As<T>(object)` JIT intrinsic (legacy single-arg form used by
+  `StringValues`); `Unsafe.As<TFrom,TTo>` already existed.
+- `Array.Empty<T>` JIT intrinsic (korlib's `System.Array` is AOT-only).
+- Generic `MemoryExtensions.IndexOf<T>/LastIndexOf<T>` matching the BCL
+  signatures exactly (the JIT matches overloads by element types).
+- `Interlocked.CompareExchange<T>`, `Volatile`, `ConcurrentQueue<T>`
+  (`System.Collections.Concurrent` mapping), `Environment.ProcessorCount`,
+  `Type.IsAssignableFrom` (AOT registry).
+- `MemoryExtensions.AsSpan(string...)` produces spans **into the string's
+  chars** (no temporary copy), so span lifetimes are tied to the string
+  the caller already holds.
+
+## Kernel JIT fixes landed for these packages (M8)
+
+Three latent JIT bugs surfaced by real package IL (all fixed; covered by
+`src/apps/spprobe`, run on device via `run /apps/webapp/spprobe.dll`):
+
+1. **Two large struct arguments in a 3-argument call** (e.g.
+   `MemoryExtensions.StartsWith(span, span, comparisonType)`): the
+   argument loader assumed only arg0 was a 16-byte struct and popped
+   arg1's first qword (the span's data pointer) into RDX. Fixed in
+   `CompileCall` (both-args-large branch passes both by pointer).
+2. **Element-strided `get_Item` selection inside generic method bodies**:
+   memberrefs on `ReadOnlySpan<!0>` had no concrete element type, so the
+   byte-strided default entry was picked and reads misaligned
+   (`IndexOf<char>` found 'l' at byte index 4 instead of 2). Fixed by
+   using the current instantiation's type-argument size
+   (`MetadataIntegration` spanElemSizeVariant).
+3. **`ldvirtftn` on an interface method** (building the pooled-object
+   `Func<T>` from `IPooledObjectPolicy<T>.Create`): interface methods
+   resolve without a native address, and the old code fell back to
+   emitting `call <metadata token>` - a wild jump. Fixed: interface
+   targets now resolve at runtime through `GetInterfaceMethod`, the same
+   helper `callvirt` uses.
+
+## Known boundaries (documented findings)
+
+- **Tomlyn 2.10.1** parses nothing on the device yet: the serializer path
+  needs runtime attribute reflection (`GetCustomAttribute`),
+  `CollectionsMarshal`, `ImmutableArray` and `Array.AsReadOnly<T>`; even
+  the syntax-only path still trips `TomlSerializerOptions`'s static
+  constructor which requires `Array.AsReadOnly<T>` plus string-backed
+  `Memory` internals. Kept out of the sample; a candidate follow-up.
+- **`StringValues.ToString()`** goes through
+  `string.Create<TState>(int, TState, SpanAction<char, TState>)`, i.e. a
+  `SpanAction<T, TArg>` delegate whose `Invoke` takes a `Span<char>` by
+  value. Creating and invoking delegates with ref-struct parameters is
+  not supported by the device JIT yet, so the sample joins values via
+  `ToArray()` + `string.Join` (byte-identical output). The
+  `SpanAction`/`string.Create` path is the next delegate-machinery
+  milestone candidate.
+- **Humanizer.Core 3.0.10** (net10.0 asset exists) needs `Regex` (11
+  member refs), `Immutable`, and culture data — beyond the current
+  surface.
+- Packages with assets only for net8.0 or below (Sqids, Pidgin, Cronos,
+  ZString, Semver, ...) are excluded by policy.
+
+## Cold-start behavior
+
+The device JIT compiles methods on first call. The first HTTP request
+against an endpoint therefore spends seconds-to-minutes compiling the
+Kestrel request pipeline parts it needs (under QEMU TCG; hardware is far
+faster). The probe script warms `/health` first and then uses generous
+per-request timeouts; subsequent requests are served from compiled code.

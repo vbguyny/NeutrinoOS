@@ -28,14 +28,24 @@ done
 mcopy -i /root/run.img -o /root/phase5bin/NeutrinoOS.DDK.dll ::/NeutrinoOS.DDK.dll
 
 # M4: hosted web apps -> /apps/webapp (launched by `webhost <app.dll>`).
+# M8: app source directories define what IS an app; every other dll in
+# appsbin (NuGet/third-party dependencies, the DDK copy) ships to ::/lib,
+# where the loader resolves app dependencies by assembly name
+# (AssemblyLoader.TryLoadAssemblyFromLib -> "/lib/<name>.dll").
 # The base image already ships ::/apps (sample apps), so it must be
 # pre-checked (see the mmd note above).
 if [ -d /root/appsbin ]; then
   mdir -i /root/run.img ::/apps >/dev/null 2>&1 || mmd -i /root/run.img ::/apps
   mdir -i /root/run.img ::/apps/webapp >/dev/null 2>&1 || mmd -i /root/run.img ::/apps/webapp
+  mdir -i /root/run.img ::/lib >/dev/null 2>&1 || mmd -i /root/run.img ::/lib
   for f in /root/appsbin/*.dll; do
     [ -f "$f" ] || continue
-    mcopy -i /root/run.img -o "$f" "::/apps/webapp/$(basename "$f")"
+    base="$(basename "$f" .dll)"
+    if [ -d "src/apps/$base" ]; then
+      mcopy -i /root/run.img -o "$f" "::/apps/webapp/$(basename "$f")"
+    else
+      mcopy -i /root/run.img -o "$f" "::/lib/$(basename "$f")"
+    fi
   done
 fi
 
@@ -52,6 +62,8 @@ echo "=== /bin ==="
 mdir -i /root/run.img ::/bin
 echo "=== /apps/webapp ==="
 mdir -i /root/run.img ::/apps/webapp 2>/dev/null || true
+echo "=== /lib ==="
+mdir -i /root/run.img ::/lib 2>/dev/null || true
 echo "=== /etc ==="
 mdir -i /root/run.img ::/etc
 echo "=== root ==="

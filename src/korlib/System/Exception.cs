@@ -56,6 +56,18 @@ public class ArgumentException : Exception
     public ArgumentException() : base() { }
     public ArgumentException(string? message) : base(message) { }
     public ArgumentException(string? message, Exception? innerException) : base(message, innerException) { }
+
+    /// <summary>Message + parameter-name overload (BCL shape; paramName is informational).</summary>
+    public ArgumentException(string? message, string? paramName) : base(message) { }
+
+    /// <summary>Throws when the string argument is null or empty (net6+ guard).</summary>
+    public static void ThrowIfNullOrEmpty(string? argument, string? paramName = null)
+    {
+        if (argument == null)
+            throw new ArgumentNullException(paramName);
+        if (argument!.Length == 0)
+            throw new ArgumentException("The value cannot be an empty string.", paramName);
+    }
 }
 
 /// <summary>
@@ -66,6 +78,13 @@ public class ArgumentNullException : ArgumentException
     public ArgumentNullException() : base() { }
     public ArgumentNullException(string? paramName) : base(paramName) { }
     public ArgumentNullException(string? message, Exception? innerException) : base(message, innerException) { }
+
+    /// <summary>Throws when the argument is null (net6+ guard; M8: ObjectPool).</summary>
+    public static void ThrowIfNull(object? argument, string? paramName = null)
+    {
+        if (argument == null)
+            throw new ArgumentNullException(paramName);
+    }
 }
 
 /// <summary>

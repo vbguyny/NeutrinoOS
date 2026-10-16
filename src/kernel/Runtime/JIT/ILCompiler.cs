@@ -382,6 +382,12 @@ public unsafe struct ResolvedMethod
     /// <summary>MethodTable pointer for the type argument T in Activator.CreateInstance&lt;T&gt;().</summary>
     public void* ActivatorTypeArgMT;
 
+    /// <summary>True if this is Array.Empty&lt;T&gt;() (JIT intrinsic, M8).</summary>
+    public bool IsArrayEmpty;
+
+    /// <summary>MethodTable pointer for the ELEMENT type T in Array.Empty&lt;T&gt;().</summary>
+    public void* ArrayElementMT;
+
     /// <summary>True if this is Unsafe.As&lt;TFrom, TTo&gt;(ref TFrom) (JIT intrinsic).</summary>
     public bool IsUnsafeAs;
 
@@ -1411,6 +1417,33 @@ public unsafe struct ILCompiler
                 DebugConsole.WriteDecimal(_debugAssemblyId);
                 DebugConsole.Write(" tok=0x");
                 DebugConsole.WriteHex(_debugMethodToken);
+                DebugConsole.Write(" ilLen=");
+                DebugConsole.WriteDecimal((uint)_ilLength);
+                DebugConsole.Write(" ctx=");
+                {
+                    int b0 = _ilOffset - 4;
+                    if (b0 < 0) b0 = 0;
+                    int b1 = _ilOffset + 8;
+                    if (b1 > _ilLength) b1 = _ilLength;
+                    for (int bi = b0; bi < b1; bi++)
+                    {
+                        byte bv = _il[bi];
+                        DebugConsole.WriteHex((ulong)(bv >> 4));
+                        DebugConsole.WriteHex((ulong)(bv & 0xF));
+                        DebugConsole.Write(" ");
+                    }
+                }
+                DebugConsole.Write(" head=");
+                {
+                    int n = _ilLength < 12 ? _ilLength : 12;
+                    for (int bi = 0; bi < n; bi++)
+                    {
+                        byte bv = _il[bi];
+                        DebugConsole.WriteHex((ulong)(bv >> 4));
+                        DebugConsole.WriteHex((ulong)(bv & 0xF));
+                        DebugConsole.Write(" ");
+                    }
+                }
                 DebugConsole.WriteLine();
                 X64Emitter.RspDeltaAccumulator = physSaved;
                 return null;
@@ -5275,6 +5308,12 @@ public unsafe struct ILCompiler
         {
             DebugConsole.Write("[JIT] ResolveMethod FAILED for call 0x");
             DebugConsole.WriteHex(token);
+            DebugConsole.Write(" iloff=");
+            DebugConsole.WriteDecimal((uint)(_ilOffset - 4));
+            DebugConsole.Write(" asm=");
+            DebugConsole.WriteDecimal(_debugAssemblyId);
+            DebugConsole.Write(" inTok=0x");
+            DebugConsole.WriteHex(_debugMethodToken);
             DebugConsole.WriteLine();
             return false;
         }
@@ -5307,6 +5346,15 @@ public unsafe struct ILCompiler
         if (method.IsActivatorCreateInstance)
         {
             return CompileActivatorCreateInstance((MethodTable*)method.ActivatorTypeArgMT);
+        }
+
+        // Handle Array.Empty<T>() as JIT intrinsic (M8: Tomlyn and other
+        // packages call it from option-container statics; korlib's
+        // System.Array IL is not shipped in korlib.dll, so the generic
+        // method has no metadata body to JIT - allocate inline instead)
+        if (method.IsArrayEmpty)
+        {
+            return CompileArrayEmpty((MethodTable*)method.ArrayElementMT);
         }
 
         // Handle Unsafe.As<TFrom, TTo>(ref TFrom) as JIT intrinsic
@@ -5845,7 +5893,29 @@ public unsafe struct ILCompiler
             arg2IsFloat32 = arg2Entry.Kind == EvalStackKind.Float32;
             arg2IsFloat64 = arg2Entry.Kind == EvalStackKind.Float64;
 
-            if (arg0Entry.ByteSize > 8)
+            if (arg0Entry.ByteSize > 8 && arg1Entry.ByteSize > 8)
+            {
+                // BOTH arg0 and arg1 are large structs - e.g.
+                // MemoryExtensions.StartsWith(span, span, comparisonType).
+                // Previously this fell into the single-large-arg0 path below,
+                // which popped arg1's first qword into RDX (the span's data
+                // pointer) instead of passing a pointer to the struct.
+                //
+                // Stack layout after popping arg2:
+                //   [RSP] = arg1 (arg1Size bytes), [RSP + arg1Size] = arg0
+                // Both structs stay on the stack; the deferred LEAs in the
+                // shadow-space block set RCX = &arg0, RDX = &arg1.
+                X64Emitter.Pop(ref _code, VReg.R3);   // R8 = arg2
+                PopEntry();
+
+                largeStructArgBytes = arg0Entry.ByteSize + arg1Entry.ByteSize;
+                largeStructArg0Offset = arg1Entry.ByteSize;  // arg0 starts after arg1
+                needsLargeStructPtrInRcx = true;
+                needsLargeStructPtrInRdx = true;
+
+                PopEntry(); PopEntry();
+            }
+            else if (arg0Entry.ByteSize > 8)
             {
                 // arg0 is a large struct: pass by pointer in RCX
                 // Stack layout: [RSP] = arg2 (8), [RSP+8] = arg1 (8), [RSP+16] = struct (arg0Size)
@@ -12763,11 +12833,12 @@ public unsafe struct ILCompiler
         X64Emitter.Pop(ref _code, VReg.R0);
         PopEntry();
 
-        // For testing: token is the function pointer address
-        // In production: would use method resolver to get address, then vtable lookup
-        ulong fnPtr = token;
+        ulong fnPtr = 0;
         bool useVtable = false;
         int vtableSlot = -1;
+        bool interfaceDispatch = false;
+        MethodTable* ifaceMT = null;
+        int ifaceSlot = -1;
 
         // Use ResolveMethod to get method info (supports registry fallback when _resolver is null)
         ResolvedMethod resolved;
@@ -12785,26 +12856,78 @@ public unsafe struct ILCompiler
         if (resolved.VtableSlot < 0) DebugConsole.Write("(neg)");
         DebugConsole.WriteLine();
 
-        if (resolveOk && resolved.IsValid && resolved.NativeCode != null)
+        if (resolveOk && resolved.IsValid)
         {
-            fnPtr = (ulong)resolved.NativeCode;
-
-            // Check if this is a virtual method requiring vtable dispatch
-            if (resolved.IsVirtual && resolved.VtableSlot >= 0)
+            if (resolved.NativeCode != null)
             {
+                fnPtr = (ulong)resolved.NativeCode;
+
+                // Check if this is a virtual method requiring vtable dispatch
+                if (resolved.IsVirtual && resolved.VtableSlot >= 0)
+                {
+                    useVtable = true;
+                    vtableSlot = resolved.VtableSlot;
+                }
+            }
+            else if (resolved.IsInterfaceMethod && resolved.InterfaceMT != null && resolved.InterfaceMethodSlot >= 0)
+            {
+                // Interface method (e.g. IPooledObjectPolicy<T>.Create used to
+                // build a delegate): the concrete address depends on the
+                // object's type, so resolve it at runtime with the same helper
+                // callvirt uses. Previously this fell through to the
+                // "token as address" fallback and the emitted call jumped to
+                // the raw metadata token (0x0A000022 page fault).
+                interfaceDispatch = true;
+                ifaceMT = (MethodTable*)resolved.InterfaceMT;
+                ifaceSlot = resolved.InterfaceMethodSlot;
+            }
+            else if (resolved.IsVirtual && resolved.VtableSlot >= 0)
+            {
+                // Virtual method without a compiled body yet: dispatch through
+                // the vtable (slot populated lazily).
                 useVtable = true;
                 vtableSlot = resolved.VtableSlot;
             }
         }
-        // Otherwise fall back to treating token as direct address
+
+        if (!resolveOk || !resolved.IsValid || (!interfaceDispatch && !useVtable && fnPtr == 0))
+        {
+            // Refuse to emit a call through the raw metadata token - that
+            // produced wild jumps (token pages are unmapped).
+            DebugConsole.Write("[JIT] ldvirtftn unresolved token 0x");
+            DebugConsole.WriteHex(token);
+            DebugConsole.WriteLine();
+            return false;
+        }
 
         DebugConsole.Write("[ldvirtftn] useVtable=");
         DebugConsole.WriteDecimal(useVtable ? 1u : 0u);
+        DebugConsole.Write(" iface=");
+        DebugConsole.WriteDecimal(interfaceDispatch ? 1u : 0u);
         DebugConsole.Write(" fnPtr=0x");
         DebugConsole.WriteHex(fnPtr);
         DebugConsole.WriteLine();
 
-        if (useVtable)
+        if (interfaceDispatch)
+        {
+            DebugConsole.Write("[ldvirtftn] interface dispatch slot=");
+            DebugConsole.WriteDecimal((uint)ifaceSlot);
+            DebugConsole.WriteLine();
+
+            // RAX = object reference. Resolve the concrete implementation at
+            // runtime (the vtable slot depends on the object's type):
+            //   GetInterfaceMethod(void* obj, MethodTable* interfaceMT, int methodIndex)
+            X64Emitter.MovRR(ref _code, VReg.R7, VReg.R0);   // RBX = obj
+            X64Emitter.MovRR(ref _code, VReg.R1, VReg.R0);   // RCX = obj
+            X64Emitter.MovRI64(ref _code, VReg.R2, (ulong)ifaceMT);
+            X64Emitter.MovRI32(ref _code, VReg.R3, ifaceSlot);
+            X64Emitter.SubRI(ref _code, VReg.SP, 32);
+            X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)_getInterfaceMethod);
+            X64Emitter.CallR(ref _code, VReg.R0);
+            X64Emitter.AddRI(ref _code, VReg.SP, 32);
+            // RAX = method address (falls through to the push below)
+        }
+        else if (useVtable)
         {
             // Virtual dispatch: load function pointer from vtable
             // RAX already contains the object reference from pop above
@@ -14660,6 +14783,45 @@ public unsafe struct ILCompiler
         }
 
         DebugConsole.WriteLine("[JIT] CompileActivatorCreateInstance done");
+        return true;
+    }
+
+    /// <summary>
+    /// Compile Array.Empty&lt;T&gt;() as a JIT intrinsic: allocate a
+    /// zero-length array of the intrinsic's element type via RhpNewArray.
+    /// Stack: [] -&gt; [T[]]
+    /// </summary>
+    private bool CompileArrayEmpty(MethodTable* elementMT)
+    {
+        if (elementMT == null)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayEmpty: null elementMT");
+            return false;
+        }
+
+        MethodTable* arrayMT = AssemblyLoader.GetOrCreateArrayMethodTable(elementMT);
+        if (arrayMT == null)
+        {
+            DebugConsole.WriteLine("[JIT] CompileArrayEmpty: no array MT");
+            return false;
+        }
+
+        // numElements = 0 -> RDX (second arg)
+        X64Emitter.XorRR(ref _code, VReg.R2, VReg.R2);
+        // MethodTable* -> RCX (first arg)
+        X64Emitter.MovRI64(ref _code, VReg.R1, (ulong)arrayMT);
+
+        // Reserve shadow space (same rationale as CompileNewarr: live
+        // eval-stack data may sit right below RSP).
+        X64Emitter.SubRI(ref _code, VReg.SP, 32);
+        X64Emitter.MovRI64(ref _code, VReg.R0, (ulong)_rhpNewArray);
+        X64Emitter.CallR(ref _code, VReg.R0);
+        RecordSafePoint();
+        X64Emitter.AddRI(ref _code, VReg.SP, 32);
+
+        // Push the allocated array reference onto the eval stack
+        X64Emitter.Push(ref _code, VReg.R0);
+        PushEntry(EvalStackEntry.NativeInt);
         return true;
     }
 

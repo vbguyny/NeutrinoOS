@@ -482,6 +482,19 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string, int, char>)&StringHelpers.GetChars,
             1, ReturnKind.Int32, true, false);
 
+        // String.ToCharArray() - 0 parameters, HasThis=true, returns char[]
+        // (used by MemoryExtensions.AsSpan/AsMemory string overloads on device)
+        Register(
+            "System.String", "ToCharArray",
+            (nint)(delegate*<string, char[]>)&StringHelpers.ToCharArrayCopy,
+            0, ReturnKind.IntPtr, true, false);
+
+        // String.ToCharArray(int startIndex, int length) - 2 parameters, HasThis=true
+        Register(
+            "System.String", "ToCharArray",
+            (nint)(delegate*<string, int, int, char[]>)&StringHelpers.ToCharArrayRange,
+            2, ReturnKind.IntPtr, true, false);
+
         // String.IsNullOrEmpty (static method)
         Register(
             "System.String", "IsNullOrEmpty",
@@ -1184,6 +1197,15 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<Type, string?, System.Reflection.FieldInfo?>)&TypeMethodHelpers.GetField,
             1, ReturnKind.IntPtr, true, true);
 
+        // Type.IsAssignableFrom(Type) - virtual; walks the runtime
+        // base-type chain (_relatedType). Interface-target checks return
+        // false: the kernel keeps no interface table (M8: packages like
+        // Microsoft.Extensions.ObjectPool probe IDisposable).
+        Register(
+            "System.Type", "IsAssignableFrom",
+            (nint)(delegate*<Type?, Type?, bool>)&ReflectionHelpers.IsAssignableFrom,
+            1, ReturnKind.Int32, true, true);  // Virtual
+
         // Type.op_Equality - static; compares the underlying MethodTable (handle),
         // because typeof() creates a FRESH RuntimeType wrapper on every call, so
         // wrapper reference equality would be wrong. Roslyn emits a call to this
@@ -1666,6 +1688,30 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<string?, ArgumentNullException>)&ExceptionHelpers.Ctor_ArgumentNullException_String,
             1, ReturnKind.IntPtr, false, false);
 
+        // ArgumentOutOfRangeException constructors
+        Register(
+            "System.ArgumentOutOfRangeException", ".ctor",
+            (nint)(delegate*<ArgumentOutOfRangeException>)&ExceptionHelpers.Ctor_ArgumentOutOfRangeException,
+            0, ReturnKind.IntPtr, false, false);
+
+        Register(
+            "System.ArgumentOutOfRangeException", ".ctor",
+            (nint)(delegate*<string?, ArgumentOutOfRangeException>)&ExceptionHelpers.Ctor_ArgumentOutOfRangeException_String,
+            1, ReturnKind.IntPtr, false, false);
+
+        // Throw helpers (net10 BCL check methods used by libraries)
+        // ArgumentNullException.ThrowIfNull(object, string)
+        Register(
+            "System.ArgumentNullException", "ThrowIfNull",
+            (nint)(delegate*<object?, string?, void>)&ExceptionHelpers.ThrowIfNull,
+            2, ReturnKind.Void, false, false);
+
+        // ArgumentException.ThrowIfNullOrEmpty(string, string)
+        Register(
+            "System.ArgumentException", "ThrowIfNullOrEmpty",
+            (nint)(delegate*<string?, string?, void>)&ExceptionHelpers.ThrowIfNullOrEmpty,
+            2, ReturnKind.Void, false, false);
+
         // InvalidOperationException constructors
         Register(
             "System.InvalidOperationException", ".ctor",
@@ -1993,6 +2039,18 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<nint, void*, int, void>)&SpanHelpers.InitSpanFromPointer,
             3, ReturnKind.Void, false, false);
 
+        // SpanHelpers.InitSpanFromCharArray(nint spanPtr, char[] array)
+        Register(
+            "NeutrinoOS.Runtime.SpanHelpers", "InitSpanFromCharArray",
+            (nint)(delegate*<nint, char[]?, void>)&SpanHelpers.InitSpanFromCharArray,
+            2, ReturnKind.Void, false, false);
+
+        // SpanHelpers.InitSpanFromCharArrayRange(nint spanPtr, char[] array, int start, int length)
+        Register(
+            "NeutrinoOS.Runtime.SpanHelpers", "InitSpanFromCharArrayRange",
+            (nint)(delegate*<nint, char[]?, int, int, void>)&SpanHelpers.InitSpanFromCharArrayRange,
+            4, ReturnKind.Void, false, false);
+
         // SpanHelpers.GetByte(nint spanPtr, int index)
         Register(
             "NeutrinoOS.Runtime.SpanHelpers", "GetByte",
@@ -2038,6 +2096,18 @@ public static unsafe class AotMethodRegistry
             "System.ReadOnlySpan`1", ".ctor",
             (nint)(delegate*<nint, void*, int, void>)&SpanHelpers.InitSpanFromPointer,
             2, ReturnKind.Void, true, false);
+
+        // System.ReadOnlySpan`1..ctor(char[]) - 1 explicit param (whole array)
+        Register(
+            "System.ReadOnlySpan`1", ".ctor",
+            (nint)(delegate*<nint, char[]?, void>)&SpanHelpers.InitSpanFromCharArray,
+            1, ReturnKind.Void, true, false);
+
+        // System.ReadOnlySpan`1..ctor(char[], int, int) - 3 explicit params (array, start, length)
+        Register(
+            "System.ReadOnlySpan`1", ".ctor",
+            (nint)(delegate*<nint, char[]?, int, int, void>)&SpanHelpers.InitSpanFromCharArrayRange,
+            3, ReturnKind.Void, true, false);
 
         // System.ReadOnlySpan`1.get_Length - 0 explicit params (property getter)
         Register(
@@ -2085,6 +2155,90 @@ public static unsafe class AotMethodRegistry
             "System.Span`1", ".ctor",
             (nint)(delegate*<nint, void*, int, void>)&SpanHelpers.InitSpanFromPointer,
             2, ReturnKind.Void, true, false);
+
+        // System.Span`1..ctor(char[]) - 1 explicit param (whole array)
+        Register(
+            "System.Span`1", ".ctor",
+            (nint)(delegate*<nint, char[]?, void>)&SpanHelpers.InitSpanFromCharArray,
+            1, ReturnKind.Void, true, false);
+
+        // System.Span`1..ctor(char[], int, int) - 3 explicit params (array, start, length)
+        Register(
+            "System.Span`1", ".ctor",
+            (nint)(delegate*<nint, char[]?, int, int, void>)&SpanHelpers.InitSpanFromCharArrayRange,
+            3, ReturnKind.Void, true, false);
+
+        // System.Span`1.Slice(int) / ReadOnlySpan`1.Slice(int) - 1 explicit param,
+        // returns the (16-byte) span through the hidden return buffer. The $iN
+        // entries are selected by element size via the spanElemSizeVariant path.
+        Register(
+            "System.ReadOnlySpan`1", "Slice",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan1,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i2",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan2,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i4",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan4,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.ReadOnlySpan`1", "Slice$i8",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan8,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan1,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i2",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan2,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i4",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan4,
+            1, ReturnKind.Struct, true, false, 17);
+        Register(
+            "System.Span`1", "Slice$i8",
+            (nint)(delegate*<nint, nint, int, void>)&SpanHelpers.SliceSpan8,
+            1, ReturnKind.Struct, true, false, 17);
+
+        // System.Span`1.CopyTo(ReadOnlySpan<T>) / ReadOnlySpan`1.CopyTo(ReadOnlySpan<T>)
+        // - 1 explicit param (destination span, passed by reference per the
+        // x64 struct-arg convention). $iN variants selected by element size.
+        Register(
+            "System.ReadOnlySpan`1", "CopyTo",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan1,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "CopyTo$i2",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan2,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "CopyTo$i4",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan4,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.ReadOnlySpan`1", "CopyTo$i8",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan8,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "CopyTo",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan1,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "CopyTo$i2",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan2,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "CopyTo$i4",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan4,
+            1, ReturnKind.Void, true, false);
+        Register(
+            "System.Span`1", "CopyTo$i8",
+            (nint)(delegate*<nint, nint, void>)&SpanHelpers.CopyToSpan8,
+            1, ReturnKind.Void, true, false);
 
         // System.Span`1.get_Length - 0 explicit params (property getter)
         Register(
@@ -2342,15 +2496,15 @@ public static unsafe class AotMethodRegistry
         ulong typeHash = HashBytes(typeName);
         ulong methodHash = HashBytes(methodName);
 
-        // Element-size variant for Span<T>.get_Item (2/4/8-byte elements):
-        // the plain entry indexes bytes, so the resolver selects a suffixed
-        // entry registered against an element-strided helper.
+        // Element-size variant for span methods (get_Item/Slice on 2/4/8-byte
+        // elements): the plain entry is byte-strided, so the resolver selects
+        // a "$iN"-suffixed entry registered against an element-strided helper.
         if (spanElemSizeVariant == 2)
-            methodHash = HashString("get_Item$i2");
+            methodHash = HashBytesWithSuffix(methodName, (byte)'2');
         else if (spanElemSizeVariant == 4)
-            methodHash = HashString("get_Item$i4");
+            methodHash = HashBytesWithSuffix(methodName, (byte)'4');
         else if (spanElemSizeVariant == 8)
-            methodHash = HashString("get_Item$i8");
+            methodHash = HashBytesWithSuffix(methodName, (byte)'8');
 
         // For char* variant constructors, look for the special ".ctor$ptr" entry
         // For List<> variant constructors (e.g., AggregateException), look for ".ctor$list"
@@ -2728,6 +2882,28 @@ public static unsafe class AotMethodRegistry
     }
 
     /// <summary>
+    /// Hash a null-terminated byte string with the span element-size suffix
+    /// appended ("$i2"/"$i4"/"$i8") - same hash a registered variant name
+    /// like "Slice$i2" would produce.
+    /// </summary>
+    private static ulong HashBytesWithSuffix(byte* s, byte sizeDigit)
+    {
+        if (s == null)
+            return 0;
+
+        ulong hash = 5381;
+        while (*s != 0)
+        {
+            hash = ((hash << 5) + hash) ^ *s;
+            s++;
+        }
+        hash = ((hash << 5) + hash) ^ (byte)'$';
+        hash = ((hash << 5) + hash) ^ (byte)'i';
+        hash = ((hash << 5) + hash) ^ sizeDigit;
+        return hash;
+    }
+
+    /// <summary>
     /// Check if a byte string matches a managed string.
     /// </summary>
     private static bool StringMatches(byte* bytes, string str)
@@ -3008,6 +3184,23 @@ public static unsafe class StringHelpers
         if (s == null)
             return 0;
         return s.Length;
+    }
+
+    /// <summary>
+    /// Wrapper for String.ToCharArray(). Calls the AOT-compiled korlib
+    /// implementation of the string copy.
+    /// </summary>
+    public static char[] ToCharArrayCopy(string s)
+    {
+        return s.ToCharArray();
+    }
+
+    /// <summary>
+    /// Wrapper for String.ToCharArray(int startIndex, int length).
+    /// </summary>
+    public static char[] ToCharArrayRange(string s, int startIndex, int length)
+    {
+        return s.ToCharArray(startIndex, length);
     }
 
     /// <summary>
@@ -4604,6 +4797,29 @@ public static class ReflectionHelpers
     public static bool TypeNotEquals(Type? left, Type? right)
         => !TypeEquals(left, right);
 
+    // Type.IsAssignableFrom(Type): true when the runtime type chain of
+    // 'c' reaches 'target' (the same _relatedType walk the cast helpers
+    // use). Interface targets have no kernel interface table and return
+    // false, which is correct for the class-vs-interface probes packages
+    // like ObjectPool make (IDisposable.IsAssignableFrom(StringBuilder)).
+    public static unsafe bool IsAssignableFrom(Type? target, Type? c)
+    {
+        if (target is null || c is null)
+            return false;
+        nint targetHandle = TypeMethodHelpers.GetTypeHandle(target);
+        nint cHandle = TypeMethodHelpers.GetTypeHandle(c);
+        if (targetHandle == 0 || cHandle == 0)
+            return false;
+        MethodTable* mt = (MethodTable*)cHandle;
+        while (mt != null)
+        {
+            if ((nint)mt == targetHandle)
+                return true;
+            mt = mt->_relatedType;
+        }
+        return false;
+    }
+
     // MethodBase equality - compare by metadata token (same method = same token)
     public static bool MethodBaseEquals(System.Reflection.MethodBase? left, System.Reflection.MethodBase? right)
     {
@@ -5343,6 +5559,25 @@ public static class ExceptionHelpers
     public static ArgumentNullException Ctor_ArgumentNullException() => new ArgumentNullException();
     public static ArgumentNullException Ctor_ArgumentNullException_String(string? paramName) => new ArgumentNullException(paramName);
 
+    // ArgumentOutOfRangeException
+    public static ArgumentOutOfRangeException Ctor_ArgumentOutOfRangeException() => new ArgumentOutOfRangeException();
+    public static ArgumentOutOfRangeException Ctor_ArgumentOutOfRangeException_String(string? paramName) => new ArgumentOutOfRangeException(paramName);
+
+    // Throw helpers (net10 check APIs)
+    public static void ThrowIfNull(object? value, string? paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+    }
+
+    public static void ThrowIfNullOrEmpty(string? value, string? paramName)
+    {
+        if (value == null)
+            throw new ArgumentNullException(paramName);
+        if (value.Length == 0)
+            throw new ArgumentException("The value cannot be an empty string.", paramName);
+    }
+
     // InvalidOperationException
     public static InvalidOperationException Ctor_InvalidOperationException() => new InvalidOperationException();
     public static InvalidOperationException Ctor_InvalidOperationException_String(string? message) => new InvalidOperationException(message);
@@ -5765,6 +6000,99 @@ public static unsafe class SpanHelpers
         *(nint*)spanBytes = (nint)pointer;
         *(int*)(spanBytes + 8) = length;
     }
+
+    /// <summary>
+    /// Initialize a Span/ReadOnlySpan&lt;char&gt; from a char array (whole array).
+    /// Span length is the element count.
+    /// </summary>
+    public static void InitSpanFromCharArray(nint spanPtr, char[]? array)
+    {
+        byte* spanBytes = (byte*)spanPtr;
+
+        if (array == null || array.Length == 0)
+        {
+            *(nint*)spanBytes = 0;
+            *(int*)(spanBytes + 8) = 0;
+            return;
+        }
+
+        char* arrayPtr = (char*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref array[0]);
+        *(nint*)spanBytes = (nint)arrayPtr;
+        *(int*)(spanBytes + 8) = array.Length;
+    }
+
+    /// <summary>
+    /// Initialize a Span/ReadOnlySpan&lt;char&gt; from a char array range.
+    /// </summary>
+    public static void InitSpanFromCharArrayRange(nint spanPtr, char[]? array, int start, int length)
+    {
+        byte* spanBytes = (byte*)spanPtr;
+
+        if (array == null || (uint)start > (uint)array.Length || (uint)length > (uint)(array.Length - start) || length == 0)
+        {
+            *(nint*)spanBytes = 0;
+            *(int*)(spanBytes + 8) = 0;
+            return;
+        }
+
+        char* arrayPtr = (char*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref array[0]);
+        *(nint*)spanBytes = (nint)(arrayPtr + start);
+        *(int*)(spanBytes + 8) = length;
+    }
+
+    /// <summary>
+    /// Core of Slice(resultPtr, spanPtr, start): writes the sliced span
+    /// (data + start * elemSize, length - start) into the hidden return
+    /// buffer at resultPtr.
+    /// </summary>
+    private static void SliceCore(nint resultPtr, nint spanPtr, int start, int elemSize)
+    {
+        byte* src = (byte*)spanPtr;
+        nint data = *(nint*)src;
+        int len = *(int*)(src + 8);
+
+        if (start < 0) start = 0;
+        if (start > len) start = len;
+
+        byte* dst = (byte*)resultPtr;
+        *(nint*)dst = data + (nint)start * elemSize;
+        *(int*)(dst + 8) = len - start;
+    }
+
+    public static void SliceSpan1(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 1);
+    public static void SliceSpan2(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 2);
+    public static void SliceSpan4(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 4);
+    public static void SliceSpan8(nint resultPtr, nint spanPtr, int start) => SliceCore(resultPtr, spanPtr, start, 8);
+
+    /// <summary>
+    /// Core of CopyTo(thisPtr, destSpanPtr): copies min(dest length, this
+    /// length) elements from this span's data to the destination span's data.
+    /// </summary>
+    private static void CopyToCore(nint thisPtr, nint destPtr, int elemSize)
+    {
+        byte* src = (byte*)thisPtr;
+        nint srcData = *(nint*)src;
+        int srcLen = *(int*)(src + 8);
+
+        byte* dst = (byte*)destPtr;
+        nint dstData = *(nint*)dst;
+        int dstLen = *(int*)(dst + 8);
+
+        int n = srcLen < dstLen ? srcLen : dstLen;
+        if (n <= 0)
+            return;
+
+        byte* s = (byte*)srcData;
+        byte* d = (byte*)dstData;
+        int bytes = n * elemSize;
+        for (int i = 0; i < bytes; i++)
+            d[i] = s[i];
+    }
+
+    public static void CopyToSpan1(nint thisPtr, nint destPtr) => CopyToCore(thisPtr, destPtr, 1);
+    public static void CopyToSpan2(nint thisPtr, nint destPtr) => CopyToCore(thisPtr, destPtr, 2);
+    public static void CopyToSpan4(nint thisPtr, nint destPtr) => CopyToCore(thisPtr, destPtr, 4);
+    public static void CopyToSpan8(nint thisPtr, nint destPtr) => CopyToCore(thisPtr, destPtr, 8);
 
     /// <summary>
     /// Get the length of a Span. Works for any T since layout is the same.
