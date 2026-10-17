@@ -231,8 +231,15 @@ static class Probe
         Sweep("int", "num = 3231\n");
         Sweep("int42", "num = 42\n");
         Sweep("intneg", "num = -5\n");
-        Sweep("float", "fl = 3.25\n");
-        Sweep("float-e", "fl = 1e3\n");
+        // Float sweeps disabled: lexing, span staging and the double parse now
+        // work end to end, but Tomlyn's FloatValueSyntax constructor formats
+        // the parsed value via TomlFormatHelper.ToString(double) ->
+        // double.ToString("R", InvariantCulture), and korlib's AOT double
+        // formatter page-faults on device (cr2=0x278). The exception cascade
+        // during that fault halts the boot. Re-enable once the korlib
+        // double-formatting boundary is fixed.
+        // Sweep("float", "fl = 3.25\n");
+        // Sweep("float-e", "fl = 1e3\n");
         Sweep("bool", "ok = true\n");
         Sweep("date", "d = 1979-05-27\n");
     }
@@ -291,8 +298,106 @@ static class Probe
             Console.WriteLine("S3y: copyto-exc=[" + msg + "]");
         }
 
+        // Call-shape bisect: span argument at every position (static).
+        try { System.Span<char> t1 = stackalloc char[1]; M1(t1); Console.WriteLine("S3y: m1span-ok"); }
+        catch (Exception ex) { Console.WriteLine("S3y: m1span-exc=[" + SafeMsg(ex) + "]"); }
+        try { System.Span<char> t1 = stackalloc char[1]; M2(1, t1); Console.WriteLine("S3y: m2int-span-ok"); }
+        catch (Exception ex) { Console.WriteLine("S3y: m2int-span-exc=[" + SafeMsg(ex) + "]"); }
+        try { System.Span<char> t1 = stackalloc char[1]; M3(1, t1, 1); Console.WriteLine("S3y: m3int-span-int-ok"); }
+        catch (Exception ex) { Console.WriteLine("S3y: m3int-span-int-exc=[" + SafeMsg(ex) + "]"); }
+        try { System.Span<char> t1 = stackalloc char[1]; M4(1, 1, t1); Console.WriteLine("S3y: m4int-int-span-ok"); }
+        catch (Exception ex) { Console.WriteLine("S3y: m4int-int-span-exc=[" + SafeMsg(ex) + "]"); }
+        try { System.Span<char> t1 = stackalloc char[1]; M5(1, 1, t1, 1); Console.WriteLine("S3y: m5int-int-span-int-ok"); }
+        catch (Exception ex) { Console.WriteLine("S3y: m5int-int-span-int-exc=[" + SafeMsg(ex) + "]"); }
+
+        // Instance-method mirror of StringBuilder.CopyTo's exact physical shape.
+        var oc = new OutCopyMimic();
+        TryStep("inst-copy", oc.Run);
+
+        // Instance method + field StringBuilder + out long - Tomlyn's
+        // TryParseDecimalInt64 shape reduced.
+        var om = new OutMimic();
+        TryStep("out-mimic", om.Run);
+
         int? nullable = 5;
         Console.WriteLine("S3y: null?" + (nullable != null) + " v=" + nullable.GetValueOrDefault());
+    }
+
+    static string SafeMsg(Exception ex)
+    {
+        try { return ex.Message; } catch { return "?"; }
+    }
+
+    static void TryStep(string label, System.Action step)
+    {
+        try
+        {
+            step();
+            Console.WriteLine("S3y: " + label + "-ok");
+        }
+        catch (Exception ex)
+        {
+            string msg = "?";
+            try { msg = ex.Message; } catch { }
+            Console.WriteLine("S3y: " + label + "-exc=[" + msg + "]");
+        }
+    }
+
+    static void M1(System.Span<char> s) { s[0] = 'a'; }
+    static void M2(int a, System.Span<char> s) { s[0] = (char)(48 + a); }
+    static void M3(int a, System.Span<char> s, int c) { s[0] = (char)(48 + a + c); }
+    static void M4(int a, int b, System.Span<char> s) { s[0] = (char)(48 + a + b); }
+    static void M5(int a, int b, System.Span<char> s, int c) { s[0] = (char)(48 + a + b + c); }
+
+    sealed class OutCopyMimic
+    {
+        System.Text.StringBuilder _sb = new System.Text.StringBuilder();
+
+        public void Run()
+        {
+            _sb.Append('9');
+            _sb.Append('8');
+            System.Span<char> dst = stackalloc char[2];
+            CopyTo(0, dst, 2);
+            Console.WriteLine("S3y: inst-copy=" + (int)dst[0] + "," + (int)dst[1]);
+        }
+
+        public void CopyTo(int sourceIndex, System.Span<char> destination, int count)
+        {
+            for (int i = 0; i < count; i++)
+                destination[i] = _sb[sourceIndex + i];
+        }
+    }
+
+    sealed class OutMimic
+    {
+        System.Text.StringBuilder _tb = new System.Text.StringBuilder();
+
+        public void Run()
+        {
+            _tb.Append('4');
+            _tb.Append('2');
+            long val;
+            bool ok = TryDec(out val);
+            Console.WriteLine("S3y: out-mimic ok=" + ok + " v=" + val);
+        }
+
+        bool TryDec(out long value)
+        {
+            value = 0;
+            var length = _tb.Length;
+            if (length == 0) return false;
+            ulong accumulator = 0;
+            for (int i = 0; i < length; i++)
+            {
+                var digitChar = _tb[i];
+                var digit = digitChar - '0';
+                if ((uint)digit > 9) return false;
+                accumulator = (accumulator * 10) + (ulong)digit;
+            }
+            value = unchecked((long)accumulator);
+            return true;
+        }
     }
 
     static bool TryParseDec64(System.Text.StringBuilder tb, out long value)
@@ -371,7 +476,14 @@ static class Probe
                 try
                 {
                     if (v is Tomlyn.Syntax.FloatValueSyntax fv)
-                        Console.WriteLine("S3x-sw-" + label + "-float=" + fv.Value);
+                    {
+                        // Avoid Double.ToString in the probe: the AOT
+                        // double-formatting path currently faults on device.
+                        double dv = fv.Value;
+                        Console.WriteLine("S3x-sw-" + label + "-float-eq=" + (dv == 3.25 ? 1 : 0)
+                            + " eq1e3=" + (dv == 1000.0 ? 1 : 0)
+                            + " x100=" + (long)(dv * 100.0));
+                    }
                     else if (v is Tomlyn.Syntax.BooleanValueSyntax bv)
                         Console.WriteLine("S3x-sw-" + label + "-bool=" + bv.Value);
                     else if (v is Tomlyn.Syntax.IntegerValueSyntax iv2)

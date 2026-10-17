@@ -2008,9 +2008,19 @@ public static unsafe class Tier0JIT
                     // receiver adjustment for Memory<T>.Equals(object) - this manifested as
                     // the Memory/eq-obj virtual dispatch comparing truncated structs).
                     bool isNullableDef = false;
+                    bool isSpanDef = false;
+                    void* defMtPtr;
+                    if (MetadataIntegration.ResolveType(fullToken, out defMtPtr) && defMtPtr != null)
                     {
-                        void* defMtPtr;
-                        if (MetadataIntegration.ResolveType(fullToken, out defMtPtr) && defMtPtr != null)
+                        // Synthetic span MTs (Span`1/ReadOnlySpan`1) have no
+                        // metadata identity, so detect them by MethodTable
+                        // pointer against the well-known registrations.
+                        if (defMtPtr == MetadataIntegration.LookupType(MetadataIntegration.WellKnownTypes.Span) ||
+                            defMtPtr == MetadataIntegration.LookupType(MetadataIntegration.WellKnownTypes.ReadOnlySpan))
+                        {
+                            isSpanDef = true;
+                        }
+                        else
                         {
                             uint nAsmId, nToken;
                             Reflection.ReflectionRuntime.LookupTypeInfo(
@@ -2030,7 +2040,18 @@ public static unsafe class Tier0JIT
                         }
                     }
 
-                    if (isNullableDef && argCount == 1 && firstTypeArgSize > 0 && firstTypeArgSize <= 8)
+                    if (isSpanDef && argCount == 1)
+                    {
+                        // Span<T>/ReadOnlySpan<T> are ALWAYS 16 bytes (byref data
+                        // pointer + length) regardless of T. The open generic
+                        // definition's BaseSize is not reliable (it reports 32),
+                        // which used to size span arguments as 32-byte structs -
+                        // StringBuilder.CopyTo(int, Span<char>, int) then staged
+                        // the call against a 32-byte argument and 'this' landed
+                        // in the wrong register (null deref in CopyTo).
+                        typeSize = 16;
+                    }
+                    else if (isNullableDef && argCount == 1 && firstTypeArgSize > 0 && firstTypeArgSize <= 8)
                     {
                         // Nullable<T> layout: 1 byte hasValue + padding to T alignment + T
                         // - Nullable<byte/sbyte> (T=1): 1+1=2 -> aligned to 8 = 8

@@ -166,16 +166,63 @@ but `StringValueSyntax.Value` and token texts were wrong):
 (typed value getters) and S3y (BCL mimics) sections pinning these
 paths.
 
+### M8.3: number-path fixes (Tomlyn ints, negatives, span args)
+
+`S3x` sweeps for integers and negative numbers are now green
+(`int=3231`, `intneg=-5`, both with zero diagnostics), and the block
+above shrinks to one korlib boundary. Root causes fixed, in order of
+discovery:
+
+1. **Branch table overflow (the big one)** - `ILCompiler.MaxBranches`
+   was 64, and `RecordBranch` silently dropped every branch past the
+   cap. Tomlyn's `Lexer.ReadNumberOrDate` (0x928 IL bytes, 67 branches)
+   had its last three forward branches - the exact skip-jumps over the
+   `Unable to parse integer` / `Unexpected leading zero` error blocks -
+   emitted with an unpatched `rel32` of 0, i.e. unconditional fall
+   through. Every integer parse therefore produced BOTH contradictory
+   diagnostics and stored 0. The cap is now 512 (labels 2048) and
+   overflow prints a loud `[JIT] ERROR: branch table full`.
+2. **`Nullable<char32>` argument ABI mismatch** - `CompileNewobj`'s
+   `Nullable<T>` sizing heuristic shrunk every MT whose raw size read
+   16 down to 8 (correct for `Nullable<int>`, wrong for
+   `Nullable<char32>`: this runtime pads `char32` to 8 bytes, so the
+   ctor stores `_value` at +8 and the true struct is 16 bytes). The
+   caller then allocated an 8-byte temp, the ctor's +8 write overflowed
+   it, and the truncated value reached `ReadNumberOrDate` where `ldarga`
+   dereferenced it as a pointer - the `-5` parse page faulted in
+   `Nullable`1::get_HasValue`. The heuristic now only shrinks when the
+   ctor argument's actual stack size is <= 4 bytes.
+3. **Span argument sizing** - the open `Span`1`/`ReadOnlySpan`1`
+   generic definitions report a `BaseSize` of 32 via the signature
+   parser; span-typed arguments were therefore classified as 32-byte
+   structs. Spans are always 16 bytes (byref data + length); the
+   signature sizer now detects the synthetic span MethodTables by
+   pointer and pins them to 16.
+4. **`callvirt` 4-arg marshaling truncated large arg2/arg3** -
+   `CompileCallvirt`'s `totalArgs == 4` path popped `arg2` straight
+   into R8, so `StringBuilder.CopyTo(int, Span<char>, int)` received
+   the span's first qword as a pointer and a stale value in RCX as
+   `this` (fault reading `[null+0x10]`). The branch now uses the same
+   no-pop staging as `CompileCall`: small args load by offset, large
+   struct bytes stay on the eval stack and get their addresses via
+   deferred LEAs in the shadow-allocation block.
+
+`src/apps/thirdprobe` sweeps: `int`, `int42`, `intneg`, `bool`, `date`
+all print correct values with `diag=0`; the older `S3:`/`S3x` typed
+getter checks stay green.
+
 ### Remaining boundaries
 
-- **Tomlyn deeper model access**: string, key, boolean and date/time
-  syntax nodes now return correct values on device (`S3: stringvalue=`
-  prints the parsed string). Still open: `IntegerValueSyntax.Value` /
-  `FloatValueSyntax.Value` read 0 (the lexer's digit path fails inside
-  `ReadNumberOrDate` - a crowded-frame codegen issue; the identical
-  algorithm works in isolated device tests), negative numbers and
-  floats throw during parse, and `SyntaxNode.ToString()`
-  (the `WriteTo`/`GetChild` walk) is not re-tested yet.
+- **Float parse tree construction (korlib AOT formatter)**: float
+  lexing, span staging and `double.TryParse` now run end to end, but
+  Tomlyn's `FloatValueSyntax` constructor formats the parsed value via
+  `TomlFormatHelper.ToString(double)` ->
+  `double.ToString("R", InvariantCulture)`, and korlib's AOT
+  double-formatting path page-faults on device (cr2=0x278; the
+  exception cascade during that fault then halts the boot, so the
+  `float`/`float-e` sweeps in `S3x` are commented out with a pointer to
+  this note). `SyntaxNode.ToString()`/`WriteTo` formatting paths share
+  this dependency. Re-test once the korlib formatter is fixed.
 - **Humanizer.Core 3.0.10** (net10.0 asset exists) still needs `Regex`
   (11 member refs), `Immutable`, and culture data - beyond the current
   surface; `src/apps/humprobe` tracks the boundary (its `Main` currently

@@ -694,16 +694,22 @@ public unsafe struct ILCompiler
     private int _evalStackByteSize;               // Total bytes currently on physical RSP stack
 
     // Arrays for branch targets (heap-allocated to reduce stack usage during nested JIT)
-    private const int MaxBranches = 64;
+    // Must cover the largest methods in the runtime: Tomlyn's
+    // Lexer.ReadNumberOrDate (0x928 IL bytes, dense conditionals) alone emits
+    // well over 64 branches, and silently dropping the tail left forward
+    // branches unpatched (rel32=0 -> always fall through). Keep this generous
+    // and warn loudly on overflow.
+    private const int MaxBranches = 512;
     private int* _branchSources;    // IL offset where branch was emitted [MaxBranches]
     private int* _branchTargetIL;   // IL offset branch targets [MaxBranches]
     private int* _branchPatchOffset; // Code offset to patch [MaxBranches]
     private ushort* _branchTargetStackDepth; // Expected target state [MaxBranches]: (bytes>>3)<<6 | depth
     private int _branchCount;
+    private bool _branchOverflowWarned;
 
     // Label mapping: IL offset -> code offset (heap-allocated)
-    // Note: Buffer allocates 4096 bytes per array = 1024 ints
-    private const int MaxLabels = 1024;
+    // Note: Buffer allocates 8192 bytes per array = 2048 ints
+    private const int MaxLabels = 2048;
     private int* _labelILOffset;    // [MaxLabels]
     private int* _labelCodeOffset;  // [MaxLabels]
     private int _labelCount;
@@ -751,16 +757,17 @@ public unsafe struct ILCompiler
     // Buffer size constants for heap allocation
     // EvalStackEntry is 5 bytes (Kind:1 + ByteSize:2 + RawSize:2) but we use 8 for alignment
     private const int EvalStackEntrySize = 8;  // sizeof(EvalStackEntry) with padding
-    // Layout: evalStack[256] + branchSources[256] + branchTargetIL[256] + branchPatchOffset[256]
-    //       + branchTargetStackDepth[64] + labelILOffset[2048] + labelCodeOffset[2048] + ehClauseData[384] + funcletInfo[512]
+    // Layout: evalStack[256] + branchSources[2048] + branchTargetIL[2048] + branchPatchOffset[2048]
+    //       + branchTargetStackDepth[1024] + labelILOffset[8192] + labelCodeOffset[8192] + ehClauseData[384] + funcletInfo[512]
     //       + localIsValueType[64] + argIsValueType[32] + localTypeSize[128] + argTypeSize[64] + finallyCallPatches[128]
     //       + argFloatKind[32] + localFloatKind[64] + localOffset[256] + localSignedKind[64]
     // Note: evalStack = MaxStackDepth(32) * 8 bytes = 256 bytes for rich type tracking
     // funcletInfo = 32 funclets * 4 ints * 4 bytes = 512 bytes (doubled for filter clause support)
     // Finally call tracking: each entry is 2 ints (patchOffset, ehClauseIndex)
     private const int MaxFinallyCalls = 16;
-    // Buffer layout: each label array is 4096 bytes (1024 ints) to support MaxLabels=1024
-    private const int HeapBufferSize = (MaxStackDepth * EvalStackEntrySize) + 256 + 256 + 256 + 128 + 4096 + 4096 + 384 + 512 + 64 + 32 + 128 + 64 + (MaxFinallyCalls * 8) + 32 + 64 + 256 + 64; // 11072 bytes
+    // Buffer layout: each label array is 8192 bytes (2048 ints) to support MaxLabels=2048;
+    // branch arrays are MaxBranches(512) entries (4+4+4+2 bytes each)
+    private const int HeapBufferSize = (MaxStackDepth * EvalStackEntrySize) + 2048 + 2048 + 2048 + 1024 + 8192 + 8192 + 384 + 512 + 64 + 32 + 128 + 64 + (MaxFinallyCalls * 8) + 32 + 64 + 256 + 64; // 25536 bytes
 
     /// <summary>
     /// Create an IL compiler with GC reference tracking.
@@ -785,6 +792,7 @@ public unsafe struct ILCompiler
         compiler._gcInfo = default;
         compiler._evalStackDepth = 0;
         compiler._branchCount = 0;
+        compiler._branchOverflowWarned = false;
         compiler._labelCount = 0;
         compiler._resolver = null;
         compiler._stringResolver = null;
@@ -851,23 +859,23 @@ public unsafe struct ILCompiler
             // Layout with evalStack at offset 0 (updated for 1024 labels = 4096 bytes per array)
             byte* p = compiler._heapBuffers;
             compiler._evalStack = (EvalStackEntry*)p;          // offset 0, 256 bytes (32 * 8)
-            compiler._branchSources = (int*)(p + 256);         // offset 256, 256 bytes
-            compiler._branchTargetIL = (int*)(p + 512);        // offset 512, 256 bytes
-            compiler._branchPatchOffset = (int*)(p + 768);     // offset 768, 256 bytes
-            compiler._branchTargetStackDepth = (ushort*)(p + 1024);  // offset 1024, 128 bytes (64 ushorts: packed bytes/depth)
-            compiler._labelILOffset = (int*)(p + 1152);        // offset 1152, 4096 bytes (1024 ints)
-            compiler._labelCodeOffset = (int*)(p + 5248);      // offset 5248, 4096 bytes (1024 ints)
-            compiler._ehClauseData = (int*)(p + 9344);         // offset 9344, 384 bytes (16 * 6 * 4)
-            compiler._funcletInfo = (int*)(p + 9728);          // offset 9728, 512 bytes (32 funclets * 4 ints * 4 bytes)
-            compiler._localIsValueType = (bool*)(p + 10240);   // offset 10240, 64 bytes
-            compiler._argIsValueType = (bool*)(p + 10304);     // offset 10304, 32 bytes
-            compiler._localTypeSize = (ushort*)(p + 10336);    // offset 10336, 128 bytes
-            compiler._argTypeSize = (ushort*)(p + 10464);      // offset 10464, 64 bytes (MaxArgs * 2)
-            compiler._finallyCallPatches = (int*)(p + 10528);  // offset 10528, 128 bytes (MaxFinallyCalls * 8)
-            compiler._argFloatKind = (byte*)(p + 10656);       // offset 10656, 32 bytes (MaxArgs * 1)
-            compiler._localFloatKind = (byte*)(p + 10688);     // offset 10688, 64 bytes (MaxLocals * 1)
-            compiler._localOffset = (int*)(p + 10752);         // offset 10752, 256 bytes (MaxLocals * 4)
-            compiler._localSignedKind = (byte*)(p + 11008);    // offset 11008, 64 bytes (MaxLocals * 1)
+            compiler._branchSources = (int*)(p + 256);         // offset 256, 2048 bytes (512 ints)
+            compiler._branchTargetIL = (int*)(p + 2304);       // offset 2304, 2048 bytes (512 ints)
+            compiler._branchPatchOffset = (int*)(p + 4352);    // offset 4352, 2048 bytes (512 ints)
+            compiler._branchTargetStackDepth = (ushort*)(p + 6400);  // offset 6400, 1024 bytes (512 ushorts: packed bytes/depth)
+            compiler._labelILOffset = (int*)(p + 7424);        // offset 7424, 8192 bytes (2048 ints)
+            compiler._labelCodeOffset = (int*)(p + 15616);     // offset 15616, 8192 bytes (2048 ints)
+            compiler._ehClauseData = (int*)(p + 23808);        // offset 23808, 384 bytes (16 * 6 * 4)
+            compiler._funcletInfo = (int*)(p + 24192);         // offset 24192, 512 bytes (32 funclets * 4 ints * 4 bytes)
+            compiler._localIsValueType = (bool*)(p + 24704);   // offset 24704, 64 bytes
+            compiler._argIsValueType = (bool*)(p + 24768);     // offset 24768, 32 bytes
+            compiler._localTypeSize = (ushort*)(p + 24800);    // offset 24800, 128 bytes
+            compiler._argTypeSize = (ushort*)(p + 24928);      // offset 24928, 64 bytes (MaxArgs * 2)
+            compiler._finallyCallPatches = (int*)(p + 24992);  // offset 24992, 128 bytes (MaxFinallyCalls * 8)
+            compiler._argFloatKind = (byte*)(p + 25120);       // offset 25120, 32 bytes (MaxArgs * 1)
+            compiler._localFloatKind = (byte*)(p + 25152);     // offset 25152, 64 bytes (MaxLocals * 1)
+            compiler._localOffset = (int*)(p + 25216);         // offset 25216, 256 bytes (MaxLocals * 4)
+            compiler._localSignedKind = (byte*)(p + 25472);    // offset 25472, 64 bytes (MaxLocals * 1)
         }
 
         // Create code buffer sized based on IL length
@@ -1511,9 +1519,27 @@ public unsafe struct ILCompiler
             // eval-stack byte size (in 8-byte units). Restoring BOTH at the
             // merge keeps the RSP-parity pads of call sites after the merge
             // exact even when the linear-walk entry list holds the other
-            // arm's shape (a bare depth restore would mis-derive the bytes).
+            // arm's shape (a bare restore would mis-derive the bytes).
             _branchTargetStackDepth[_branchCount] = (ushort)((((uint)_evalStackByteSize >> 3) << 6) | ((uint)_evalStackDepth & 0x3F));
             _branchCount++;
+        }
+        else if (!_branchOverflowWarned)
+        {
+            // A dropped branch is emitted with an unpatched rel32 (0), which
+            // silently turns it into fall-through - control flow miscompiles
+            // with no other diagnostic. This must never be silent again.
+            _branchOverflowWarned = true;
+            DebugConsole.Write("[JIT] ERROR: branch table full (MaxBranches=");
+            DebugConsole.WriteDecimal((uint)MaxBranches);
+            DebugConsole.Write(") asm=");
+            DebugConsole.WriteDecimal(_debugAssemblyId);
+            DebugConsole.Write(" tok=0x");
+            DebugConsole.WriteHex(_debugMethodToken);
+            DebugConsole.Write(" ilLen=0x");
+            DebugConsole.WriteHex((ulong)_ilLength);
+            DebugConsole.Write(" - dropping branch at IL 0x");
+            DebugConsole.WriteHex((ulong)ilOffset);
+            DebugConsole.WriteLine();
         }
     }
 
@@ -7805,6 +7831,14 @@ public unsafe struct ILCompiler
         // ldarg's large-VT convention; the deferred LEA after the shadow
         // allocation sets RCX = &this.
         bool needsValueTypeThisPtrInRcx = false;
+        // Large struct args 2/3 in the 4-arg shape (e.g. StringBuilder.CopyTo
+        // (int, Span<char>, int)): the struct bytes stay on the eval stack and
+        // the deferred LEAs after the shadow allocation set R8/R9 = &arg.
+        // Offsets are relative to the top of the eval stack (arg3's data).
+        bool needsStructPtrInR8 = false;
+        bool needsStructPtrInR9 = false;
+        int retainedArg2OffsetRel = 0;
+        int retainedArg3OffsetRel = 0;
 
         if (!needsHiddenBuffer)
         {
@@ -7894,24 +7928,78 @@ public unsafe struct ILCompiler
             }
             else if (totalArgs == 4)
             {
-                // Pop arg3 and arg2 (small) first, then check arg1 for a large struct.
-                X64Emitter.Pop(ref _code, VReg.R4);    // arg3 -> R9
-                X64Emitter.Pop(ref _code, VReg.R3);    // arg2 -> R8
-                PopEntry(); PopEntry();
-                EvalStackEntry vArg1 = PeekEntryAt(0);  // arg1 now at TOS
-                if (vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8)
+                // Large value-type args 2/3 (e.g. Span<char> in
+                // StringBuilder.CopyTo(int, Span<char>, int)) are passed BY
+                // POINTER with their eval-stack bytes retained. Popping such a
+                // struct straight into R8 truncated it to its first qword and
+                // shifted every following register - 'this' in RCX ended up as
+                // a stale value and CopyTo faulted reading [null+0x10].
+                EvalStackEntry a3 = PeekEntryAt(0);  // TOS = arg3
+                EvalStackEntry a2 = PeekEntryAt(1);  // arg2
+                bool a3IsLargeVT = a3.Kind == EvalStackKind.ValueType && a3.ByteSize > 8;
+                bool a2IsLargeVT = a2.Kind == EvalStackKind.ValueType && a2.ByteSize > 8;
+
+                if (a2IsLargeVT || a3IsLargeVT)
                 {
-                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, vArg1.ByteSize);  // RCX = this
-                    retainedStructBytes = vArg1.ByteSize + 8;
-                    needsStructPtrInRdx = true;
-                    PopEntry(); PopEntry();
+                    int s3 = a3.ByteSize > 0 ? (a3.ByteSize + 7) & ~7 : 8;
+                    int s2 = a2.ByteSize > 0 ? (a2.ByteSize + 7) & ~7 : 8;
+                    int off3 = 0;
+                    int off2 = off3 + s3;
+                    int off1 = off2 + s2;
+                    int off0 = off1 + 8;
+
+                    // this -> RCX, arg1 -> RDX (both small here)
+                    X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, off0);
+                    X64Emitter.MovRM(ref _code, VReg.R2, VReg.SP, off1);
+
+                    // arg2 -> R8
+                    if (a2IsLargeVT)
+                    {
+                        needsStructPtrInR8 = true;
+                        retainedArg2OffsetRel = off2;
+                    }
+                    else
+                    {
+                        X64Emitter.MovRM(ref _code, VReg.R3, VReg.SP, off2);
+                    }
+
+                    // arg3 -> R9
+                    if (a3IsLargeVT)
+                    {
+                        needsStructPtrInR9 = true;
+                        retainedArg3OffsetRel = off3;
+                    }
+                    else
+                    {
+                        X64Emitter.MovRM(ref _code, VReg.R4, VReg.SP, off3);
+                    }
+
+                    // Nothing is popped physically; bookkeeping only. The
+                    // post-call cleanup removes shadow + pad + these bytes.
+                    retainedStructBytes = s3 + s2 + 8 + 8;
+                    PopEntry(); PopEntry(); PopEntry(); PopEntry();
                 }
                 else
                 {
-                    // Four args: pop to RDX, then RCX
-                    X64Emitter.Pop(ref _code, VReg.R2);   // arg1 -> RDX
-                    X64Emitter.Pop(ref _code, VReg.R1);   // this -> RCX
+                    // Pop arg3 and arg2 (small) first, then check arg1 for a large struct.
+                    X64Emitter.Pop(ref _code, VReg.R4);    // arg3 -> R9
+                    X64Emitter.Pop(ref _code, VReg.R3);    // arg2 -> R8
                     PopEntry(); PopEntry();
+                    EvalStackEntry vArg1 = PeekEntryAt(0);  // arg1 now at TOS
+                    if (vArg1.Kind == EvalStackKind.ValueType && vArg1.ByteSize > 8)
+                    {
+                        X64Emitter.MovRM(ref _code, VReg.R1, VReg.SP, vArg1.ByteSize);  // RCX = this
+                        retainedStructBytes = vArg1.ByteSize + 8;
+                        needsStructPtrInRdx = true;
+                        PopEntry(); PopEntry();
+                    }
+                    else
+                    {
+                        // Four args: pop to RDX, then RCX
+                        X64Emitter.Pop(ref _code, VReg.R2);   // arg1 -> RDX
+                        X64Emitter.Pop(ref _code, VReg.R1);   // this -> RCX
+                        PopEntry(); PopEntry();
+                    }
                 }
             }
             else
@@ -8203,6 +8291,13 @@ public unsafe struct ILCompiler
             // the struct sits directly above the shadow space + pad.
             if (needsValueTypeThisPtrInRcx)
                 X64Emitter.Lea(ref _code, VReg.R1, VReg.SP, 32 + callvirtAlignPad);
+
+            // Deferred by-ref pointers for large struct args 2/3: their bytes
+            // sit above the shadow space + pad, ordered arg3 (topmost) first.
+            if (needsStructPtrInR8)
+                X64Emitter.Lea(ref _code, VReg.R3, VReg.SP, 32 + callvirtAlignPad + retainedArg2OffsetRel);
+            if (needsStructPtrInR9)
+                X64Emitter.Lea(ref _code, VReg.R4, VReg.SP, 32 + callvirtAlignPad + retainedArg3OffsetRel);
         }
 
         // Load target address and call
@@ -11408,6 +11503,7 @@ public unsafe struct ILCompiler
             // PeekEntryAt(0) = top of stack = last arg (argN-1)
             // PeekEntryAt(n) = nth from top = arg(ctorArgs-1-n)
             // When loop is at i, we want entry for arg i, which is at depth (ctorArgs-1-i)
+            int singleCtorArgByteSize = 0;
 
             for (int i = ctorArgs - 1; i >= 0; i--)
             {
@@ -11421,6 +11517,8 @@ public unsafe struct ILCompiler
                     largeStructArgBytes[i] = entry.ByteSize;
                     totalLargeStructBytes += argBytes;
                 }
+                if (i == 0 && ctorArgs == 1)
+                    singleCtorArgByteSize = entry.ByteSize;
             }
 
             for (int i = ctorArgs - 1; i >= 0; i--)
@@ -11530,22 +11628,16 @@ public unsafe struct ILCompiler
                 // Special handling for Nullable<T>: BaseSize from generic definition is unreliable
                 // Nullable<T> has layout: bool _hasValue (1 byte) + padding + T _value
                 // For T <= 4 bytes: actual size is 8 (1 + padding + 4, aligned)
-                // For T = 8 bytes: actual size is 16 (1 + padding + 8)
-                // The ctor arg size tells us T's size
+                // For T >= 5 bytes (incl. padded structs like char32): 16 (1 + pad + 8/16)
+                // The ctor arg's stack size tells us T's effective size: if the single
+                // ctor arg occupies more than 4 bytes, Nullable<T> is a 16-byte struct
+                // (this runtime pads small structs like char32 to 8 bytes, and the
+                // instantiated ctor then stores _value at +8).
                 if (mt->IsNullable && ctorArgs == 1)
                 {
-                    // Get T's size from the constructor argument
-                    // For Nullable<int>.ctor(int), the arg is 4 bytes
-                    // We can't easily access the arg type here, but we know:
-                    // - Nullable<byte/short/int/float> (T<=4): size should be 8
-                    // - Nullable<long/double> (T=8): size should be 16
-                    // Since BaseSize=16 is set for generic def, and 16 would be correct for T=8,
-                    // we can check if the "wrong" BaseSize is 16 for smaller T.
-                    // Heuristic: if IsNullable and BaseSize==16, assume T<=4 and use size=8
-                    // This works because Nullable<long> would have correct BaseSize anyway
-                    if (vtSize == 16)
+                    if (vtSize == 16 && singleCtorArgByteSize <= 4)
                     {
-                        vtSize = 8;  // Likely Nullable<int/short/byte> - T fits in 4 bytes
+                        vtSize = 8;  // Nullable<int/short/byte> - T fits in 4 bytes
                     }
                 }
 
@@ -11692,10 +11784,10 @@ public unsafe struct ILCompiler
                 uint vtSize = mt->_usComponentSize > 0 ? mt->_usComponentSize :
                     (mt->BaseSize >= 8 ? mt->BaseSize - 8 : mt->BaseSize);
 
-                // Same Nullable<T> size fix as above
-                if (mt->IsNullable && ctorArgs == 1 && vtSize == 16)
+                // Same Nullable<T> size fix as above (T's stack size decides)
+                if (mt->IsNullable && ctorArgs == 1 && vtSize == 16 && singleCtorArgByteSize <= 4)
                 {
-                    vtSize = 8;  // Likely Nullable<int/short/byte> - T fits in 4 bytes
+                    vtSize = 8;  // Nullable<int/short/byte> - T fits in 4 bytes
                 }
 
                 int alignedVtSize = (int)((vtSize + 7) & ~7UL);
