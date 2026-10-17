@@ -5009,37 +5009,49 @@ public static unsafe class PrimitiveHelpers
     }
 
     /// <summary>
-    /// Single.ToString() - placeholder for float formatting.
+    /// Single.ToString() - boxed convention (value at +8).
     /// </summary>
     public static string Single_ToString(nint thisPtr)
     {
-        return "Single";  // TODO: Implement proper float formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatSingle(*(float*)(thisPtr + 8));
     }
 
     /// <summary>
-    /// Single.ToString(string, IFormatProvider) - format/provider ignored
-    /// (parity with the 0-arg placeholder).
+    /// Single.ToString(string, IFormatProvider) - reached from Tomlyn's
+    /// TomlFormatHelper.ToString(float) as `ldarga.s value; call instance
+    /// single::ToString(string, IFormatProvider)`, so 'this' is a BYREF to the
+    /// raw value (offset 0). Format/provider are ignored: the shortest
+    /// 9-significant-digit form always round-trips a float, which is what
+    /// "g9" asks for.
     /// </summary>
     public static string Single_ToString_Format(nint thisPtr, string? format, object? provider)
     {
-        return "Single";  // TODO: Implement proper float formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatSingle(*(float*)thisPtr);
     }
 
     /// <summary>
-    /// Double.ToString() - placeholder for double formatting.
+    /// Double.ToString() - boxed convention (value at +8).
     /// </summary>
     public static string Double_ToString(nint thisPtr)
     {
-        return "Double";  // TODO: Implement proper double formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatDouble(*(double*)(thisPtr + 8));
     }
 
     /// <summary>
-    /// Double.ToString(string, IFormatProvider) - format/provider ignored
-    /// (parity with the 0-arg placeholder).
+    /// Double.ToString(string, IFormatProvider) - reached from Tomlyn's
+    /// TomlFormatHelper.ToString(double) as `ldarga.s value; call instance
+    /// double::ToString("R", InvariantCulture)`, so 'this' is a BYREF to the raw
+    /// value (offset 0). Format/provider are ignored: the shortest
+    /// 17-significant-digit form always round-trips a double, which is what
+    /// "R" asks for.
     /// </summary>
     public static string Double_ToString_Format(nint thisPtr, string? format, object? provider)
     {
-        return "Double";  // TODO: Implement proper double formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatDouble(*(double*)thisPtr);
     }
 
     /// <summary>
@@ -5382,7 +5394,8 @@ public static unsafe class PrimitiveHelpers
     /// </summary>
     public static string Single_ToString_Byref(nint thisPtr)
     {
-        return "Single";  // TODO: Implement proper float formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatSingle(*(float*)thisPtr);
     }
 
     /// <summary>
@@ -5390,7 +5403,8 @@ public static unsafe class PrimitiveHelpers
     /// </summary>
     public static string Double_ToString_Byref(nint thisPtr)
     {
-        return "Double";  // TODO: Implement proper double formatting
+        if (thisPtr == 0) return "0";
+        return FloatFormatting.FormatDouble(*(double*)thisPtr);
     }
 
     // =========================================================================

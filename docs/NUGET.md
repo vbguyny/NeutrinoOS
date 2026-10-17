@@ -207,22 +207,61 @@ discovery:
    struct bytes stay on the eval stack and get their addresses via
    deferred LEAs in the shadow-allocation block.
 
-`src/apps/thirdprobe` sweeps: `int`, `int42`, `intneg`, `bool`, `date`
-all print correct values with `diag=0`; the older `S3:`/`S3x` typed
-getter checks stay green.
+`src/apps/thirdprobe` sweeps: `int`, `int42`, `intneg`, `bool`, `date`,
+`float` and `float-e` all print correct values with `diag=0`; the older
+`S3:`/`S3x` typed getter checks stay green. The `S3x-fmt-*` probes build
+fresh `FloatValueSyntax` nodes from values, so they exercise the device
+float formatter directly (`3.25`, `1000.0`, `0.1`, `1.5`), and the
+`S3z-*` probes cover the three `ToString` shapes (no-arg, `"R"` +
+provider from a local, and Tomlyn's static helper).
+
+### Resolved: float formatting
+
+The float boundary recorded earlier (parsed floats reaching
+`double.TryParse` but the parse tree construction page-faulting with
+cr2=0x278) turned out to be two separate defects, both closed:
+
+1. **`call` 4-arg marshaling with a large arg0.** `CompileCall`'s
+   `totalArgs == 4` path only special-cased a large *arg1*, so
+   `double.TryParse(ReadOnlySpan<char>, NumberStyles, IFormatProvider,
+   out double)` popped the span descriptor's first qword (its `char*`
+   data pointer) into RCX and left eight bytes unpopped. The bridge then
+   read `*(char**)text` and faulted - the cr2=0x278 halt was the
+   secondary exception-machinery fault. The branch now has a dedicated
+   arg0-large case and the no-pop staging condition covers all four
+   argument positions.
+2. **No device double/single formatter.** korlib's `Double.ToString()`
+   and `Single.ToString()` return the placeholder literals `"Double"`/
+   `"Single"`, so `TomlFormatHelper.ToString(double)` ->
+   `double.ToString("R", InvariantCulture)` had nothing to call.
+   `src/kernel/Runtime/FloatFormatting.cs` now does the conversion: it
+   expands the IEEE-754 value exactly with a small fixed-size bignum
+   (64 x 32-bit limbs), divides out decimal digits, and accepts the
+   shortest digit string whose value still rounds back to the original
+   double (17 significant digits) or float (9) - i.e. `"R"`/`"G17"`/
+   `"G9"` semantics. Rounding is nearest with ties-to-even, the rounding
+   interval accounts for the half-width gap below a binade boundary, and
+   both neighbouring candidates are tried per digit count because the
+   asymmetric interval can admit the farther neighbour. Notation matches
+   .NET: fixed point for `-4 <= exp < 17` (double) or `< 9` (single),
+   scientific outside. `AotMethodRegistry` wires it into
+   `Double/Single.ToString()`, `ToString(string, IFormatProvider)` and
+   the `ArgCount == 0` byref variants.
+3. **`newobj` dropped float constructor arguments.** A JIT'd prologue
+   homes a float parameter from `XMM<slot>` (see
+   `X64Emitter.HomeArgumentsWithFloats`), but `CompileNewobj` only
+   copied constructor arguments into the integer registers, so
+   `new FloatValueSyntax(3.25)` formatted stale `XMM` garbage (`6E+08`)
+   for every input. The constructor call path now emits the matching
+   `movd`/`movq` into `XMM(i+1)`.
+
+`FloatFormatting` was validated off-device against .NET's own
+`ToString("R")` over 15.8 million values (random bit patterns across
+both ranges, every power of two and ten with neighbours, binade
+boundaries, subnormals, and human-scale decimals) with zero mismatches.
 
 ### Remaining boundaries
 
-- **Float parse tree construction (korlib AOT formatter)**: float
-  lexing, span staging and `double.TryParse` now run end to end, but
-  Tomlyn's `FloatValueSyntax` constructor formats the parsed value via
-  `TomlFormatHelper.ToString(double)` ->
-  `double.ToString("R", InvariantCulture)`, and korlib's AOT
-  double-formatting path page-faults on device (cr2=0x278; the
-  exception cascade during that fault then halts the boot, so the
-  `float`/`float-e` sweeps in `S3x` are commented out with a pointer to
-  this note). `SyntaxNode.ToString()`/`WriteTo` formatting paths share
-  this dependency. Re-test once the korlib formatter is fixed.
 - **Humanizer.Core 3.0.10** (net10.0 asset exists) still needs `Regex`
   (11 member refs), `Immutable`, and culture data - beyond the current
   surface; `src/apps/humprobe` tracks the boundary (its `Main` currently

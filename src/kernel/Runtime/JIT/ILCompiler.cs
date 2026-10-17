@@ -6157,7 +6157,10 @@ public unsafe struct ILCompiler
             //   [RSP+8] = arg2 (8 bytes)
             //   [RSP+16] = arg1 (struct, arg1Size bytes)
             //   [RSP+16+arg1Size] = arg0 (8 bytes)
-            if (arg1Entry.ByteSize > 8)
+            // Only valid when arg0 is a single qword: this path reads arg0 with
+            // one MOV. A large arg0 alongside a large arg1 falls through to the
+            // no-pop staging below, which handles any combination.
+            if (arg1Entry.ByteSize > 8 && arg0Entry.ByteSize <= 8)
             {
                 // Pop arg3 and arg2 normally
                 X64Emitter.Pop(ref _code, VReg.R4);    // arg3 -> R9
@@ -6173,11 +6176,47 @@ public unsafe struct ILCompiler
                 largeStructArgBytes = arg1Entry.ByteSize + 8;  // struct + arg0 slot
                 needsLargeStructPtrInRdx = true;
             }
-            else if ((arg2Entry.ByteSize > 8 || arg3Entry.ByteSize > 8))
+            else if (arg0Entry.ByteSize > 8 && arg1Entry.ByteSize <= 8 &&
+                     arg2Entry.ByteSize <= 8 && arg3Entry.ByteSize <= 8)
             {
-                // Large structs at arg2/arg3 - e.g. Tomlyn's
+                // arg0 is the only large struct - e.g.
+                // double.TryParse(ReadOnlySpan<char>, NumberStyles,
+                // IFormatProvider, out double): the 16-byte span descriptor is
+                // arg0 and everything above it is one qword.
+                // Stack layout: [RSP] = arg3, [RSP+8] = arg2, [RSP+16] = arg1,
+                //               [RSP+24] = arg0 (arg0Size bytes)
+                // Pop the three small args, leave the struct block in place and
+                // let the shadow-space block LEA RCX at it (offset 0).
+                // Previously this shape fell into the all-small path below,
+                // which popped the descriptor's first qword (the char* data
+                // pointer) into RCX and left the second qword on the stack; the
+                // AOT TryParse bridge then dereferenced the text as if it were
+                // a descriptor and page-faulted (float sweep, cr2=0x278).
+                X64Emitter.Pop(ref _code, VReg.R4);    // arg3 -> R9
+                X64Emitter.Pop(ref _code, VReg.R3);    // arg2 -> R8
+                X64Emitter.Pop(ref _code, VReg.R2);    // arg1 -> RDX
+                PopEntry(); PopEntry(); PopEntry();
+
+                largeStructArgBytes = arg0Entry.ByteSize;
+                needsLargeStructPtrInRcx = true;
+                largeStructArg0Offset = 0;
+                PopEntry();
+            }
+            else if (arg0Entry.ByteSize > 8 || arg1Entry.ByteSize > 8 ||
+                     arg2Entry.ByteSize > 8 || arg3Entry.ByteSize > 8)
+            {
+                // A large struct in ANY position - e.g. Tomlyn's
                 // SourceSpan..ctor(string, TextPosition, TextPosition) reached
-                // from Parser.Open. NOTHING is popped: every argument is
+                // from Parser.Open (arg2/arg3), or
+                // double.TryParse(ReadOnlySpan<char>, NumberStyles,
+                // IFormatProvider, out double) (arg0). The arg0 shape used to
+                // fall into the all-small path below, which popped the span
+                // descriptor's first qword (the char* data pointer) into RCX;
+                // the AOT TryParse bridge then treated the text itself as a
+                // descriptor and page-faulted reading [text] as a pointer
+                // (cr2=0x278 in the float sweep).
+                //
+                // NOTHING is popped: every argument is
                 // addressed relative to the current RSP (arg3's data is at the
                 // top), small args are loaded with MOV, and large structs are
                 // passed BY POINTER - their bytes stay on the stack and the
@@ -6241,6 +6280,9 @@ public unsafe struct ILCompiler
                 // post-call cleanup removes shadow + pad + these bytes.
                 largeStructArgBytes = s0 + s1 + s2 + s3;
                 PopEntry(); PopEntry(); PopEntry(); PopEntry();
+
+                // (arg0-large is covered above: s0 > 8 sets RCX to a pointer
+                // into the retained block at largeStructArg0Offset.)
             }
             else
             {
@@ -11494,6 +11536,7 @@ public unsafe struct ILCompiler
             // Track large struct args that need their data preserved on stack
             // Each entry: (argIndex, bytesOnStack, stackOffsetFromCurrentRSP)
             int[] largeStructArgBytes = new int[ctorArgs];
+            byte[] ctorFloatKind = new byte[ctorArgs];   // 0=none, 4=float32, 8=float64
             int totalLargeStructBytes = 0;
             int totalArgBytes = 0;  // Total bytes of ALL args on eval stack
 
@@ -11519,6 +11562,9 @@ public unsafe struct ILCompiler
                 }
                 if (i == 0 && ctorArgs == 1)
                     singleCtorArgByteSize = entry.ByteSize;
+                ctorFloatKind[i] = entry.Kind == EvalStackKind.Float32 ? (byte)4
+                                 : entry.Kind == EvalStackKind.Float64 ? (byte)8
+                                 : (byte)0;
             }
 
             for (int i = ctorArgs - 1; i >= 0; i--)
@@ -11723,6 +11769,30 @@ public unsafe struct ILCompiler
                 // arg3 is the 5th param (with 'this'), goes to [RSP+32]
                 X64Emitter.MovMR(ref _code, VReg.SP, 32, VReg.R10);
             }
+
+            // Float/double constructor arguments also have to be placed in the
+            // XMM register the callee homes from, not just the integer argument
+            // register. A JIT'd prologue homes physical slot i from XMMi when the
+            // parameter is float-kind (see X64Emitter.HomeArgumentsWithFloats),
+            // and 'this' occupies physical slot 0, so IL constructor argument i
+            // arrives in XMM(i+1) - the same mapping CompileCall uses via
+            // argNIsFloat64. Without this the integer copies above landed in
+            // RDX/R8/R9 that the callee never read, so every float constructor
+            // argument arrived as stale XMM garbage: Tomlyn's
+            // new FloatValueSyntax(3.25) formatted 6E+08 for any input.
+            if (ctorArgs > 0)
+            {
+                VReg[] ctorArgRegs = { VReg.R2, VReg.R3, VReg.R4 };   // RDX, R8, R9
+                for (int i = 0; i < ctorArgs && i < 3; i++)
+                {
+                    RegXMM xmm = (RegXMM)((int)RegXMM.XMM0 + i + 1);
+                    if (ctorFloatKind[i] == 4)
+                        X64Emitter.MovdXmmR32(ref _code, xmm, ctorArgRegs[i]);
+                    else if (ctorFloatKind[i] == 8)
+                        X64Emitter.MovqXmmR64(ref _code, xmm, ctorArgRegs[i]);
+                }
+            }
+
             // Args 4-7 were saved to temp stack slots, load them to call stack
             for (int i = 4; i < ctorArgs; i++)
             {

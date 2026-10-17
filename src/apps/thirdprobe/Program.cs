@@ -231,17 +231,37 @@ static class Probe
         Sweep("int", "num = 3231\n");
         Sweep("int42", "num = 42\n");
         Sweep("intneg", "num = -5\n");
-        // Float sweeps disabled: lexing, span staging and the double parse now
-        // work end to end, but Tomlyn's FloatValueSyntax constructor formats
-        // the parsed value via TomlFormatHelper.ToString(double) ->
-        // double.ToString("R", InvariantCulture), and korlib's AOT double
-        // formatter page-faults on device (cr2=0x278). The exception cascade
-        // during that fault halts the boot. Re-enable once the korlib
-        // double-formatting boundary is fixed.
-        // Sweep("float", "fl = 3.25\n");
-        // Sweep("float-e", "fl = 1e3\n");
+        // Floats: lexing, span staging, double.TryParse and the AOT
+        // double/single formatters (FloatFormatting) all work end to end now.
+        Sweep("float", "fl = 3.25\n");
+        Sweep("float-e", "fl = 1e3\n");
         Sweep("bool", "ok = true\n");
         Sweep("date", "d = 1979-05-27\n");
+
+        // Direct AOT float-formatting probes: Tomlyn's FloatValueSyntax(double)
+        // ctor is what actually calls TomlFormatHelper.ToString(double), so the
+        // parsed sweeps above only exercise it if a node is rebuilt from a value.
+        // These read back exactly what the device formatter produced.
+        var freshFloat = new Tomlyn.Syntax.FloatValueSyntax(3.25);
+        var freshTok = freshFloat.Token;
+        Console.WriteLine("S3x-fmt-double=" + (freshTok == null || freshTok.Text == null ? "null" : freshTok.Text));
+        var freshFloat2 = new Tomlyn.Syntax.FloatValueSyntax(1000.0);
+        var freshTok2 = freshFloat2.Token;
+        Console.WriteLine("S3x-fmt-double-int=" + (freshTok2 == null || freshTok2.Text == null ? "null" : freshTok2.Text));
+        var freshFloat3 = new Tomlyn.Syntax.FloatValueSyntax(0.1);
+        var freshTok3 = freshFloat3.Token;
+        Console.WriteLine("S3x-fmt-double-tenth=" + (freshTok3 == null || freshTok3.Text == null ? "null" : freshTok3.Text));
+        var freshSingle = new Tomlyn.Syntax.FloatValueSyntax(1.5);
+        Console.WriteLine("S3x-fmt-sanity=" + (freshSingle.Token == null || freshSingle.Token.Text == null ? "null" : freshSingle.Token.Text));
+
+        // Coverage for the three ToString shapes the AOT float bridges serve:
+        // no-arg (boxed 'this', value at +8), "R" + provider from a local
+        // (byref 'this', value at +0), and Tomlyn's static helper around it.
+        double dv = 3.25;
+        Console.WriteLine("S3z-double-nofmt=" + dv.ToString());
+        Console.WriteLine("S3z-double-fmt=" + dv.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        Console.WriteLine("S3z-toml-static=" + Tomlyn.Helpers.TomlFormatHelper.ToString(3.25));
+        Console.WriteLine("S3z-double-eq=" + (dv == 3.25 ? "1" : "0"));
     }
 
     // Mimic Tomlyn's TryParseDecimalInt64 over an identical StringBuilder
@@ -477,12 +497,19 @@ static class Probe
                 {
                     if (v is Tomlyn.Syntax.FloatValueSyntax fv)
                     {
-                        // Avoid Double.ToString in the probe: the AOT
-                        // double-formatting path currently faults on device.
+                        // The token text is produced by Tomlyn's
+                        // FloatValueSyntax ctor -> TomlFormatHelper.ToString(double)
+                        // -> double.ToString("R", InvariantCulture), which now
+                        // runs korlib's AOT double formatter. Printing the text
+                        // exercises/reports that path; the value comparisons keep
+                        // the check independent of the formatting.
                         double dv = fv.Value;
+                        var ftok = fv.Token;
+                        string ftxt = (ftok == null || ftok.Text == null) ? "null" : ftok.Text;
                         Console.WriteLine("S3x-sw-" + label + "-float-eq=" + (dv == 3.25 ? 1 : 0)
                             + " eq1e3=" + (dv == 1000.0 ? 1 : 0)
-                            + " x100=" + (long)(dv * 100.0));
+                            + " x100=" + (long)(dv * 100.0)
+                            + " tok=" + ftxt);
                     }
                     else if (v is Tomlyn.Syntax.BooleanValueSyntax bv)
                         Console.WriteLine("S3x-sw-" + label + "-bool=" + bv.Value);
