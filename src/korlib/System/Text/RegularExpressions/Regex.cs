@@ -91,6 +91,12 @@ namespace System.Text.RegularExpressions
             internalMatchTimeout = TimeSpan.FromMilliseconds(-1);
         }
 
+        /// <summary>
+        /// Sentinel timeout (-1 ms) meaning "no timeout", read directly by
+        /// source-generated regex code (`Regex::InfiniteMatchTimeout`).
+        /// </summary>
+        public static readonly TimeSpan InfiniteMatchTimeout = TimeSpan.FromMilliseconds(-1);
+
         public Regex(string pattern) : this(pattern, RegexOptions.None) { }
 
         public Regex(string pattern, RegexOptions options)

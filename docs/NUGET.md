@@ -319,23 +319,36 @@ Landed for this boundary:
   `ldftn Char::IsUpper` - that needs a registry entry to yield a code
   pointer, otherwise the whole method fails to compile.
 
-What is left, in the order the failures appear on device:
+What is left is a single unresolved member ref, and it is not a missing
+BCL type:
 
-1. A handful of member refs that still do not resolve, all reached from
-   Humanizer's `Configurator..cctor` registry chain: an unnamed member on a
-   generic instantiation (`0x0A0001ED`, `0x0A0001F0`), a field
-   (`0x0A000056`), `op_Implicit` (`0x0A0000EE`) and `Regex.IsMatch`
-   (`0x0A00005C`). Because `Configurator..cctor` constructs every converter
-   registry up front, these block `NumberToWordsExtension.ToWords` before
-   any converter runs.
-2. Humanizer's own method bodies that follow (`0x0600044C`/`0x0600048B`/
-   `0x060004C4` and friends) - they fail only because of (1); each attempt
-   surfaces the next unresolved reference.
+- `System.Nullable<System.TimeOnly>::op_Implicit` (`0x0A0000EE`, reached
+  from Humanizer's quantity/registry code during `Configurator..cctor`).
+  korlib.dll does export `System.Nullable`1`, `System.TimeOnly` and
+  `System.Collections.Generic.KeyValuePair`2`, and the sibling
+  `KeyValuePair<string,int>`/`KeyValuePair<,>`.ctor refs now resolve, so
+  this is the JIT/loader's TypeSpec-parented member-ref path failing for a
+  generic instantiation of one korlib struct over another - not the
+  surface documented here. Everything else Humanizer reaches (including
+  `Regex.IsMatch`, `Regex.InfiniteMatchTimeout`, `Regex` construction via
+  the generated subclasses, `FrozenDictionary`, `CultureInfo` members,
+  `ResourceManager`) now resolves.
 
-The efficient way to continue is to keep using the device log as the
-driver: every failure prints the exact token, `build/iltool` (or any
-metadata dumper) resolves it to a name, and the fix is either a korlib type
-member or an `AotMethodRegistry` entry.
+Because `Configurator..cctor` constructs every converter registry before
+`NumberToWordsExtension.ToWords` can run, that one ref still blocks `H1`
+and `H2`; the `R1`/`R2` probes in `src/apps/humprobe` exercise the korlib
+Regex/KeyValuePair surface directly and will report independently once it
+clears.
+
+Continuing: the device log prints the exact token for every failure.
+Decode it with `tools/mreftool` (`bash tools/mreftool/run.sh <dll> <substr>`),
+which lists every MemberRef as `<row> <Parent>::<name> [signature]` and
+understands TypeSpec parents. `@<row>` dumps the raw parent/signature blobs
+(`15 11 <coded> <args>` is GENERICINST/VALUETYPE), `--typeref <row>` names a
+TypeRef, and `--typedefs <substr>` lists TypeDefs. Then either add the member
+to the korlib type, register an `AotMethodRegistry` entry (needed for `ldftn`
+on a korlib static), or add the assembly to
+`AssemblyLoader.IsVirtualAssembly`.
 
 ## Cold-start behavior
 
