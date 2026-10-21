@@ -571,6 +571,38 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<char, bool>)&StringHelpers.Char_IsLowSurrogate,
             1, ReturnKind.Int32, false, false);
 
+        // Char predicates Humanizer takes delegates of (Humanize() runs
+        // `Enumerable.All(input, Char.IsUpper)`, which compiles to `ldftn
+        // Char::IsUpper` - that needs a registry entry to yield a code pointer).
+        Register(
+            "System.Char", "IsUpper",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsUpper,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsLower",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsLower,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsLetter",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsLetter,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsLetterOrDigit",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsLetterOrDigit,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "IsWhiteSpace",
+            (nint)(delegate*<char, bool>)&StringHelpers.Char_IsWhiteSpace,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "ToUpper",
+            (nint)(delegate*<char, char>)&StringHelpers.Char_ToUpper,
+            1, ReturnKind.Int32, false, false);
+        Register(
+            "System.Char", "ToLower",
+            (nint)(delegate*<char, char>)&StringHelpers.Char_ToLower,
+            1, ReturnKind.Int32, false, false);
+
         // String.op_Equality (static) - 2 string parameters
         Register(
             "System.String", "op_Equality",
@@ -3690,6 +3722,27 @@ public static unsafe class StringHelpers
 
     /// <summary>Wrapper for Char.IsLowSurrogate(char).</summary>
     public static bool Char_IsLowSurrogate(char c) => c >= 0xDC00 && c <= 0xDFFF;
+
+    /// <summary>Wrapper for Char.IsUpper(char).</summary>
+    public static bool Char_IsUpper(char c) => c >= 'A' && c <= 'Z';
+
+    /// <summary>Wrapper for Char.IsLower(char).</summary>
+    public static bool Char_IsLower(char c) => c >= 'a' && c <= 'z';
+
+    /// <summary>Wrapper for Char.IsLetter(char).</summary>
+    public static bool Char_IsLetter(char c) => Char_IsUpper(c) || Char_IsLower(c);
+
+    /// <summary>Wrapper for Char.IsLetterOrDigit(char).</summary>
+    public static bool Char_IsLetterOrDigit(char c) => Char_IsLetter(c) || Char_IsDigit(c);
+
+    /// <summary>Wrapper for Char.IsWhiteSpace(char).</summary>
+    public static bool Char_IsWhiteSpace(char c) => c == ' ' || (c >= '\t' && c <= '\r');
+
+    /// <summary>Wrapper for Char.ToUpper(char).</summary>
+    public static char Char_ToUpper(char c) => Char_IsLower(c) ? (char)(c - 32) : c;
+
+    /// <summary>Wrapper for Char.ToLower(char).</summary>
+    public static char Char_ToLower(char c) => Char_IsUpper(c) ? (char)(c + 32) : c;
 
     /// <summary>
     /// Wrapper for the static String.Equals(string, string) overload.

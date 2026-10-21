@@ -6132,6 +6132,19 @@ public static unsafe class AssemblyLoader
         if (name == null)
             return false;
 
+        // M9 (Humanizer): assemblies whose types korlib supplies. Compared with
+        // a helper rather than the index arithmetic below so the list is easy to
+        // extend without off-by-one bugs.
+        //   System.Collections.Immutable  -> System.Collections.Frozen.* (FrozenDictionary/FrozenSet)
+        //   System.Text.RegularExpressions -> Regex/Match/Group/Capture/RegexRunner
+        //   System.ComponentModel.Annotations -> DisplayAttribute (Humanizer's enum descriptions)
+        if (AsmNameEquals(name, "System.Collections.Immutable"))
+            return true;
+        if (AsmNameEquals(name, "System.Text.RegularExpressions"))
+            return true;
+        if (AsmNameEquals(name, "System.ComponentModel.Annotations"))
+            return true;
+
         // Check for "System.*" assemblies
         if (name[0] == 'S' && name[1] == 'y' && name[2] == 's' && name[3] == 't' &&
             name[4] == 'e' && name[5] == 'm' && name[6] == '.')
@@ -6243,6 +6256,17 @@ public static unsafe class AssemblyLoader
             return true;
 
         return false;
+    }
+
+    /// <summary>Exact, null-terminated comparison of an assembly name.</summary>
+    private static bool AsmNameEquals(byte* name, string expected)
+    {
+        for (int i = 0; i < expected.Length; i++)
+        {
+            if (name[i] != (byte)expected[i])
+                return false;
+        }
+        return name[expected.Length] == 0;
     }
 
     /// <summary>

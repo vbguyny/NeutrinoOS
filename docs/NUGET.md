@@ -262,12 +262,80 @@ boundaries, subnormals, and human-scale decimals) with zero mismatches.
 
 ### Remaining boundaries
 
-- **Humanizer.Core 3.0.10** (net10.0 asset exists) still needs `Regex`
-  (11 member refs), `Immutable`, and culture data - beyond the current
-  surface; `src/apps/humprobe` tracks the boundary (its `Main` currently
-  fails JIT compilation on the missing surface).
+- **Humanizer.Core 3.0.10** (net10.0 asset exists). The BCL surface it
+  needs is now largely in place - see "Humanizer status" below - but its
+  `Main` still fails JIT compilation, so `src/apps/humprobe` remains the
+  tracker for this boundary.
 - Packages with assets only for net8.0 or below (Sqids, Pidgin, Cronos,
   ZString, Semver, ...) are excluded by policy.
+
+### Humanizer status
+
+Humanizer 3.0.10 gets all of its regexes from the `[GeneratedRegex]`
+source generator, which emits into the *consumer* assembly subclasses of
+`Regex` that poke five of its fields (`pattern`, `roptions`,
+`internalMatchTimeout`, `factory`, `capsize`), call `Regex()` and
+`Regex.ValidateMatchTimeout`, and construct a `RegexRunnerFactory`
+subclass. That shape is the ABI korlib's implementation is built to.
+
+Landed for this boundary:
+
+- **`System.Text.RegularExpressions`** (`src/korlib/System/Text/RegularExpressions/`).
+  `Regex` declares those five fields as public (the generated code must
+  resolve them by name), and matching is done by `RegexEngine` - a
+  backtracking matcher with continuation passing over a parsed node tree -
+  rather than by the generated `RegexRunner`, which is why `factory` is
+  stored and ignored. Supports literals, `.`, classes with ranges and
+  negation, `\d \D \w \W \s \S \b \B`, `\p{Lu} \p{Ll} \p{Lo} \p{L} \p{N}`,
+  the common escapes, `* + ? {n,m}` with lazy forms, capturing and `(?:)`
+  groups, `(?=)`/`(?!)` lookahead, alternation and `^ $`. Lookbehind,
+  backreferences, atomic groups and the RightToLeft/NonBacktracking modes
+  throw `NotSupportedException` naming the construct. `Match`, `Group`,
+  `Capture`, the collections, `MatchEvaluator`, `Replace` (with `$1`/`$&`
+  expansion) and `Split` are implemented; `RegexRunner`/`RegexRunnerFactory`
+  exist so generated subclasses load.
+  Validated off-device against .NET's `Regex` for all nine Humanizer
+  patterns across ~70 inputs (`IsMatch`, `Matches`, group captures,
+  `Replace` with a string and with a `MatchEvaluator`): zero mismatches.
+- **`System.Collections.Frozen`** (`FrozenCollections.cs`). Humanizer's
+  `LocaliserRegistry<T>` materialises its converters with
+  `ToFrozenDictionary(...)` and `EnumCache<T>` with `ToFrozenSet()`; these
+  are immutable views over `Dictionary<TKey,TValue>`/`HashSet<T>`.
+- **Globalization data.** `NumberFormatInfo` (invariant separators/signs),
+  `CompareInfo`/`CompareOptions`, `TextInfo`, and the `CultureInfo` members
+  Humanizer reads: `TwoLetterISOLanguageName`, `Parent`, `NumberFormat`,
+  `CompareInfo`, `TextInfo`, `EnglishName`/`DisplayName`/`NativeName`,
+  `IsNeutralCulture`.
+- **`DateOnly` / `TimeOnly`**, referenced at static init by Humanizer's
+  date/time converter registries.
+- **`System.Buffers.SearchValues`**, used by the generated regex runners.
+- **Assembly redirects** (`AssemblyLoader.IsVirtualAssembly`) for
+  `System.Collections.Immutable` (where `Frozen*` lives in the BCL),
+  `System.Text.RegularExpressions` and `System.ComponentModel.Annotations`
+  (`DisplayAttribute`), so their TypeRefs resolve into korlib.
+- **`AotMethodRegistry`** entries for `Char.IsUpper/IsLower/IsLetter/
+  IsLetterOrDigit/IsWhiteSpace/ToUpper/ToLower`. `Humanize()` starts with
+  `Enumerable.All(input, Char.IsUpper)`, which compiles to
+  `ldftn Char::IsUpper` - that needs a registry entry to yield a code
+  pointer, otherwise the whole method fails to compile.
+
+What is left, in the order the failures appear on device:
+
+1. A handful of member refs that still do not resolve, all reached from
+   Humanizer's `Configurator..cctor` registry chain: an unnamed member on a
+   generic instantiation (`0x0A0001ED`, `0x0A0001F0`), a field
+   (`0x0A000056`), `op_Implicit` (`0x0A0000EE`) and `Regex.IsMatch`
+   (`0x0A00005C`). Because `Configurator..cctor` constructs every converter
+   registry up front, these block `NumberToWordsExtension.ToWords` before
+   any converter runs.
+2. Humanizer's own method bodies that follow (`0x0600044C`/`0x0600048B`/
+   `0x060004C4` and friends) - they fail only because of (1); each attempt
+   surfaces the next unresolved reference.
+
+The efficient way to continue is to keep using the device log as the
+driver: every failure prints the exact token, `build/iltool` (or any
+metadata dumper) resolves it to a name, and the fix is either a korlib type
+member or an `AotMethodRegistry` entry.
 
 ## Cold-start behavior
 
