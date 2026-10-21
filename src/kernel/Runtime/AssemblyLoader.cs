@@ -7227,6 +7227,14 @@ public static unsafe class AssemblyLoader
         if (sig[0] == 0x06)
             return false;  // It's a field, not a method
 
+        // True when the MemberRef parent is a GENERICINST TypeSpec. The IL
+        // signature is then closed over the type arguments (e.g.
+        // `Nullable<TimeOnly>.op_Implicit(TimeOnly)`) while the MethodDef in
+        // korlib is open (`Nullable<T>.op_Implicit(T)`), so SignaturesMatch
+        // cannot compare them and method lookup falls back to name + parameter
+        // count below.
+        bool genericInstantiation = false;
+
         // Resolve the containing type
         LoadedAssembly* targetAsm = null;
         uint typeDefToken = 0;
@@ -7331,6 +7339,7 @@ public static unsafe class AssemblyLoader
                 tsPos++;
                 // Now decode the underlying type token
                 elementType = 0x12;  // Treat as CLASS for the rest of the logic
+                genericInstantiation = true;
             }
 
             // ELEMENT_TYPE_VALUETYPE (0x11) or ELEMENT_TYPE_CLASS (0x12) - followed by TypeDefOrRef
@@ -7698,6 +7707,25 @@ public static unsafe class AssemblyLoader
 
         // Find the matching MethodDef in the target type
         methodToken = FindMethodDefByName(sourceAsm, targetAsm, typeDefToken, memberName, sig, sigLen);
+
+        // Generic instantiation: the closed IL signature cannot match the open
+        // MethodDef signature, so accept a name + parameter-count match.
+        if (methodToken == 0 && genericInstantiation)
+        {
+            byte giArgCount = ((sig[0] & 0x10) != 0 && sigLen > 2) ? sig[2] : sig[1];
+            methodToken = FindMethodDefByNameAndArgCount(targetAsm, typeDefToken, memberName, giArgCount);
+            if (methodToken != 0 && JitDiag.VerboseJit)
+            {
+                DebugConsole.Write("[AsmLoader] Generic-instance memberref matched by arity: ");
+                for (int i = 0; memberName[i] != 0 && i < 40; i++)
+                    DebugConsole.WriteChar((char)memberName[i]);
+                DebugConsole.Write(" args=");
+                DebugConsole.WriteDecimal(giArgCount);
+                DebugConsole.Write(" -> 0x");
+                DebugConsole.WriteHex(methodToken);
+                DebugConsole.WriteLine();
+            }
+        }
 
         // Debug: Check if method token row is valid for target assembly
         uint methodRow = methodToken & 0x00FFFFFF;
@@ -8981,8 +9009,53 @@ public static unsafe class AssemblyLoader
     }
 
     /// <summary>
+    /// Name + parameter-count method lookup inside one TypeDef. Used for
+    /// MemberRefs whose parent is a generic instantiation, where the IL
+    /// signature is closed over type arguments and therefore cannot be
+    /// compared with the open MethodDef signature.
+    /// </summary>
+    private static uint FindMethodDefByNameAndArgCount(LoadedAssembly* targetAsm, uint typeDefToken,
+                                                       byte* methodName, byte argCount)
+    {
+        uint typeRow = typeDefToken & 0x00FFFFFF;
+        if (typeRow == 0)
+            return 0;
+
+        uint methodStart = MetadataReader.GetTypeDefMethodList(ref targetAsm->Tables, ref targetAsm->Sizes, typeRow);
+        uint typeDefCount = targetAsm->Tables.RowCounts[(int)MetadataTableId.TypeDef];
+        uint methodDefCount = targetAsm->Tables.RowCounts[(int)MetadataTableId.MethodDef];
+        uint methodEnd;
+        if (typeRow < typeDefCount)
+            methodEnd = MetadataReader.GetTypeDefMethodList(ref targetAsm->Tables, ref targetAsm->Sizes, typeRow + 1);
+        else
+            methodEnd = methodDefCount + 1;
+
+        if (methodStart > methodDefCount || methodStart == 0)
+            return 0;
+
+        for (uint methodRow = methodStart; methodRow < methodEnd && methodRow <= methodDefCount; methodRow++)
+        {
+            uint nameIdx = MetadataReader.GetMethodDefName(ref targetAsm->Tables, ref targetAsm->Sizes, methodRow);
+            byte* defName = MetadataReader.GetString(ref targetAsm->Metadata, nameIdx);
+            if (!StringsEqual(methodName, defName))
+                continue;
+
+            uint defSigIdx = MetadataReader.GetMethodDefSignature(ref targetAsm->Tables, ref targetAsm->Sizes, methodRow);
+            byte* defSig = MetadataReader.GetBlob(ref targetAsm->Metadata, defSigIdx, out uint defSigLen);
+            if (defSig == null || defSigLen < 2)
+                continue;
+
+            byte defCount = ((defSig[0] & 0x10) != 0 && defSigLen > 2) ? defSig[2] : defSig[1];
+            if (defCount == argCount)
+                return 0x06000000 | methodRow;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
     /// Resolve an inherited method via the AOT registry: walk up korlib's base
-    /// chain from (typeNs, typeName) and return the first level with an AOT
+    /// /// chain from (typeNs, typeName) and return the first level with an AOT
     /// entry. Levels that declare the method in IL are not AOT-resolved; their
     /// TypeDef token is returned via declaringToken so the caller can compile
     /// the IL body (an own body always wins over an inherited AOT entry).

@@ -262,10 +262,12 @@ boundaries, subnormals, and human-scale decimals) with zero mismatches.
 
 ### Remaining boundaries
 
-- **Humanizer.Core 3.0.10** (net10.0 asset exists). The BCL surface it
-  needs is now largely in place - see "Humanizer status" below - but its
-  `Main` still fails JIT compilation, so `src/apps/humprobe` remains the
-  tracker for this boundary.
+- **Humanizer.Core 3.0.10** (net10.0 asset exists). It now loads and runs on
+  the device: Humanizer's `Main` compiles, `Regex`/`KeyValuePair` probes pass,
+  and `ToWords` reaches a managed throw instead of a compile failure. Two
+  boundaries remain - embedded `.resources` reading (H1) and the
+  `string.Create`/`MemoryExtensions.Replace` span path (H2). See "Humanizer
+  status" below; `src/apps/humprobe` is the tracker.
 - Packages with assets only for net8.0 or below (Sqids, Pidgin, Cronos,
   ZString, Semver, ...) are excluded by policy.
 
@@ -318,37 +320,76 @@ Landed for this boundary:
   `Enumerable.All(input, Char.IsUpper)`, which compiles to
   `ldftn Char::IsUpper` - that needs a registry entry to yield a code
   pointer, otherwise the whole method fails to compile.
+- **`System.String::op_Implicit` -> `ReadOnlySpan<char>`**
+  (`StringHelpers.StringToReadOnlySpanChar`, registered next to the span
+  conversions with the same hidden-return convention). Roslyn lowers
+  `"a" + c + "b"` to `String.Concat(ReadOnlySpan<char>, ReadOnlySpan<char>,
+  ReadOnlySpan<char>)` and funnels the string operands through this
+  operator, so any concat of that shape - korlib's or a package's - shows up
+  as a `String::op_Implicit` MemberRef. korlib's `RegexParser.Expect`
+  emitted it first; without the entry that method (and every caller) fails
+  to compile.
+- **Generic-instantiation MemberRefs.** `AssemblyLoader.FindMethodDefByName`
+  accepts a MethodDef only if `SignaturesMatch` agrees, which cannot succeed
+  when the MemberRef is closed (`Nullable<TimeOnly>::get_Value`) and the
+  MethodDef is open (`Nullable<T>::get_Value`). A MemberRef whose parent is a
+  GENERICINST TypeSpec now falls back to `FindMethodDefByNameAndArgCount`
+  (same name, same parameter count).
 
-What is left is a single unresolved member ref, and it is not a missing
-BCL type:
+Device results (`run /apps/webapp/humprobe.dll`):
 
-- `System.Nullable<System.TimeOnly>::op_Implicit` (`0x0A0000EE`, reached
-  from Humanizer's quantity/registry code during `Configurator..cctor`).
-  korlib.dll does export `System.Nullable`1`, `System.TimeOnly` and
-  `System.Collections.Generic.KeyValuePair`2`, and the sibling
-  `KeyValuePair<string,int>`/`KeyValuePair<,>`.ctor refs now resolve, so
-  this is the JIT/loader's TypeSpec-parented member-ref path failing for a
-  generic instantiation of one korlib struct over another - not the
-  surface documented here. Everything else Humanizer reaches (including
-  `Regex.IsMatch`, `Regex.InfiniteMatchTimeout`, `Regex` construction via
-  the generated subclasses, `FrozenDictionary`, `CultureInfo` members,
-  `ResourceManager`) now resolves.
+- `R1-regex` OK - `ismatch=True`, `replace=X-X-X`, `matches=2`,
+  `infinite=-10000` (korlib's own `Regex`, not a generated runner).
+- `R2-pair` OK - `KeyValuePair<string,int>` surfaces correctly.
+- `H1-to-words` compiles and runs, then throws `NullReferenceException`.
+- `H2-humanize` is kept out of `Main`'s compile closure: one unresolvable
+  callee fails the whole `Main` compile, which would hide the results above.
 
-Because `Configurator..cctor` constructs every converter registry before
-`NumberToWordsExtension.ToWords` can run, that one ref still blocks `H1`
-and `H2`; the `R1`/`R2` probes in `src/apps/humprobe` exercise the korlib
-Regex/KeyValuePair surface directly and will report independently once it
-clears.
+Two boundaries remain, both now identified down to the member:
+
+1. **H1 needs real embedded-resource reading.** `ToWords` goes through
+   `Humanizer.Resources`, i.e. a `System.Resources.ResourceManager` over the
+   `.resources` embedded in Humanizer.dll (`ResourceManager(Type,string)`,
+   `GetString(string)`, `GetResourceSet(...)`). korlib's `ResourceManager` is
+   deliberately a stub that returns null - correct for generated `SR`
+   fallbacks, wrong for a library whose payload *is* resources - so the word
+   lists come back null and Humanizer dereferences them. Closing it needs
+   (a) a managed route to an assembly's embedded resource stream (a
+   `Kernel_*` export over the ManifestResource table + section data, like the
+   other AOT bridges) and (b) a `.resources` v2 reader for string entries
+   (`0xBEEFCACE` header, name-hash section, then `0x01`-typed string data).
+2. **H2 needs two BCL span members.** `Humanize()` reaches
+   `String.Create<TState>(int, TState, SpanAction<char,TState>)` (the
+   `string.Create` span-writing pattern, seen as MethodSpec `0x2B000038`) and
+   `MemoryExtensions.Replace<char>(ref Span<char>, char, char)` (MethodSpec
+   `0x2B000051`, MemberRef `System.MemoryExtensions::Replace`). Neither has a
+   korlib body nor an AOT entry; `String.Create<TState>` also has to allocate
+   the string and hand a `Span<char>` over its characters to a delegate, so it
+   is a JIT intrinsic rather than a korlib method (`System.String` is not part
+   of korlib.dll's IL).
+
+Also outstanding, visible in the same log: korlib's own `Dictionary`2` members
+reach **nested** TypeSpec parents (`Enumerator::.ctor`, `FindEntry`,
+`TryInsert`), and `ResolveMemberRefMethod` rejects a TypeSpec whose underlying
+token is itself a TypeSpec - hence the repeated
+`unresolved token 0x0A0001FA`. That is off Humanizer's path (it comes from
+`IDictionary.GetEnumerator`) but the nested case should unwrap the inner
+TypeSpec.
 
 Continuing: the device log prints the exact token for every failure.
 Decode it with `tools/mreftool` (`bash tools/mreftool/run.sh <dll> <substr>`),
 which lists every MemberRef as `<row> <Parent>::<name> [signature]` and
 understands TypeSpec parents. `@<row>` dumps the raw parent/signature blobs
 (`15 11 <coded> <args>` is GENERICINST/VALUETYPE), `--typeref <row>` names a
-TypeRef, and `--typedefs <substr>` lists TypeDefs. Then either add the member
-to the korlib type, register an `AotMethodRegistry` entry (needed for `ldftn`
-on a korlib static), or add the assembly to
-`AssemblyLoader.IsVirtualAssembly`.
+TypeRef, `--typedefs <substr>` lists TypeDefs, `--methods <substr>` lists a
+type's MethodDefs with signature blobs (to compare against a failing
+MemberRef), `--methodspec <row>` decodes a `0x2B` call target, `--methoddef
+<row> [byteOffset]` dumps one method's IL and the token at an offset (which
+is how `iloff=` in the log is read), and `--callers <row>` finds every call
+site of a MemberRef. Then either add the member to the korlib type, register
+an `AotMethodRegistry` entry (needed for `ldftn` on a korlib static), add an
+intrinsic in `MetadataIntegration.ResolveMethodSpecMethod`, or add the
+assembly to `AssemblyLoader.IsVirtualAssembly`.
 
 ## Cold-start behavior
 

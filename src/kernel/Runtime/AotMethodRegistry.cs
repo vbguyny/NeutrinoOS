@@ -2500,6 +2500,16 @@ public static unsafe class AotMethodRegistry
             (nint)(delegate*<nint, nint, void>)&SpanHelpers.SpanToReadOnlySpan,
             1, ReturnKind.Struct, false, false, 17);
 
+        // String.op_Implicit(string) -> ReadOnlySpan<char> - Roslyn lowers
+        // `"a" + c + "b"` to String.Concat(ReadOnlySpan<char>, ReadOnlySpan<char>,
+        // ReadOnlySpan<char>) and funnels the string operands through this
+        // operator, so both korlib and app IL reach it. Hidden-return convention:
+        // (retBuf, string) with the span data pointer at the string's _firstChar.
+        Register(
+            "System.String", "op_Implicit",
+            (nint)(delegate*<nint, nint, void>)&StringHelpers.StringToReadOnlySpanChar,
+            1, ReturnKind.Struct, false, false, 17);
+
         // System.Span`1.CopyTo(ReadOnlySpan<T>) / ReadOnlySpan`1.CopyTo(ReadOnlySpan<T>)
         // - 1 explicit param (destination span, passed by reference per the
         // x64 struct-arg convention). $iN variants selected by element size.
@@ -3540,6 +3550,28 @@ public static unsafe class StringHelpers
     public static char[] ToCharArrayCopy(string s)
     {
         return s.ToCharArray();
+    }
+
+    /// <summary>
+    /// String.op_Implicit(string) -&gt; ReadOnlySpan&lt;char&gt;. Writes the
+    /// {data, length} span descriptor into the hidden return buffer: the data
+    /// pointer is the string's _firstChar (offset 12) and the length lives at
+    /// offset 8. A null string yields the default (empty) span.
+    /// Roslyn emits this operator for `"a" + c + "b"`, which it lowers to
+    /// String.Concat(ReadOnlySpan&lt;char&gt;, ...).
+    /// </summary>
+    public static void StringToReadOnlySpanChar(nint resultPtr, nint strPtr)
+    {
+        byte* dst = (byte*)resultPtr;
+        if (strPtr == 0)
+        {
+            *(nint*)dst = 0;
+            *(int*)(dst + 8) = 0;
+            return;
+        }
+        byte* s = (byte*)strPtr;
+        *(nint*)dst = (nint)(s + 12);
+        *(int*)(dst + 8) = *(int*)(s + 8);
     }
 
     /// <summary>

@@ -18,7 +18,13 @@ static class Probe
         Run("R1-regex", R1);
         Run("R2-pair", R2);
         Run("H1-to-words", H1);
-        Run("H2-humanize", H2);
+        // H2 stays out of Main's compile closure while its boundary is open.
+        // Humanizer's Humanize() runs through String.Create<TState>(int, TState,
+        // SpanAction<char, TState>) and MemoryExtensions.Replace<char>(ref
+        // Span<char>, char, char); neither is resolvable yet, and one
+        // unresolvable callee fails Main's whole compile - which would hide the
+        // R1/R2/H1 results. Enable once the boundary closes (docs/NUGET.md).
+        // Run("H2-humanize", H2);
         Console.WriteLine("humprobe done");
     }
 
@@ -45,10 +51,18 @@ static class Probe
             section();
             Console.WriteLine("== " + name + " OK");
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine("== " + name + " EXC: " + ex.Message);
-        }
+        // ex.GetType().Name is not usable here (korlib's reflection Type.Name
+        // resolves through MemberInfoHelpers), so discriminate with catch
+        // clauses: the clause that prints identifies the failure kind.
+        catch (NotImplementedException ex) { Console.WriteLine("== " + name + " NOTIMPL: " + ex.Message); }
+        catch (NotSupportedException ex) { Console.WriteLine("== " + name + " NOTSUP: " + ex.Message); }
+        catch (NullReferenceException) { Console.WriteLine("== " + name + " NULLREF"); }
+        catch (IndexOutOfRangeException) { Console.WriteLine("== " + name + " INDEXOOR"); }
+        catch (InvalidCastException) { Console.WriteLine("== " + name + " BADCAST"); }
+        catch (InvalidOperationException ex) { Console.WriteLine("== " + name + " INVALIDOP: " + ex.Message); }
+        catch (FormatException ex) { Console.WriteLine("== " + name + " FORMAT: " + ex.Message); }
+        catch (ArgumentException ex) { Console.WriteLine("== " + name + " ARG: " + ex.Message); }
+        catch (Exception ex) { Console.WriteLine("== " + name + " EXC: " + ex.Message); }
     }
 
     static void H1()
