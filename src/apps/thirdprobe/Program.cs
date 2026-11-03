@@ -22,6 +22,7 @@ static class Probe
         Run("S3-toml-syntax", S3);
         Run("S3x-value-getters", S3x);
         Run("S3y-bcl-mimics", S3y);
+        Run("S4-interpolation", S4);
         Console.WriteLine("thirdprobe done");
     }
 
@@ -267,8 +268,7 @@ static class Probe
     // Mimic Tomlyn's TryParseDecimalInt64 over an identical StringBuilder
     // fill pattern, plus StringBuilder.CopyTo(span) and Nullable checks.
     static void S3y()
-    {
-        var tb = new System.Text.StringBuilder();
+    {        var tb = new System.Text.StringBuilder();
         tb.Append('3'); tb.Append('2'); tb.Append('3'); tb.Append('1');
         Console.WriteLine("S3y: len=" + tb.Length + " t=" + tb.ToString());
         for (int i = 0; i < tb.Length; i++)
@@ -542,6 +542,231 @@ static class Probe
             Console.WriteLine(label + "-len=" + s.Length);
             Console.WriteLine(label + "-c0=" + (s.Length > 0 ? (int)s[0] : -1));
             Console.WriteLine(label + "-val=" + s);
+        }
+    }
+
+    // String interpolation. Roslyn lowers `$"..."` to
+    // System.Runtime.CompilerServices.DefaultInterpolatedStringHandler
+    // (.ctor(int,int) + AppendLiteral/AppendFormatted<T> + ToStringAndClear),
+    // so this exercises korlib's handler rather than string.Format.
+    // Every line is self-describing so a failure names its own case.
+    static void S4()
+    {
+        int n = 42;
+        string s = "abc";
+        char c = 'Z';
+        bool b = true;
+        double d = 3.25;
+        string nothing = null;
+
+        // a: one literal plus several formatted values of different types.
+        Console.WriteLine("S4a: n=" + n + " s=" + s + " c=" + c + " b=" + b);
+        Console.WriteLine("S4a-interp: " + $"n={n} s={s} c={c} b={b}");
+        // b: adjacent placeholders and repeated values.
+        Console.WriteLine("S4b: " + $"n={n}{n}{n} s={s}{s}");
+        // c: alignment, right then left, with -6 measured against the result.
+        string right = $"{n,6}";
+        string left = $"{n,-6}";
+        Console.WriteLine("S4c: right=[" + right + "] len=" + right.Length);
+        Console.WriteLine("S4c: left=[" + left + "] len=" + left.Length);
+        Console.WriteLine("S4c: str-right=[" + $"{s,5}" + "]");
+        // d: escaped braces stay literal.
+        Console.WriteLine("S4d: " + $"{{lit}} {n}");
+        // e: a null reference formats as empty, not as the text null.
+        Console.WriteLine("S4e: [" + $"{nothing}" + "]");
+        // f: interpolating a user type goes through its ToString().
+        Console.WriteLine("S4f: " + $"{new Pair(1, 2)}");
+        // g: interpolation as a call argument, with an expression inside.
+        Console.WriteLine($"S4g: n2={n * 2} len={s.Length} cmp={n > 7}");
+        // h: format specifiers. korlib's handler currently ignores them, so the
+        // expected text is recorded so a regression in either direction shows.
+        string hex = $"{n:X4}";
+        string fixed1 = $"{d:F1}";
+        Console.WriteLine("S4h: hex=[" + hex + "] expect=002A");
+        Console.WriteLine("S4h: fixed1=[" + fixed1 + "] expect=3.3");
+        // i: escapes inside and around the interpolation.
+        Console.WriteLine("S4i: " + $"tab\there {n} quote\"end");
+        // j: interpolation inside a nested call chain (handler result reused).
+        Console.WriteLine("S4j: " + Wrap($"[{s}:{n}]"));
+        // k: the handler API driven directly (no compiler lowering), one step at
+        // a time, to separate "the 1-arg AppendFormatted<T> is broken" from
+        // "the lowered sequence is broken".
+        Console.WriteLine("S4k: n.ToString()=[" + n.ToString() + "]");
+        var handler = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        handler.AppendLiteral("n=");
+        Console.WriteLine("S4k: after-literal=[" + handler.ToString() + "]");
+        handler.AppendFormatted<int>(n);
+        Console.WriteLine("S4k: after-int=[" + handler.ToString() + "]");
+        handler.AppendFormatted<string>(s);
+        Console.WriteLine("S4k: after-string=[" + handler.ToString() + "]");
+        handler.AppendFormatted<double>(d);
+        handler.AppendFormatted<char>(c);
+        handler.AppendFormatted<bool>(b);
+        Console.WriteLine("S4k: after-all=" + handler.ToStringAndClear());
+        // l: minimal lowered cases, to tell "the lowering is broken" from "the
+        // lowering is broken only with many locals in flight".
+        Console.WriteLine("S4l: mini=[" + S4mini(n, s) + "]");
+        Console.WriteLine("S4l: inline=[" + $"n={n}" + "]");
+        Console.WriteLine("S4l: two=[" + $"{n}{s}" + "]");
+        Console.WriteLine("S4l: char=[" + $"c={c}" + "]");
+        // m: same shapes again, but on a fresh local, to tell whether the
+        // failure follows "value read from a local" or "many interpolations in
+        // one method".
+        int q = 42;
+        Console.WriteLine("S4m: q=[" + $"{q}" + "]");
+        Console.WriteLine("S4m: q2=[" + $"{q}{q}" + "]");
+        Console.WriteLine("S4m: qmul=[" + $"{q * 1}" + "]");
+        Console.WriteLine("S4m: qs=[" + $"{s}" + "]");
+        Console.WriteLine("S4m: qdot=[" + $"{q.ToString()}" + "]");
+        // n: fresh tiny methods (one interpolation each).
+        Console.WriteLine("S4n: local=[" + S4local(42) + "]");
+        Console.WriteLine("S4n: local2=[" + S4local2(42) + "]");
+        // t: minimal mimic of the interpolated-string call shape - an instance
+        // method on a generic type taking one argument - at eval-stack depth 0
+        // and at depth 1 (a literal already pending below it).
+        var gb = new GenBox<int>();
+        Console.WriteLine("S4t: depth0=[" + gb.Format(42) + "]");
+        Console.WriteLine("S4t: depth1=[" + "pad:" + gb.Format(42) + "]");
+        Console.WriteLine("S4t: depth2=[" + "pad:" + "pad2:" + gb.Format(42) + "]");
+        Console.WriteLine("S4t: depth1-two=[" + "pad:" + gb.Format2(42, 7) + "]");
+        var gs = new GenBox<string>();
+        Console.WriteLine("S4t: depth1-str=[" + "pad:" + gs.Format("abc") + "]");
+        // u: split "the call passes the wrong value" from "boxing an MVAR in
+        // the generic body is wrong": Set stores without boxing, and Echo
+        // returns the value untouched. Both are read back outside the generic
+        // code, where boxing is a normal int box.
+        var gb2 = new GenBox<int>();
+        gb2.Set(42);
+        Console.WriteLine("S4u: set-get=" + gb2.Value);
+        gb2.Set(1234);
+        Console.WriteLine("S4u: set-get2=" + gb2.Value);
+        Console.WriteLine("S4u: echo=" + Echo<int>(42));
+        Console.WriteLine("S4u: echo2=" + Echo<int>(1234));
+        Console.WriteLine("S4u: echo-str=" + Echo<string>("abc"));
+        // v: inside a generic body, which step corrupts an int -> text?
+        // ViaToString boxes then calls Object::ToString; ViaObject boxes via a
+        // local then calls ToString; ViaConcat is `"v=" + v`, which boxes and
+        // feeds String.Concat(object, object).
+        Console.WriteLine("S4v: via-tostring=[" + GenM<int>.ViaToString(42) + "]");
+        Console.WriteLine("S4v: via-object=[" + GenM<int>.ViaObject(42) + "]");
+        Console.WriteLine("S4v: via-concat=[" + GenM<int>.ViaConcat(42) + "]");
+        Console.WriteLine("S4v: via-interp=[" + GenM<int>.ViaInterp(42) + "]");
+        // controls: the same operations outside a generic body.
+        object boxedInt = 42;
+        Console.WriteLine("S4v: control-tostring=[" + boxedInt.ToString() + "]");
+        Console.WriteLine("S4v: control-concat=[" + "v=" + boxedInt + "]");
+        // w: is the box payload itself wrong, or only virtual dispatch on a
+        // boxed value type? unbox.any/Equals go through the payload, ToString
+        // goes through the vtable.
+        object o42 = 42;
+        int back = (int)o42;
+        Console.WriteLine("S4w: unbox=" + back);
+        Console.WriteLine("S4w: is-int=" + (o42 is int));
+        Console.WriteLine("S4w: equals=" + o42.Equals(42));
+        object o1234 = 1234;
+        Console.WriteLine("S4w: unbox2=" + (int)o1234);
+        Console.WriteLine("S4w: tostring-len=" + o42.ToString().Length);
+        Console.WriteLine("S4w: obj-tostring-again=[" + o42.ToString() + "]");
+        Console.WriteLine("S4-done");
+    }
+
+    static string Wrap(string inner)
+    {
+        return "<" + inner + ">";
+    }
+
+    // Minimal lowered interpolation: two values, one string concat at the end.
+    static string S4mini(int n, string s)
+    {
+        return $"n={n} s={s}";
+    }
+
+    // Generic identity: the value is handed back untouched, so a wrong result
+    // points at MVAR argument passing rather than at boxing in the callee.
+    static T Echo<T>(T v)
+    {
+        return v;
+    }
+
+    // The three ways a generic body turns an unconstrained T into text.
+    static class GenM<T>
+    {
+        public static string ViaToString(T v)
+        {
+            return v.ToString();
+        }
+
+        public static string ViaObject(T v)
+        {
+            object o = v;
+            return o.ToString();
+        }
+
+        public static string ViaConcat(T v)
+        {
+            return "v=" + v;
+        }
+
+        public static string ViaInterp(T v)
+        {
+            return $"v={v}";
+        }
+    }
+
+    // Plain instance methods on a generic type: the same marshalling shape as
+    // DefaultInterpolatedStringHandler.AppendFormatted<T>(T) (hasThis + one
+    // value-type argument) without any interpolation involved.
+    sealed class GenBox<T>
+    {
+        public T Value;
+
+        public void Set(T v)
+        {
+            Value = v;
+        }
+
+        public string Format(T v)
+        {
+            Value = v;
+            return "v=" + v;
+        }
+
+        public string Format2(T v, int extra)
+        {
+            Value = v;
+            return "v=" + v + " e=" + extra;
+        }
+    }
+
+    // Same shape as S4mini but the interpolated value comes from a local.
+    static string S4local(int seed)
+    {
+        int n = seed;
+        return $"n={n}";
+    }
+
+    // Two locals, interpolated, no other work.
+    static string S4local2(int seed)
+    {
+        int n = seed;
+        string s = "abc";
+        return $"n={n} s={s}";
+    }
+
+    sealed class Pair
+    {
+        private readonly int _a;
+        private readonly int _b;
+
+        public Pair(int a, int b)
+        {
+            _a = a;
+            _b = b;
+        }
+
+        public override string ToString()
+        {
+            return $"<{_a},{_b}>";
         }
     }
 }
