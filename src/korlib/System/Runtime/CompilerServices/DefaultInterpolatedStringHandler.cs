@@ -1,4 +1,4 @@
-// NeutrinoOS korlib - DefaultInterpolatedStringHandler
+﻿// NeutrinoOS korlib - DefaultInterpolatedStringHandler
 //
 // The handler the C# compiler targets for `$"..."` (C# 10+): a ref struct with
 // a growable char buffer, so interpolation does not need StringBuilder.
@@ -8,6 +8,8 @@
 // Int64 / ... exist only in the kernel (Primitives.cs is excluded from
 // korlib.dll) and the BCL ToString(string, IFormatProvider) overloads have no
 // device bridge, so formatting them from korlib would not resolve at JIT time.
+// Every overload - generic and non-generic - goes through FormatValue, so the
+// specifier is honoured wherever Roslyn routes the value.
 // Floating point is not format-aware yet: korlib's System.Double is a stub
 // (PrimitiveStubs.cs) with no ToString(format) overload, and the device float
 // bridges emit the shortest round-trip form regardless of the specifier, so
@@ -80,30 +82,33 @@ namespace System.Runtime.CompilerServices
         /// </summary>
         public void AppendFormatted<T>(T value)
         {
-            if (value is not null)
-            {
-                string? str = value.ToString();
-                if (str != null)
-                    AppendLiteral(str);
-            }
+            if (value is null)
+                return;
+
+            string? str = FormatValue(value, null);
+            if (str != null)
+                AppendLiteral(str);
         }
 
         /// <summary>
         /// Writes the specified value to the handler with a format specifier.
         /// </summary>
         /// <remarks>
-        /// The specifier is not applied yet. Roslyn emits a *generic*
-        /// instantiation (`AppendFormatted&lt;int&gt;(int, string)`) for lowered
-        /// interpolations, and value-type arguments to generic calls are still
-        /// mis-staged by the JIT (see specs/future-todos.md, interpolation item),
-        /// so formatting here would print garbage instead of the value. The
-        /// format-aware implementation exists in FormatValue and is used by the
-        /// non-generic object overload below; switch these over once the staging
-        /// bug is fixed.
+        /// Roslyn emits a *generic* instantiation for lowered interpolations
+        /// (`AppendFormatted&lt;int&gt;(int, string)`), so the specifier reaches the
+        /// value formatter here. `X`/`D` are honoured for the integer types and
+        /// char (see FormatValue); floating point still ignores the specifier
+        /// because korlib's System.Double is a stub and the device float bridges
+        /// are not format-aware yet.
         /// </remarks>
         public void AppendFormatted<T>(T value, string? format)
         {
-            AppendFormatted(value);
+            if (value is null)
+                return;
+
+            string? str = FormatValue(value, format);
+            if (str != null)
+                AppendLiteral(str);
         }
 
         /// <summary>
@@ -111,8 +116,11 @@ namespace System.Runtime.CompilerServices
         /// </summary>
         public void AppendFormatted<T>(T value, int alignment)
         {
-            string? str = value?.ToString();
-            if (str is not null)
+            if (value is null)
+                return;
+
+            string? str = FormatValue(value, null);
+            if (str != null)
                 AppendPadded(str, alignment);
         }
 
@@ -121,7 +129,12 @@ namespace System.Runtime.CompilerServices
         /// </summary>
         public void AppendFormatted<T>(T value, int alignment, string? format)
         {
-            AppendFormatted(value, alignment);
+            if (value is null)
+                return;
+
+            string? str = FormatValue(value, format);
+            if (str != null)
+                AppendPadded(str, alignment);
         }
 
         /// <summary>
@@ -189,6 +202,9 @@ namespace System.Runtime.CompilerServices
         /// </summary>
         private static string? FormatValue<T>(T value, string? format)
         {
+            if (value is null)
+                return null;
+
             if (format is null || format.Length == 0)
                 return value.ToString();
 

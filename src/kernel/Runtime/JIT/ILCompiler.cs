@@ -2687,22 +2687,38 @@ public unsafe struct ILCompiler
         else if (isValueType && typeSize > 0)
         {
             // Small value type (1-8 bytes): load VALUE directly, push with size
-            // For signed small types (sbyte, short), use MOVSX to sign-extend
+            // The load must NARROW to the declared width. A 64-bit load of a
+            // 1/2-byte local kept whatever happened to sit in the rest of the
+            // 64-byte slot, so a char/bool/byte read back with stale high bits:
+            // `out char` (korlib's DefaultInterpolatedStringHandler.ParseFormat)
+            // stored 2 bytes and the caller read (int)specifier = 0x035A0058
+            // instead of 88, so every format specifier fell through to the plain
+            // decimal value ("{42:X4}" -> "42"). Signed types sign-extend,
+            // unsigned ones zero-extend.
             byte signedKind = (_localSignedKind != null && index >= 0 && index < _localCount) ? _localSignedKind[index] : (byte)0;
+            bool signedValue = signedKind == 1;
 
-            if (typeSize == 1 && signedKind == 1)
+            if (typeSize == 1)
             {
-                // Signed byte (sbyte): sign-extend to 64-bit
-                X64Emitter.MovsxByte(ref _code, VReg.R0, VReg.FP, offset);
+                if (signedValue)
+                    X64Emitter.MovsxByte(ref _code, VReg.R0, VReg.FP, offset);   // sbyte
+                else
+                    X64Emitter.MovzxByte(ref _code, VReg.R0, VReg.FP, offset);   // byte/bool
             }
-            else if (typeSize == 2 && signedKind == 1)
+            else if (typeSize == 2)
             {
-                // Signed word (short): sign-extend to 64-bit
-                X64Emitter.MovsxWord(ref _code, VReg.R0, VReg.FP, offset);
+                if (signedValue)
+                    X64Emitter.MovsxWord(ref _code, VReg.R0, VReg.FP, offset);   // short
+                else
+                    X64Emitter.MovzxWord(ref _code, VReg.R0, VReg.FP, offset);   // char/ushort
             }
             else
             {
-                // Unsigned or larger types: regular load
+                // 4/8-byte and float values: full 64-bit load. 32-bit locals are
+                // written 8 bytes wide by stloc and the rest of the JIT relies on
+                // the sign extension ldc.i4 establishes, so they are NOT narrowed
+                // here (doing so crashed the boot) - only 1- and 2-byte locals can
+                // be written narrow by a callee (`out char`) and keep stale bytes.
                 X64Emitter.MovRM(ref _code, VReg.R0, VReg.FP, offset);
             }
             X64Emitter.Push(ref _code, VReg.R0);
@@ -7228,6 +7244,44 @@ public unsafe struct ILCompiler
                             PushEntry(EvalStackEntry.Int32);
 
                             return true;  // Don't fall through to direct call or boxing
+                        }
+
+                        // CONSTRAINED CALL ON AN AOT PRIMITIVE: use the byref variant.
+                        // The primitive MethodTable's vtable slot holds the
+                        // BOXED-convention helper (payload at +8, e.g.
+                        // PrimitiveHelpers.Int32_ToString), but a constrained call
+                        // passes the MANAGED POINTER to the raw value as 'this', so
+                        // that helper read the eight bytes AFTER the value instead of
+                        // the value itself. For
+                        // DefaultInterpolatedStringHandler.AppendFormatted<T>(T) the
+                        // neighbour slot is the caller's shadow-space home of an
+                        // argument from an earlier call, so
+                        // `$"{42}"` printed the handler's formattedCount ("1") and
+                        // `$"{n}{s}"` printed "2abc" instead of "42abc". CompileCall
+                        // already swaps in the byref variant for direct calls; this is
+                        // the same swap for the constrained-call path.
+                        if (numArgs == 0 && tempMethod.IsVirtual && tempMethod.VtableSlot >= 0)
+                        {
+                            string? primTypeName = MetadataIntegration.GetPrimitiveTypeName(constraintMT);
+                            if (primTypeName != null)
+                            {
+                                string? primMethodName = tempMethod.VtableSlot == 0 ? "ToString"
+                                                        : tempMethod.VtableSlot == 2 ? "GetHashCode"
+                                                        : null;
+                                if (primMethodName != null)
+                                {
+                                    nint byrefVariant = AotMethodRegistry.LookupByref(primTypeName, primMethodName);
+                                    if (byrefVariant != 0)
+                                    {
+                                        vtableEntry = byrefVariant;
+                                        JitTrace.Write("[constrained] byref ");
+                                        JitTrace.Write(primTypeName);
+                                        JitTrace.Write(".");
+                                        JitTrace.Write(primMethodName);
+                                        JitTrace.WriteLine();
+                                    }
+                                }
+                            }
                         }
 
                         if (vtableEntry != 0)

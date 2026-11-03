@@ -1199,13 +1199,17 @@ public static unsafe class Tier0JIT
                         floatKinds[i] = 0;
                 }
                 // Track signed types: 0x04 = I1 (sbyte), 0x06 = I2 (short)
-                // signedKinds: 0 = unknown, 1 = signed (sbyte/short), 2 = unsigned (byte/ushort/bool/char)
+                // signedKinds: 0 = unknown, 1 = signed, 2 = unsigned
+                // I4/U4 are marked too so a 4-byte local load can narrow with
+                // movsxd/mov r32 instead of a 64-bit load that keeps whatever
+                // the rest of the slot held (an `out int` writes only 4 bytes).
                 if (signedKinds != null)
                 {
-                    if (elemType == 0x04 || elemType == 0x06)
-                        signedKinds[i] = 1;  // Signed: I1 (sbyte), I2 (short)
-                    else if (elemType == 0x02 || elemType == 0x03 || elemType == 0x05 || elemType == 0x07)
-                        signedKinds[i] = 2;  // Unsigned: Boolean, Char, U1 (byte), U2 (ushort)
+                    if (elemType == 0x04 || elemType == 0x06 || elemType == 0x08 || elemType == 0x0A)
+                        signedKinds[i] = 1;  // Signed: I1 (sbyte), I2 (short), I4 (int), I8 (long)
+                    else if (elemType == 0x02 || elemType == 0x03 || elemType == 0x05 ||
+                             elemType == 0x07 || elemType == 0x09 || elemType == 0x0B)
+                        signedKinds[i] = 2;  // Unsigned: Boolean, Char, U1, U2, U4 (uint), U8 (ulong)
                 }
             }
             else if (elemType == 0x16) // ELEMENT_TYPE_TYPEDBYREF

@@ -1,4 +1,4 @@
-// thirdprobe - M8.1 boundary probes (docs/NUGET.md):
+﻿// thirdprobe - M8.1 boundary probes (docs/NUGET.md):
 //   S1: raw string.Create<TState> + SpanAction<char,string[]> delegate path
 //   S2: Microsoft.Extensions.Primitives StringValues.ToString()
 //   S3: Tomlyn 2.10.1 syntax parser
@@ -578,12 +578,12 @@ static class Probe
         Console.WriteLine("S4f: " + $"{new Pair(1, 2)}");
         // g: interpolation as a call argument, with an expression inside.
         Console.WriteLine($"S4g: n2={n * 2} len={s.Length} cmp={n > 7}");
-        // h: format specifiers. korlib's handler currently ignores them, so the
-        // expected text is recorded so a regression in either direction shows.
+        // h: format specifiers now reach the generic overloads Roslyn emits, so
+        // the integer ones are honoured (X/x with width, D/d zero-padding).
         string hex = $"{n:X4}";
         string fixed1 = $"{d:F1}";
         Console.WriteLine("S4h: hex=[" + hex + "] expect=002A");
-        Console.WriteLine("S4h: fixed1=[" + fixed1 + "] expect=3.3");
+        Console.WriteLine("S4h: fixed1=[" + fixed1 + "] expect=3.25 (float formats still open)");
         // i: escapes inside and around the interpolation.
         Console.WriteLine("S4i: " + $"tab\there {n} quote\"end");
         // j: interpolation inside a nested call chain (handler result reused).
@@ -701,7 +701,94 @@ static class Probe
         Console.WriteLine("S4w: unbox2=" + (int)o1234);
         Console.WriteLine("S4w: tostring-len=" + o42.ToString().Length);
         Console.WriteLine("S4w: obj-tostring-again=[" + o42.ToString() + "]");
+        // z: the constrained-call 'this' convention on its own, with no handler
+        // and no boxing: the callee body is exactly
+        // `ldarga.s 1; constrained. !!T; callvirt Object::ToString`. A primitive
+        // vtable slot used to hold the boxed-convention helper (payload at +8),
+        // so this printed the neighbouring shadow-space slot - inside
+        // $"{x}" the formattedCount. Depth 0 and depth 1 are checked because the
+        // neighbour slot holds a different stale value at each depth.
+        Console.WriteLine("S4z: vt-ts0=[" + ConstrainedToString<int>(42) + "] expect=[42]");
+        Console.WriteLine("S4z: vt-ts1=[" + "x=" + ConstrainedToString<int>(42) + "] expect=[x=42]");
+        Console.WriteLine("S4z: vt-long=[" + "x=" + ConstrainedToString<long>(1234567890123L) + "] expect=[x=1234567890123]");
+        Console.WriteLine("S4z: vt-char=[" + "x=" + ConstrainedToString<char>('Z') + "] expect=[x=Z]");
+        Console.WriteLine("S4z: vt-bool=[" + "x=" + ConstrainedToString<bool>(true) + "] expect=[x=True]");
+        Console.WriteLine("S4z: vt-hash=[" + ConstrainedHashCode<int>(42) + "] expect=[42]");
+        Console.WriteLine("S4z: vt-double=[" + "x=" + ConstrainedToString<double>(3.25) + "] expect=[x=3.25]");
+        Console.WriteLine("S4z: ref-ts=[" + "x=" + ConstrainedToString<string>("abc") + "] expect=[x=abc]");
+        // y0/y1/y2/y3: does a string argument survive a MethodSpec call whose
+        // instantiation is an MVAR (`FormatValue<T>(T, string)` from inside the
+        // generic handler overload)? Two<T>(T, string) has exactly that shape and
+        // reports which of its two arguments arrived.
+        string fmt = "X4";
+        string y0 = Two<int>(42, "X4");
+        Console.WriteLine("S4y0: two-const=[" + y0 + "] expect=[X4|42]");
+        string y1 = Two<int>(42, fmt);
+        Console.WriteLine("S4y1: two-local=[" + y1 + "] expect=[X4|42]");
+        Console.WriteLine("S4y2: two-depth1=[" + "p:" + Two<int>(42, "X4") + "] expect=[p:X4|42]");
+        Console.WriteLine("S4y3: two-street=[" + Two<string>("z", "X4") + "] expect=[X4|z]");
+        // y4/y5: the handler's own format overload, driven directly at depth 0
+        // and at depth 1. If y4 formats and S4h does not, the loss depends on
+        // the call site's eval-stack depth.
+        var fh2 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        fh2.AppendFormatted<int>(42, "X4");
+        Console.WriteLine("S4y4: direct-format=[" + fh2.ToStringAndClear() + "] expect=[002A]");
+        var fh3 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        fh3.AppendFormatted<int>(42, 0, "X4");
+        Console.WriteLine("S4y5: direct-align-format=[" + fh3.ToStringAndClear() + "] expect=[002A]");
+        // y6..yA: the formatter's own type dispatch, reproduced in app code, at
+        // depth 0, at depth 1, and through an MVAR instantiation (Three<T>). These
+        // keep the `is int` + `format.Length` checks covered: the pre-fix failure
+        // was a 2-byte `out char` read back with stale high bits inside
+        // ParseFormat, which made every specifier fall through to the plain value.
+        Console.WriteLine("S4y6: fmt-int0=[" + FmtLike<int>(42, "X4") + "] expect=[INT:42]");
+        Console.WriteLine("S4y7: fmt-int1=[" + "p:" + FmtLike<int>(42, "X4") + "] expect=[p:INT:42]");
+        Console.WriteLine("S4y8: fmt-int-mvar=[" + Three<int>(42, "X4") + "] expect=[INT:42]");
+        Console.WriteLine("S4y9: fmt-int-mvar1=[" + "p:" + Three<int>(42, "X4") + "] expect=[p:INT:42]");
+        Console.WriteLine("S4yA: fmt-null=[" + FmtLike<int>(42, null) + "] expect=[NOFMT]");
         Console.WriteLine("S4-done");
+    }
+
+    // The constrained-call shapes on their own: `v.ToString()` over a generic
+    // parameter lowers to ldarga/constrained/callvirt, and GetHashCode to
+    // ldarga/constrained/callvirt GetHashCode.
+    static string ConstrainedToString<T>(T v)
+    {
+        return v.ToString();
+    }
+
+    static int ConstrainedHashCode<T>(T v)
+    {
+        return v.GetHashCode();
+    }
+
+    // Same physical shape as the handler's FormatValue<T>(T, string) call:
+    // a MethodSpec whose instantiation is the enclosing method's MVAR, with one
+    // value-type-ish and one string argument. Reports which argument arrived.
+    static string Two<T>(T v, string? tag)
+    {
+        string shown = tag == null ? "<null-tag>" : tag;
+        return shown + "|" + v!.ToString();
+    }
+
+    // korlib's FormatValue checks, reproduced in app code so a failure names the
+    // branch instead of just returning the unformatted text.
+    static string FmtLike<T>(T v, string? f)
+    {
+        if (f is null || f.Length == 0)
+            return "NOFMT";
+        if (v is int i)
+            return "INT:" + i.ToString();
+        if (v is char c)
+            return "CHAR:" + c.ToString();
+        return "OTHER";
+    }
+
+    // Same call, but made from a generic body, so the MethodSpec instantiation is
+    // the enclosing MVAR (`FmtLike<!!0>`) instead of a concrete type.
+    static string Three<T>(T v, string f)
+    {
+        return FmtLike<T>(v, f);
     }
 
     static string Wrap(string inner)

@@ -20,8 +20,114 @@
 - [x] Add more useful utilities ("clear", "more" etc.)
 - [x] Allow the left and right arrow keys allow the user to move the cursor on the current line. Do not allow them to move before the start of the statement that is being typed nor beyond the end of the current last character typed. Have the HOME and END key to bring the cursor to the first character typed and the last character typed. Keep in mind that the user's cursor position can change when pressing the up/down arrows while cycling through command history. Do not overwrite existing text.
 - [x] Verify can make REST calls
-- [ ] Verify the ablility to host REST APIs
-- [ ] Finish implementing SSH
-- [ ] Ensure that able to allow connections via SSH. Provide instructions in a markdown file on how to set this up and connect.
+- [x] Verify the ablility to host REST APIs
+- [x] Finish implementing SSH
+- [x] Ensure that able to allow connections via SSH. Provide instructions in a markdown file on how to set this up and connect. (`docs/SSH.md`; verified end-to-end by `build/ssh-probe.sh` — 21/21)
 
-QEMU WHPX Acceleration
+- [x] QEMU WHPX Acceleration
+Since NeutrinoOS handles VirtIO using a polling mechanism, you have successfully pinpointed the bottleneck.
+Under software emulation (TCG), a VirtIO polling loop executes rapidly entirely in user space. Under hardware virtualization (WHPX), a polling loop causes a worst-case performance scenario. Every time your VirtIO driver loops to inspect a memory-mapped or I/O-port-mapped descriptor status ring (e.g., checking if a buffer is processed or waiting for a device kick), it triggers a literal hardware exception known as a VM Exit. [1] (https://www.qemu.org/2019/11/15/micro-optimizing-kvm-vmexits/), [2] (https://stackoverflow.com/questions/24737882/virtio-how-it-increase-performance)
+Because context-switching the CPU back and forth between your guest OS and the Windows host takes thousands of clock cycles, executing millions of these loops per second completely stalls execution.
+How to Fix the VirtIO Bottleneck under WHPX
+To make NeutrinoOS run as fast (or faster) on WHPX as it does on TCG, you must transition your VirtIO drivers away from continuous polling.
+1. Implement MSI-X / PCI Interrupt Handlers
+VirtIO is fundamentally a paravirtualized standard designed to avoid VM exits by leveraging asynchronous notifications. Instead of looping until a descriptor is processed, your driver should yield or halt and let the device alert the CPU. [1] (https://community.veeam.com/blogs-and-podcasts-57/understanding-disk-i-o-in-qemu-kvm-with-virtio-13460), [2] (https://developer.ibm.com/articles/l-virtio/)
+• Map MSI-X vectors or standard legacy PCI interrupts for your VirtIO block and network devices.
+• When a read or write operation is queued up, have your driver issue a device "kick" (writing to the Queue Notify register) and immediately execute an assembly hlt instruction (or yield to your scheduler).
+• QEMU/WHPX will fire a virtual hardware interrupt when the data is ready, waking the CPU to process the ring. [1] (https://qnx.com/developers/docs/7.1/com.qnx.doc.neutrino.utilities/topic/d/devc-virtio.html)
+2. Introduce a Micro-Delay/Backoff in the Polling Loop
+If you want a temporary fix without rewriting your kernel to use interrupts immediately, implement an exponential backoff or use a pause / hlt instruction directly inside your VirtIO status-checking loop.
+• Executing the x86 pause instruction hints to the processor that it is a spin-loop, which improves pipeline behavior.
+• If your kernel allows interrupts during disk I/O, hitting an assembly hlt or spinning a tight, bounded loop before checking the status again will drastically reduce the absolute count of VM exits hitting the Windows hypervisor every second.
+Quick Optimization Reminder for Your Script
+Since you are explicitly developing custom VirtIO routines, ensure your QEMU machine configuration strips out legacy routing layers that can add additional interception traps:
+cmd
+-machine q35,pic=off,ioapic=kernel
+Use code with caution.
+• pic=off: Strips out legacy 8259 PIC controllers, forcing your OS to map the modern APIC or MSI-X tables. WHPX handles native APIC routing significantly faster than trapping legacy PIC I/O ports. [1] (https://www.qemu.org/docs/master/system/whpx.html)
+
+- [x] Fully implement ASP.NET Core. Match the namespaces so that someone can create a Web API in ASP.NET Core in Windows and the same code works in NeutrinoOS.
+- [x] Test that nugets/third party libraries can be used with NeutrinoOS (do not support anything less than .NET 10)
+- [x] Verify that string interpolation is supported
+  - Verified on device with `src/apps/thirdprobe` section `S4-interpolation`
+    (`run /apps/webapp/thirdprobe.dll`). The C# lowering and korlib's
+    `DefaultInterpolatedStringHandler` work (ctor, `AppendLiteral`,
+    `AppendFormatted<T>`, `ToStringAndClear` all resolve and run), and
+    interpolating strings, escaped braces, nulls, alignment, nested calls,
+    **value types** (`int`, `long`, `char`, `bool`, `double`) and format
+    specifiers are all correct: `S4a-interp: n=42 s=abc c=Z b=True`,
+    `S4b: n=424242`, `S4c: right=[    42]`, `S4h: hex=[002A]`,
+    `S4l`/`S4m`/`S4n` all correct, `S4x`/`S4y` match their expected strings.
+  - The two real bugs were NOT in MethodSpec argument staging. That hypothesis
+    was tested directly and disproved on device: `Two<T>(T, string)` (the exact
+    2-arg MethodSpec shape incl. an MVAR instantiation via `Three<T>`) returns
+    both arguments intact at depth 0 and depth 1 (`S4y0`..`S4y9`).
+    1. **`constrained.` + `callvirt` on an AOT primitive used the BOXED
+       convention**: the primitive MethodTable's vtable slot holds
+       `PrimitiveHelpers.Int32_ToString`, which reads the payload at **+8**, but
+       a constrained call passes the **managed pointer to the raw value**, so the
+       helper read the eight bytes after the value - for
+       `AppendFormatted<int>(int)` that neighbour slot is the caller's
+       shadow-space home, holding the handler ctor's `formattedCount`
+       (`$"{42}"` -> `1`, `$"{n}{s}"` -> `2abc`, `$"{a}{b}{c}{d}"` -> `n=4 ...`).
+       Fixed in `CompileCallvirt`: the constrained path now swaps in the
+       registered **byref variant** (`AotMethodRegistry.LookupByref`) for
+       ToString/GetHashCode on primitives, exactly like `CompileCall` already
+       did. `S4z` covers it (int/long/char/bool/double/string, ToString and
+       GetHashCode, depth 0 and 1).
+    2. **`ldloc` of a 1- or 2-byte local loaded 8 bytes**, keeping whatever sat
+       in the rest of the 64-byte slot. An `out char` (korlib's
+       `ParseFormat(format, out char specifier, out int width)`) writes 2 bytes,
+       so the caller read `(int)specifier` = `0x035A0058` instead of `88 ('X')`
+       and every format specifier fell through to the plain decimal value
+       (`{42:X4}` -> `42`). Fixed in `CompileLdloc`: byte/word loads now
+       zero-extend (char/byte/bool/ushort) or sign-extend (sbyte/short) to
+       their declared width. NOTE: narrowing 4-byte locals the same way
+       crashes the boot (32-bit slots are written 8 bytes wide and the rest of
+       the JIT relies on the sign-extension `ldc.i4` establishes), so the
+       4-byte path keeps its historical 64-bit load.
+  - Format specifiers are honoured by every overload now: `X`/`x` with width,
+    `D`/`d` with zero-padding, sign handling, and alignment combined with a
+    specifier, all generated inside korlib (its `System.Int32`/`Int64` live only
+    in the kernel and the BCL `ToString(string, IFormatProvider)` overloads have
+    no device bridge). Device evidence: `42:X4`->`002A`, `255:x`->`ff`,
+    `42:D6`->`000042`, `-42:X4`->`FFFFFFD6`, `-42:D6`->`-000042`,
+    `42,8:X`->`      2A`, `1234567890123:X`->`11F71FB04CB`, `'Z':X4`->`005A`,
+    `'Z':D3`->`090`.
+  - Still broken (tracked separately, NOT interpolation): virtual dispatch on a
+    **boxed value type** passes the box pointer where the method expects the
+    payload pointer. `object o = 42; o.ToString()` -> `"0"`/`"48"`,
+    `o.Equals(42)` -> False, while `(int)o` -> 42 and `int n = 42;
+    n.ToString()` -> `"42"`. Probes: `S4v` via-object/control-*, `S4w`.
+  - Still open: `{3.25:F1}` renders `3.25` (no float format support) - needs
+    `FloatFormatting` to learn F/N/E/P/G plus a bridge that accepts a specifier.
+
+[x] small, self-contained, no kernel risk; makes format specifiers work as soon as #1/#2 land.
+[x] a contained JIT staging bug with a minimal repro (GenBox<int>.Format vs Set, and S4l).
+[ ] the bigger one (vtable/unboxing); worth doing on its own because boxed-value virtual calls affect far more than interpolation (e.g. Humanizer's "v=" + value, dictionary keys, object.Equals).
+
+- [x] Speed up compilation only compile the parts that have changed. Currently takes about 5 minutes to finish. Reduce to less than 30 seconds.
+  - Builds are incremental now. Measured on the dev loop (WSL, `/root/neutrino`):
+    no-op rebuild **1-2 s**, one app changed **~6 s**, kernel sources changed
+    **~9 s**, full clean kernel+image **~23 s**, clean utilities+apps **~85 s**
+    (65 projects, rare path).
+  - What was wrong: `build.sh` always ran `clean.sh`; the Makefile wiped
+    korlib's `obj/bin` and the kernel rule deleted `kernel.obj`/`BOOTX64.EFI`
+    every time; `image` was `.PHONY`, so the 64 MB FAT image was reassembled and
+    ~20 `dotnet build`s re-invoked on every run; `wsl-rebuild.sh` deleted the
+    kernel artifacts itself; the IL disassembly spawned 15 sequential
+    `dotnet ildasm` processes; and the utility/app build wiped its output
+    directories and rebuilt all 65 projects.
+  - Two subtleties had to be fixed before mtime-based incrementality worked at
+    all with sources on `/mnt/d`: (1) the Windows clock can run ahead of the WSL
+    clock, so freshly saved files look newer than every artifact - the sync now
+    stamps the time before rsync and clamps anything newer than that, and uses
+    `rsync -c` so the clamp cannot cause a re-copy feedback loop; (2)
+    `dotnet build -o` copies assemblies with their ORIGINAL mtime, so an
+    up-to-date project still looked stale - `src/Directory.Build.props` now
+    restamps the output after a successful build.
+  - Not done: the clean utilities/apps path still builds 65 projects serially
+    (parallelising is possible), and each `dotnet build` costs ~1.2 s of startup.
+
+- [ ] Verify support for SQL Lite Nuget
+- [ ] Support disk encryption so only the VM can access it. The disk should still be accessable if the NeutrinoOS image gets rebuild and the instance is updated to a newer release.
