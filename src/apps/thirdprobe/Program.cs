@@ -631,6 +631,40 @@ static class Probe
         Console.WriteLine("S4t: depth1-two=[" + "pad:" + gb.Format2(42, 7) + "]");
         var gs = new GenBox<string>();
         Console.WriteLine("S4t: depth1-str=[" + "pad:" + gs.Format("abc") + "]");
+        // x: format machinery, driven through the NON-generic object overload.
+        // The generic overloads Roslyn emits for lowered interpolations
+        // (`AppendFormatted<int>(int, string)`) are still hit by the
+        // value-staging bug above, so they ignore the specifier on purpose;
+        // this path proves the formatting itself (X/x with width, D with
+        // zero-padding, sign handling, alignment).
+        var fh = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        fh.AppendFormatted((object)42, 0, "X4");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)255, 0, "x");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)42, 0, "D6");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)(-42), 0, "X4");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)(-42), 0, "D6");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)42, 8, "X");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)1234567890123L, 0, "X");
+        fh.AppendLiteral("|");
+        fh.AppendFormatted((object)'Z', 0, "X4");
+        Console.WriteLine("S4x: formats=" + fh.ToStringAndClear());
+        Console.WriteLine("S4x: expect=002A|ff|000042|FFFFFFD6|-000042|      2A|11F71FB04CB|005A");
+        // y: char paths of the format machinery, isolated. charNone is empty
+        // because formatting a boxed char with no specifier goes through
+        // Object::ToString() on the box, which is the still-open boxed-dispatch
+        // gap (see specs/future-todos.md), not the handler.
+        var ch1 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        ch1.AppendFormatted((object)'Z', 0, "X4");
+        var ch2 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
+        ch2.AppendFormatted((object)'Z', 0, "D3");
+        Console.WriteLine("S4y: charX4=[" + ch1.ToStringAndClear() + "] charD3=[" + ch2.ToStringAndClear() + "]");
+        Console.WriteLine("S4y: expect=[005A] [090]");
         // u: split "the call passes the wrong value" from "boxing an MVAR in
         // the generic body is wrong": Set stores without boxing, and Echo
         // returns the value untouched. Both are read back outside the generic
