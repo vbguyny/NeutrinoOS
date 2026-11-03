@@ -1873,6 +1873,27 @@ public static unsafe class AotMethodRegistry
         RegisterByref("System.IntPtr", "GetHashCode", (nint)(delegate*<nint, int>)&PrimitiveHelpers.IntPtr_GetHashCode_Byref);
         RegisterByref("System.UIntPtr", "GetHashCode", (nint)(delegate*<nint, int>)&PrimitiveHelpers.UIntPtr_GetHashCode_Byref);
 
+        // =========================================================================
+        // Equals(object) - byref variants
+        //
+        // Value-type vtable slots are entered with 'this' = &value (ECMA boxed
+        // instance convention), so Equals must read the payload at offset 0 and
+        // unbox the argument. Without these, primitive slots fell back to
+        // Object.Equals (reference equality) and every boxed comparison was false.
+        // =========================================================================
+        RegisterByref("System.Byte", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Byte_Equals_Byref);
+        RegisterByref("System.SByte", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.SByte_Equals_Byref);
+        RegisterByref("System.Boolean", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Boolean_Equals_Byref);
+        RegisterByref("System.Char", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Char_Equals_Byref);
+        RegisterByref("System.Int16", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Int16_Equals_Byref);
+        RegisterByref("System.UInt16", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.UInt16_Equals_Byref);
+        RegisterByref("System.Int32", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Int32_Equals_Byref);
+        RegisterByref("System.Int64", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Int64_Equals_Byref);
+        RegisterByref("System.UInt32", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.UInt32_Equals_Byref);
+        RegisterByref("System.UInt64", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.UInt64_Equals_Byref);
+        RegisterByref("System.Single", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Single_Equals_Byref);
+        RegisterByref("System.Double", "Equals", (nint)(delegate*<nint, object?, bool>)&PrimitiveHelpers.Double_Equals_Byref);
+
         DebugConsole.Write("[AotRegistry] Registered ");
         DebugConsole.WriteDecimal((uint)_byrefCount);
         DebugConsole.WriteLine(" byref variants");
@@ -4882,6 +4903,108 @@ public static unsafe class Int32Helpers
 /// </summary>
 public static unsafe class PrimitiveHelpers
 {
+    // =========================================================================
+    // Equals(object) overrides - BYREF ('this' = &value) convention
+    //
+    // A value-type vtable slot is entered with 'this' pointing at the UNBOXED
+    // data (CompileCallvirt adjusts the dispatch receiver by +8; see
+    // MetadataIntegration.RegisterPrimitiveViaArrayAllocation), so these read the
+    // payload at offset 0 and unbox the argument. Without them the slots held
+    // Object.Equals, so every boxed comparison was reference equality:
+    // `object o = 42; o.Equals(42)` returned false.
+    // =========================================================================
+
+    /// <summary>
+    /// Shared body for the primitive Equals(object) overrides. `index` is the
+    /// well-known primitive index, `size` the raw value size in bytes.
+    /// </summary>
+    private static bool PrimitiveEqualsCore(nint thisPtr, object? other, int index, int size)
+    {
+        if (thisPtr == 0 || other == null)
+            return false;
+
+        void* otherPtr = *(void**)System.Runtime.CompilerServices.Unsafe.AsPointer(ref other);
+        Runtime.MethodTable* otherMT = *(Runtime.MethodTable**)otherPtr;
+        Runtime.MethodTable* expectedMT = MetadataIntegration.GetPrimitiveMethodTable(index);
+
+        if (otherMT != expectedMT)
+        {
+            // JIT-created boxes carry the synthetic primitive MethodTable above.
+            // A box created by AOT (kernel) code carries the kernel's own
+            // MethodTable for the same type, so accept a table with the identical
+            // primitive layout instead of demanding pointer equality.
+            if (MetadataIntegration.IsPrimitiveMT(otherMT))
+                return false;                       // a different synthetic primitive
+            if (!otherMT->IsValueType)
+                return false;
+            if (otherMT->_usComponentSize != (ushort)size)
+                return false;
+            if (otherMT->_uBaseSize != (uint)(size + 8))
+                return false;
+        }
+
+        byte* thisData = (byte*)thisPtr;
+        byte* otherData = (byte*)otherPtr + 8;
+        for (int i = 0; i < size; i++)
+        {
+            if (thisData[i] != otherData[i])
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Single/Double use numeric equality (.NET: NaN.Equals(NaN) is true and
+    /// +0.Equals(-0) is true, which a byte comparison would get wrong).
+    /// </summary>
+    private static bool PrimitiveEqualsFloat(nint thisPtr, object? other, int index, int size)
+    {
+        if (thisPtr == 0 || other == null)
+            return false;
+
+        void* otherPtr = *(void**)System.Runtime.CompilerServices.Unsafe.AsPointer(ref other);
+        Runtime.MethodTable* otherMT = *(Runtime.MethodTable**)otherPtr;
+        Runtime.MethodTable* expectedMT = MetadataIntegration.GetPrimitiveMethodTable(index);
+
+        if (otherMT != expectedMT)
+        {
+            if (MetadataIntegration.IsPrimitiveMT(otherMT))
+                return false;
+            if (!otherMT->IsValueType)
+                return false;
+            if (otherMT->_usComponentSize != (ushort)size)
+                return false;
+            if (otherMT->_uBaseSize != (uint)(size + 8))
+                return false;
+        }
+
+        if (size == 4)
+        {
+            float a = *(float*)thisPtr;
+            float b = *(float*)((byte*)otherPtr + 8);
+            return a == b || (a != a && b != b);
+        }
+        else
+        {
+            double a = *(double*)thisPtr;
+            double b = *(double*)((byte*)otherPtr + 8);
+            return a == b || (a != a && b != b);
+        }
+    }
+
+    public static bool Byte_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 3, 1);
+    public static bool SByte_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 13, 1);
+    public static bool Boolean_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 2, 1);
+    public static bool Char_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 4, 2);
+    public static bool Int16_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 7, 2);
+    public static bool UInt16_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 8, 2);
+    public static bool Int32_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 0, 4);
+    public static bool UInt32_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 9, 4);
+    public static bool Int64_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 1, 8);
+    public static bool UInt64_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsCore(thisPtr, other, 10, 8);
+    public static bool Single_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsFloat(thisPtr, other, 6, 4);
+    public static bool Double_Equals_Byref(nint thisPtr, object? other) => PrimitiveEqualsFloat(thisPtr, other, 5, 8);
+
     /// <summary>
     /// UInt16.CompareTo(UInt16) - compares this value to another.
     /// </summary>
@@ -5106,14 +5229,13 @@ public static unsafe class PrimitiveHelpers
     /// Single.ToString(string, IFormatProvider) - reached from Tomlyn's
     /// TomlFormatHelper.ToString(float) as `ldarga.s value; call instance
     /// single::ToString(string, IFormatProvider)`, so 'this' is a BYREF to the
-    /// raw value (offset 0). Format/provider are ignored: the shortest
-    /// 9-significant-digit form always round-trips a float, which is what
-    /// "g9" asks for.
+    /// raw value (offset 0). The specifier (F/N/E/G with optional precision) is
+    /// honoured; null/empty/"R"/"g9" keep the shortest round-trip form.
     /// </summary>
     public static string Single_ToString_Format(nint thisPtr, string? format, object? provider)
     {
         if (thisPtr == 0) return "0";
-        return FloatFormatting.FormatSingle(*(float*)thisPtr);
+        return FloatFormatting.FormatSingle(*(float*)thisPtr, format);
     }
 
     /// <summary>
@@ -5128,15 +5250,18 @@ public static unsafe class PrimitiveHelpers
     /// <summary>
     /// Double.ToString(string, IFormatProvider) - reached from Tomlyn's
     /// TomlFormatHelper.ToString(double) as `ldarga.s value; call instance
-    /// double::ToString("R", InvariantCulture)`, so 'this' is a BYREF to the raw
-    /// value (offset 0). Format/provider are ignored: the shortest
-    /// 17-significant-digit form always round-trips a double, which is what
-    /// "R" asks for.
+    /// double::ToString("R", InvariantCulture)`, and from korlib's interpolated
+    /// string handler as `d.ToString(format, null)`. 'this' is a BYREF to the raw
+    /// value (offset 0). The specifier (F/N/E/G with optional precision) is
+    /// honoured; null/empty/"R" keep the shortest round-trip form.
     /// </summary>
     public static string Double_ToString_Format(nint thisPtr, string? format, object? provider)
     {
         if (thisPtr == 0) return "0";
-        return FloatFormatting.FormatDouble(*(double*)thisPtr);
+        // 'this' is a BYREF to the raw value (see the note above), and the
+        // specifier (F/N/E/G, with an optional precision) is honoured: "{d:F1}"
+        // has to print 3.3, not the shortest round-trip 3.25.
+        return FloatFormatting.FormatDouble(*(double*)thisPtr, format);
     }
 
     /// <summary>

@@ -10,13 +10,14 @@
 // device bridge, so formatting them from korlib would not resolve at JIT time.
 // Every overload - generic and non-generic - goes through FormatValue, so the
 // specifier is honoured wherever Roslyn routes the value.
-// Floating point is not format-aware yet: korlib's System.Double is a stub
-// (PrimitiveStubs.cs) with no ToString(format) overload, and the device float
-// bridges emit the shortest round-trip form regardless of the specifier, so
-// `{3.25:F1}` renders 3.25 until FloatFormatting learns F/N/E/P/G. The provider
-// is accepted for API compatibility and not used: korlib declares its own
-// System.IFormatProvider (System/IFormatProvider.cs), a different type from the
-// BCL one the bridged signatures take, and device number formatting is invariant.
+// Floating point honours F/f, N/n (grouped), E/e and G/g with an optional
+// precision through the device's float bridge (FloatFormatting), which is reached
+// by naming System.Double/Single::ToString(string, IFormatProvider) - the stubs in
+// PrimitiveStubs.cs exist so korlib can name it, and the kernel maps the member to
+// the real formatter. The provider is accepted for API compatibility and not used:
+// korlib declares its own System.IFormatProvider (System/IFormatProvider.cs), a
+// different type from the BCL one the bridged signatures take, and device number
+// formatting is invariant.
 
 namespace System.Runtime.CompilerServices
 {
@@ -230,10 +231,22 @@ namespace System.Runtime.CompilerServices
             if (value is char ch)
                 return FormatUnsigned(ch, format);
 
-            // Floating point and everything else: keep the default text. korlib's
-            // System.Double is a stub (PrimitiveStubs.cs) with no format overload,
-            // and the device's float bridges emit the shortest round-trip form
-            // regardless of the specifier, so `{3.25:F1}` still renders 3.25.
+            // Floating point: the format (F/N/E/G with an optional precision) is
+            // honoured by the device's float bridge - korlib names the
+            // ToString(string, IFormatProvider) overload through the stub types in
+            // PrimitiveStubs.cs, and AotMethodRegistry maps that member to
+            // FloatFormatting (see Double_ToString_Format). The stub BODY never
+            // runs; the kernel bridge does. The overload only exists in the
+            // KORLIB_IL build (the stubs are IL-only), so the kernel's own AOT
+            // copy of this file keeps the default text.
+#if KORLIB_IL
+            if (value is double dbl)
+                return dbl.ToString(format, null);
+            if (value is float flt)
+                return flt.ToString(format, null);
+#endif
+
+            // Everything else: keep the default text.
             return value.ToString();
         }
 

@@ -583,7 +583,23 @@ static class Probe
         string hex = $"{n:X4}";
         string fixed1 = $"{d:F1}";
         Console.WriteLine("S4h: hex=[" + hex + "] expect=002A");
-        Console.WriteLine("S4h: fixed1=[" + fixed1 + "] expect=3.25 (float formats still open)");
+        Console.WriteLine("S4h: fixed1=[" + fixed1 + "] expect=3.2 (exact tie -> even)");
+        // h2: the rest of the float specifiers (F/N/E/G + precision), plus the
+        // rounding direction (.NET rounds half away from zero) and a Single.
+        Console.WriteLine("S4h2: f3=[" + $"{d:F3}" + "] expect=[3.250]");
+        Console.WriteLine("S4h2: f0-half=[" + $"{0.5:F0}" + "] expect=[0] (ties to even)");
+        Console.WriteLine("S4h2: f0-half2=[" + $"{2.5:F0}" + "] expect=[2] (ties to even)");
+        Console.WriteLine("S4h2: f2-tiny=[" + $"{0.005:F2}" + "] expect=[0.01]");
+        Console.WriteLine("S4h2: f5-third=[" + $"{(1.0 / 3.0):F5}" + "] expect=[0.33333]");
+        Console.WriteLine("S4h2: n2-big=[" + $"{1234567.891:N2}" + "] expect=[1,234,567.89]");
+        Console.WriteLine("S4h2: e2=[" + $"{d:E2}" + "] expect=[3.25E+000]");
+        Console.WriteLine("S4h2: e3-carry=[" + $"{9.999:E2}" + "] expect=[1.00E+001]");
+        Console.WriteLine("S4h2: g=[" + $"{d:G}" + "] expect=[3.25]");
+        Console.WriteLine("S4h2: g2=[" + $"{d:G2}" + "] expect=[3.2] (exact tie -> even)");
+        Console.WriteLine("S4h2: g-big=[" + $"{1e20:G}" + "] expect=[1E+20]");
+        Console.WriteLine("S4h2: neg-f2=[" + $"{(-2.345):F2}" + "] expect=[-2.35]");
+        Console.WriteLine("S4h2: single-f2=[" + $"{1.5f:F2}" + "] expect=[1.50]");
+        Console.WriteLine("S4h2: dflt=[" + $"{d}" + "] expect=[3.25]");
         // i: escapes inside and around the interpolation.
         Console.WriteLine("S4i: " + $"tab\there {n} quote\"end");
         // j: interpolation inside a nested call chain (handler result reused).
@@ -631,12 +647,8 @@ static class Probe
         Console.WriteLine("S4t: depth1-two=[" + "pad:" + gb.Format2(42, 7) + "]");
         var gs = new GenBox<string>();
         Console.WriteLine("S4t: depth1-str=[" + "pad:" + gs.Format("abc") + "]");
-        // x: format machinery, driven through the NON-generic object overload.
-        // The generic overloads Roslyn emits for lowered interpolations
-        // (`AppendFormatted<int>(int, string)`) are still hit by the
-        // value-staging bug above, so they ignore the specifier on purpose;
-        // this path proves the formatting itself (X/x with width, D with
-        // zero-padding, sign handling, alignment).
+        // x: format machinery, driven through the NON-generic object overload as
+        // well as the lowered interpolations, so both paths are covered.
         var fh = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
         fh.AppendFormatted((object)42, 0, "X4");
         fh.AppendLiteral("|");
@@ -655,10 +667,7 @@ static class Probe
         fh.AppendFormatted((object)'Z', 0, "X4");
         Console.WriteLine("S4x: formats=" + fh.ToStringAndClear());
         Console.WriteLine("S4x: expect=002A|ff|000042|FFFFFFD6|-000042|      2A|11F71FB04CB|005A");
-        // y: char paths of the format machinery, isolated. charNone is empty
-        // because formatting a boxed char with no specifier goes through
-        // Object::ToString() on the box, which is the still-open boxed-dispatch
-        // gap (see specs/future-todos.md), not the handler.
+        // y: char paths of the format machinery, isolated.
         var ch1 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
         ch1.AppendFormatted((object)'Z', 0, "X4");
         var ch2 = new System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(0, 1);
@@ -677,30 +686,41 @@ static class Probe
         Console.WriteLine("S4u: echo=" + Echo<int>(42));
         Console.WriteLine("S4u: echo2=" + Echo<int>(1234));
         Console.WriteLine("S4u: echo-str=" + Echo<string>("abc"));
-        // v: inside a generic body, which step corrupts an int -> text?
-        // ViaToString boxes then calls Object::ToString; ViaObject boxes via a
-        // local then calls ToString; ViaConcat is `"v=" + v`, which boxes and
-        // feeds String.Concat(object, object).
+        // v: the same int -> text conversions from inside a generic body, plus
+        // the boxed controls outside it. These exercise vtable dispatch on a
+        // boxed value type (slot 0 = the byref-convention ToString).
         Console.WriteLine("S4v: via-tostring=[" + GenM<int>.ViaToString(42) + "]");
         Console.WriteLine("S4v: via-object=[" + GenM<int>.ViaObject(42) + "]");
         Console.WriteLine("S4v: via-concat=[" + GenM<int>.ViaConcat(42) + "]");
         Console.WriteLine("S4v: via-interp=[" + GenM<int>.ViaInterp(42) + "]");
         // controls: the same operations outside a generic body.
         object boxedInt = 42;
-        Console.WriteLine("S4v: control-tostring=[" + boxedInt.ToString() + "]");
-        Console.WriteLine("S4v: control-concat=[" + "v=" + boxedInt + "]");
-        // w: is the box payload itself wrong, or only virtual dispatch on a
-        // boxed value type? unbox.any/Equals go through the payload, ToString
-        // goes through the vtable.
+        Console.WriteLine("S4v: control-tostring=[" + boxedInt.ToString() + "] expect=[42]");
+        Console.WriteLine("S4v: control-concat=[" + "v=" + boxedInt + "] expect=[v=42]");
+        // w: boxed virtual dispatch - ToString/GetHashCode/Equals all go through
+        // the value type's vtable slot, which holds the byref-convention helper.
         object o42 = 42;
         int back = (int)o42;
         Console.WriteLine("S4w: unbox=" + back);
         Console.WriteLine("S4w: is-int=" + (o42 is int));
-        Console.WriteLine("S4w: equals=" + o42.Equals(42));
+        Console.WriteLine("S4w: equals=[" + o42.Equals(42) + "] expect=[True]");
+        Console.WriteLine("S4w: equals-diff=[" + o42.Equals(41) + "] expect=[False]");
+        Console.WriteLine("S4w: equals-other-type=[" + o42.Equals("42") + "] expect=[False]");
+        Console.WriteLine("S4w: equals-long=[" + o42.Equals(42L) + "] expect=[False]");
+        Console.WriteLine("S4w: hash=[" + o42.GetHashCode() + "] expect=[42]");
         object o1234 = 1234;
         Console.WriteLine("S4w: unbox2=" + (int)o1234);
         Console.WriteLine("S4w: tostring-len=" + o42.ToString().Length);
-        Console.WriteLine("S4w: obj-tostring-again=[" + o42.ToString() + "]");
+        Console.WriteLine("S4w: obj-tostring-again=[" + o42.ToString() + "] expect=[42]");
+        object oChar = 'Z';
+        Console.WriteLine("S4w: char-tostring=[" + oChar.ToString() + "] expect=[Z]");
+        object oLong = 1234567890123L;
+        Console.WriteLine("S4w: long-tostring=[" + oLong.ToString() + "] expect=[1234567890123]");
+        object oDouble = 3.25;
+        Console.WriteLine("S4w: double-tostring=[" + oDouble.ToString() + "] expect=[3.25]");
+        object oBool = true;
+        Console.WriteLine("S4w: bool-tostring=[" + oBool.ToString() + "] expect=[True]");
+        Console.WriteLine("S4w: double-eq=[" + oDouble.Equals(3.25) + "] expect=[True]");
         // z: the constrained-call 'this' convention on its own, with no handler
         // and no boxing: the callee body is exactly
         // `ldarga.s 1; constrained. !!T; callvirt Object::ToString`. A primitive

@@ -94,17 +94,40 @@ Use code with caution.
     `42:D6`->`000042`, `-42:X4`->`FFFFFFD6`, `-42:D6`->`-000042`,
     `42,8:X`->`      2A`, `1234567890123:X`->`11F71FB04CB`, `'Z':X4`->`005A`,
     `'Z':D3`->`090`.
-  - Still broken (tracked separately, NOT interpolation): virtual dispatch on a
-    **boxed value type** passes the box pointer where the method expects the
-    payload pointer. `object o = 42; o.ToString()` -> `"0"`/`"48"`,
-    `o.Equals(42)` -> False, while `(int)o` -> 42 and `int n = 42;
-    n.ToString()` -> `"42"`. Probes: `S4v` via-object/control-*, `S4w`.
-  - Still open: `{3.25:F1}` renders `3.25` (no float format support) - needs
-    `FloatFormatting` to learn F/N/E/P/G plus a bridge that accepts a specifier.
+  - Floating point formats work too: `F/f`, `N/n` (with group separators),
+    `E/e` and `G/g`, each with an optional precision. `3.25:F1` -> `3.2` and
+    `3.25:G2` -> `3.2` (3.25 is an exact binary tie: .NET rounds ties to the
+    EVEN digit), `3.25:F3` -> `3.250`, `0.5:F0` -> `0` and `2.5:F0` -> `2`
+    (same tie rule), `0.005:F2` -> `0.01`, `1234567.891:N2` -> `1,234,567.89`,
+    `3.25:E2` -> `3.25E+000`, `9.999:E2` -> `1.00E+001`, `1e20:G` -> `1E+20`,
+    `-2.345:F2` -> `-2.35`, `1.5f:F2` -> `1.50` (probes `S4h`/`S4h2`).
+    `FloatFormatting` gained an exact fixed/scientific path (divide the exact
+    bignum quotient and round the last digit, no FP arithmetic);
+    `PrimitiveHelpers.Double/Single_ToString_Format` now pass the specifier
+    through, and korlib reaches it by naming
+    `System.Double/Single::ToString(string, IFormatProvider)` on the stub types
+    in `PrimitiveStubs.cs` (the stub bodies never run - the kernel bridge does).
+    Validated against .NET on the host with `build/fmthost` (compiles
+    `FloatFormatting.cs` verbatim): 18,752 checks over null/""/R/G/g/F/N/E
+    with precisions 0-17, doubles and singles, NaN/±Infinity/±0/subnormals/
+    MaxValue/random magnitudes - **0 mismatches**.
+  - Virtual dispatch on a **boxed value type** is fixed: a value type's vtable
+    slot is entered with `this` = &unboxed value (the JIT adjusts the receiver by
+    +8), so the slots must hold the BYREF-convention helpers. They previously
+    held the boxed-convention ones (`PrimitiveHelpers.Int32_ToString` reads +8),
+    which made every boxed call read the eight bytes AFTER the value:
+    `object o = 42; o.ToString()` -> `"0"`/`"48"`, `o.Equals(42)` -> False.
+    `MetadataIntegration.RegisterPrimitiveViaArrayAllocation` now fills ToString,
+    GetHashCode and Equals slots from `AotMethodRegistry.LookupByref`, and new
+    `*_Equals_Byref` helpers implement `Equals(object)` with .NET semantics
+    (type check + value compare; Single/Double use numeric equality so NaN
+    equals NaN). Device evidence (`S4v`, `S4w`): `control-tostring=[42]`,
+    `equals=[True]`, `equals-diff/other-type/long=[False]`, `hash=[42]`,
+    boxed char/long/double/bool ToString all correct, `double-eq=[True]`.
 
 [x] small, self-contained, no kernel risk; makes format specifiers work as soon as #1/#2 land.
 [x] a contained JIT staging bug with a minimal repro (GenBox<int>.Format vs Set, and S4l).
-[ ] the bigger one (vtable/unboxing); worth doing on its own because boxed-value virtual calls affect far more than interpolation (e.g. Humanizer's "v=" + value, dictionary keys, object.Equals).
+[x] the bigger one (vtable/unboxing); worth doing on its own because boxed-value virtual calls affect far more than interpolation (e.g. Humanizer's "v=" + value, dictionary keys, object.Equals).
 
 - [x] Speed up compilation only compile the parts that have changed. Currently takes about 5 minutes to finish. Reduce to less than 30 seconds.
   - Builds are incremental now. Measured on the dev loop (WSL, `/root/neutrino`):

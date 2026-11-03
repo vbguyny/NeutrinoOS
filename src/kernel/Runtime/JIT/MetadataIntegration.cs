@@ -1,4 +1,4 @@
-// NeutrinoOS JIT - Metadata Integration Layer
+﻿// NeutrinoOS JIT - Metadata Integration Layer
 // Connects metadata tokens to runtime artifacts (MethodTable pointers, field addresses, etc.)
 // This is the "glue" between MetadataReader and the JIT compiler's resolver interfaces.
 //
@@ -603,6 +603,32 @@ public static unsafe class MetadataIntegration
     }
 
     /// <summary>
+    /// Method address for the vtable slot of a primitive type: the BYREF variant
+    /// when one is registered (payload at offset 0 - the convention every
+    /// value-type vtable slot must follow, see the caller), else the boxed entry.
+    /// </summary>
+    private static nint PrimitiveSlot(string typeName, string methodName)
+    {
+        nint byref = AotMethodRegistry.LookupByref(typeName, methodName);
+        if (byref != 0)
+            return byref;
+        return AotMethodRegistry.LookupByName(typeName, methodName);
+    }
+
+    /// <summary>
+    /// The MethodTable of a well-known primitive (index mapping: 0=Int32,
+    /// 1=Int64, 2=Boolean, 3=Byte, 4=Char, 5=Double, 6=Single, 7=Int16,
+    /// 8=UInt16, 9=UInt32, 10=UInt64, 11=IntPtr, 12=UIntPtr, 13=SByte).
+    /// Used by the primitive Equals helpers to type-check the argument box.
+    /// </summary>
+    public static MethodTable* GetPrimitiveMethodTable(int index)
+    {
+        if (_primitiveMethodTableBuffer == null || index < 0 || index >= NumPrimitiveTypes)
+            return null;
+        return GetPrimitiveMT(index);
+    }
+
+    /// <summary>
     /// Check if a MethodTable pointer is one of the primitive types.
     /// Used by JIT to optimize constrained callvirt on primitives.
     /// </summary>
@@ -889,33 +915,58 @@ public static unsafe class MetadataIntegration
         }
 
         // Get type-specific method pointers for primitives (override Object's virtual methods)
-        // If a type-specific method is not found, fall back to Object's method
-        nint int32ToString = AotMethodRegistry.LookupByName("System.Int32", "ToString");
-        nint int64ToString = AotMethodRegistry.LookupByName("System.Int64", "ToString");
-        nint boolToString = AotMethodRegistry.LookupByName("System.Boolean", "ToString");
-        nint byteToString = AotMethodRegistry.LookupByName("System.Byte", "ToString");
-        nint charToString = AotMethodRegistry.LookupByName("System.Char", "ToString");
-        nint doubleToString = AotMethodRegistry.LookupByName("System.Double", "ToString");
-        nint singleToString = AotMethodRegistry.LookupByName("System.Single", "ToString");
-        nint int16ToString = AotMethodRegistry.LookupByName("System.Int16", "ToString");
-        nint uint16ToString = AotMethodRegistry.LookupByName("System.UInt16", "ToString");
-        nint uint32ToString = AotMethodRegistry.LookupByName("System.UInt32", "ToString");
-        nint uint64ToString = AotMethodRegistry.LookupByName("System.UInt64", "ToString");
-        nint sbyteToString = AotMethodRegistry.LookupByName("System.SByte", "ToString");
+        // If a type-specific method is not found, fall back to Object's method.
+        //
+        // CONVENTION: a value type's vtable slot is entered with 'this' pointing at
+        // the UNBOXED data (ECMA-335 boxed-instance convention), because
+        // CompileCallvirt adjusts the dispatch receiver by +8 for value types and
+        // JIT-compiled struct methods read their fields at [this+0]. The
+        // boxed-convention AOT helpers (PrimitiveHelpers.Int32_ToString and
+        // friends) read the payload at [this+8], so they must NOT go in the slot:
+        // using them made every boxed virtual call read the eight bytes after the
+        // value (object o = 42; o.ToString() -> "0"/"48"). Prefer the registered
+        // BYREF variants, which read offset 0; fall back to the boxed entry only
+        // if a type has no byref variant.
+        nint int32ToString = PrimitiveSlot("System.Int32", "ToString");
+        nint int64ToString = PrimitiveSlot("System.Int64", "ToString");
+        nint boolToString = PrimitiveSlot("System.Boolean", "ToString");
+        nint byteToString = PrimitiveSlot("System.Byte", "ToString");
+        nint charToString = PrimitiveSlot("System.Char", "ToString");
+        nint doubleToString = PrimitiveSlot("System.Double", "ToString");
+        nint singleToString = PrimitiveSlot("System.Single", "ToString");
+        nint int16ToString = PrimitiveSlot("System.Int16", "ToString");
+        nint uint16ToString = PrimitiveSlot("System.UInt16", "ToString");
+        nint uint32ToString = PrimitiveSlot("System.UInt32", "ToString");
+        nint uint64ToString = PrimitiveSlot("System.UInt64", "ToString");
+        nint sbyteToString = PrimitiveSlot("System.SByte", "ToString");
+
+        // Equals(object) overrides for primitives - ECMA ('this' = &value) shape.
+        nint int32Equals = PrimitiveSlot("System.Int32", "Equals");
+        nint int64Equals = PrimitiveSlot("System.Int64", "Equals");
+        nint boolEquals = PrimitiveSlot("System.Boolean", "Equals");
+        nint byteEquals = PrimitiveSlot("System.Byte", "Equals");
+        nint charEquals = PrimitiveSlot("System.Char", "Equals");
+        nint doubleEquals = PrimitiveSlot("System.Double", "Equals");
+        nint singleEquals = PrimitiveSlot("System.Single", "Equals");
+        nint int16Equals = PrimitiveSlot("System.Int16", "Equals");
+        nint uint16Equals = PrimitiveSlot("System.UInt16", "Equals");
+        nint uint32Equals = PrimitiveSlot("System.UInt32", "Equals");
+        nint uint64Equals = PrimitiveSlot("System.UInt64", "Equals");
+        nint sbyteEquals = PrimitiveSlot("System.SByte", "Equals");
 
         // GetHashCode overrides for primitives
-        nint int32GetHashCode = AotMethodRegistry.LookupByName("System.Int32", "GetHashCode");
-        nint int64GetHashCode = AotMethodRegistry.LookupByName("System.Int64", "GetHashCode");
-        nint boolGetHashCode = AotMethodRegistry.LookupByName("System.Boolean", "GetHashCode");
-        nint byteGetHashCode = AotMethodRegistry.LookupByName("System.Byte", "GetHashCode");
-        nint charGetHashCode = AotMethodRegistry.LookupByName("System.Char", "GetHashCode");
-        nint doubleGetHashCode = AotMethodRegistry.LookupByName("System.Double", "GetHashCode");
-        nint singleGetHashCode = AotMethodRegistry.LookupByName("System.Single", "GetHashCode");
-        nint int16GetHashCode = AotMethodRegistry.LookupByName("System.Int16", "GetHashCode");
-        nint uint16GetHashCode = AotMethodRegistry.LookupByName("System.UInt16", "GetHashCode");
-        nint uint32GetHashCode = AotMethodRegistry.LookupByName("System.UInt32", "GetHashCode");
-        nint uint64GetHashCode = AotMethodRegistry.LookupByName("System.UInt64", "GetHashCode");
-        nint sbyteGetHashCode = AotMethodRegistry.LookupByName("System.SByte", "GetHashCode");
+        nint int32GetHashCode = PrimitiveSlot("System.Int32", "GetHashCode");
+        nint int64GetHashCode = PrimitiveSlot("System.Int64", "GetHashCode");
+        nint boolGetHashCode = PrimitiveSlot("System.Boolean", "GetHashCode");
+        nint byteGetHashCode = PrimitiveSlot("System.Byte", "GetHashCode");
+        nint charGetHashCode = PrimitiveSlot("System.Char", "GetHashCode");
+        nint doubleGetHashCode = PrimitiveSlot("System.Double", "GetHashCode");
+        nint singleGetHashCode = PrimitiveSlot("System.Single", "GetHashCode");
+        nint int16GetHashCode = PrimitiveSlot("System.Int16", "GetHashCode");
+        nint uint16GetHashCode = PrimitiveSlot("System.UInt16", "GetHashCode");
+        nint uint32GetHashCode = PrimitiveSlot("System.UInt32", "GetHashCode");
+        nint uint64GetHashCode = PrimitiveSlot("System.UInt64", "GetHashCode");
+        nint sbyteGetHashCode = PrimitiveSlot("System.SByte", "GetHashCode");
 
         // Use fallbacks for missing type-specific methods
         if (int32ToString == 0) int32ToString = objectToString;
@@ -930,6 +981,19 @@ public static unsafe class MetadataIntegration
         if (uint32ToString == 0) uint32ToString = objectToString;
         if (uint64ToString == 0) uint64ToString = objectToString;
         if (sbyteToString == 0) sbyteToString = objectToString;
+
+        if (int32Equals == 0) int32Equals = objectEquals;
+        if (int64Equals == 0) int64Equals = objectEquals;
+        if (boolEquals == 0) boolEquals = objectEquals;
+        if (byteEquals == 0) byteEquals = objectEquals;
+        if (charEquals == 0) charEquals = objectEquals;
+        if (doubleEquals == 0) doubleEquals = objectEquals;
+        if (singleEquals == 0) singleEquals = objectEquals;
+        if (int16Equals == 0) int16Equals = objectEquals;
+        if (uint16Equals == 0) uint16Equals = objectEquals;
+        if (uint32Equals == 0) uint32Equals = objectEquals;
+        if (uint64Equals == 0) uint64Equals = objectEquals;
+        if (sbyteEquals == 0) sbyteEquals = objectEquals;
 
         if (int32GetHashCode == 0) int32GetHashCode = objectGetHashCode;
         if (int64GetHashCode == 0) int64GetHashCode = objectGetHashCode;
@@ -953,67 +1017,67 @@ public static unsafe class MetadataIntegration
 
         // Int32 - 4 bytes value, 12 bytes boxed
         mt = GetPrimitiveMT(0);
-        InitPrimitiveMT(mt, 4, 12, int32ToString, objectEquals, int32GetHashCode);
+        InitPrimitiveMT(mt, 4, 12, int32ToString, int32Equals, int32GetHashCode);
         if (RegisterType(WellKnownTypes.Int32, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Int32, mt);
 
         // Int64 - 8 bytes value, 16 bytes boxed
         mt = GetPrimitiveMT(1);
-        InitPrimitiveMT(mt, 8, 16, int64ToString, objectEquals, int64GetHashCode);
+        InitPrimitiveMT(mt, 8, 16, int64ToString, int64Equals, int64GetHashCode);
         if (RegisterType(WellKnownTypes.Int64, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Int64, mt);
 
         // Boolean - 1 byte value, 9 bytes boxed
         mt = GetPrimitiveMT(2);
-        InitPrimitiveMT(mt, 1, 9, boolToString, objectEquals, boolGetHashCode);
+        InitPrimitiveMT(mt, 1, 9, boolToString, boolEquals, boolGetHashCode);
         if (RegisterType(WellKnownTypes.Boolean, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Boolean, mt);
 
         // Byte - 1 byte value, 9 bytes boxed
         mt = GetPrimitiveMT(3);
-        InitPrimitiveMT(mt, 1, 9, byteToString, objectEquals, byteGetHashCode);
+        InitPrimitiveMT(mt, 1, 9, byteToString, byteEquals, byteGetHashCode);
         if (RegisterType(WellKnownTypes.Byte, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Byte, mt);
 
         // Char - 2 bytes value, 10 bytes boxed
         mt = GetPrimitiveMT(4);
-        InitPrimitiveMT(mt, 2, 10, charToString, objectEquals, charGetHashCode);
+        InitPrimitiveMT(mt, 2, 10, charToString, charEquals, charGetHashCode);
         if (RegisterType(WellKnownTypes.Char, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Char, mt);
 
         // Double - 8 bytes value, 16 bytes boxed
         mt = GetPrimitiveMT(5);
-        InitPrimitiveMT(mt, 8, 16, doubleToString, objectEquals, doubleGetHashCode);
+        InitPrimitiveMT(mt, 8, 16, doubleToString, doubleEquals, doubleGetHashCode);
         if (RegisterType(WellKnownTypes.Double, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Double, mt);
 
         // Single - 4 bytes value, 12 bytes boxed
         mt = GetPrimitiveMT(6);
-        InitPrimitiveMT(mt, 4, 12, singleToString, objectEquals, singleGetHashCode);
+        InitPrimitiveMT(mt, 4, 12, singleToString, singleEquals, singleGetHashCode);
         if (RegisterType(WellKnownTypes.Single, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Single, mt);
 
         // Int16 - 2 bytes value, 10 bytes boxed
         mt = GetPrimitiveMT(7);
-        InitPrimitiveMT(mt, 2, 10, int16ToString, objectEquals, int16GetHashCode);
+        InitPrimitiveMT(mt, 2, 10, int16ToString, int16Equals, int16GetHashCode);
         if (RegisterType(WellKnownTypes.Int16, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.Int16, mt);
 
         // UInt16 - 2 bytes value, 10 bytes boxed
         mt = GetPrimitiveMT(8);
-        InitPrimitiveMT(mt, 2, 10, uint16ToString, objectEquals, uint16GetHashCode);
+        InitPrimitiveMT(mt, 2, 10, uint16ToString, uint16Equals, uint16GetHashCode);
         if (RegisterType(WellKnownTypes.UInt16, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.UInt16, mt);
 
         // UInt32 - 4 bytes value, 12 bytes boxed
         mt = GetPrimitiveMT(9);
-        InitPrimitiveMT(mt, 4, 12, uint32ToString, objectEquals, uint32GetHashCode);
+        InitPrimitiveMT(mt, 4, 12, uint32ToString, uint32Equals, uint32GetHashCode);
         if (RegisterType(WellKnownTypes.UInt32, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.UInt32, mt);
 
         // UInt64 - 8 bytes value, 16 bytes boxed
         mt = GetPrimitiveMT(10);
-        InitPrimitiveMT(mt, 8, 16, uint64ToString, objectEquals, uint64GetHashCode);
+        InitPrimitiveMT(mt, 8, 16, uint64ToString, uint64Equals, uint64GetHashCode);
         if (RegisterType(WellKnownTypes.UInt64, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.UInt64, mt);
 
@@ -1031,7 +1095,7 @@ public static unsafe class MetadataIntegration
 
         // SByte - 1 byte value, 9 bytes boxed
         mt = GetPrimitiveMT(13);
-        InitPrimitiveMT(mt, 1, 9, sbyteToString, objectEquals, sbyteGetHashCode);
+        InitPrimitiveMT(mt, 1, 9, sbyteToString, sbyteEquals, sbyteGetHashCode);
         if (RegisterType(WellKnownTypes.SByte, mt)) count++;
         Reflection.ReflectionRuntime.RegisterTypeInfo(0, WellKnownTypes.SByte, mt);
 

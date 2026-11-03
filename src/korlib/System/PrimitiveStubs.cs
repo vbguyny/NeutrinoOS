@@ -21,6 +21,14 @@ namespace System
         public static bool IsPositiveInfinity(float f) => f == PositiveInfinity;
         public static bool IsNegativeInfinity(float f) => f == NegativeInfinity;
         public static bool IsFinite(float f) => !IsNaN(f) && !IsInfinity(f);
+
+        /// <summary>
+        /// Format-aware ToString, needed so korlib code can NAME the overload the
+        /// device bridges (AotMethodRegistry maps System.Single::ToString with two
+        /// parameters to PrimitiveHelpers.Single_ToString_Format, which honours
+        /// F/N/E/G). This body is a placeholder and is not what runs on device.
+        /// </summary>
+        public string ToString(string? format, IFormatProvider? provider) => "Single";
     }
 
     // Double primitive type methods
@@ -35,6 +43,14 @@ namespace System
         public static bool IsPositiveInfinity(double d) => d == PositiveInfinity;
         public static bool IsNegativeInfinity(double d) => d == NegativeInfinity;
         public static bool IsFinite(double d) => !IsNaN(d) && !IsInfinity(d);
+
+        /// <summary>
+        /// Format-aware ToString, needed so korlib code can NAME the overload the
+        /// device bridges (AotMethodRegistry maps System.Double::ToString with two
+        /// parameters to PrimitiveHelpers.Double_ToString_Format, which honours
+        /// F/N/E/G with an optional precision). Placeholder body.
+        /// </summary>
+        public string ToString(string? format, IFormatProvider? provider) => "Double";
     }
 
     // Math class stubs for basic operations
