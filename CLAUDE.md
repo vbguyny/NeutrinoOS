@@ -3,11 +3,32 @@
 ## Build & Test Commands
 
 ```bash
-./build.sh    # Clean and build (kills QEMU, cleans, builds, generates IL)
-./build.sh --trace  # Same, but compiles the JIT/AOT trace prints in (slow, for debugging)
+./build.sh    # Incremental build (only what changed; ~2 s no-op, ~10 s kernel change)
+./build.sh --clean   # Wipe build/x64 first (full rebuild, ~25 s)
+./build.sh --trace   # Same, but compiles the JIT/AOT trace prints in (slow, for debugging)
+./build.sh --il      # Also regenerate the per-assembly .il disassemblies
 ./run.sh      # Run in QEMU (boots in ~3 seconds)
 ./kill.sh     # Kill any running QEMU instances
 ```
+
+Builds are incremental by default: `make` only recompiles sources that are newer
+than their artifacts and only reassembles the boot image when one of its
+contents changed, so the edit/build/run loop is seconds, not minutes. Anything
+that changes `NeutrinoVersion.cs` (`version-bump.sh`, run by default) still
+recompiles the kernel, which is a single ~10 s bflat pass; use `NO_BUMP=1` to
+skip the version bump while iterating.
+
+WSL flow (from `/mnt/d/Projects/Code/NeutrinoOS`, syncing into `/root/neutrino`):
+
+```bash
+bash build/wsl-rebuild.sh              # sync + incremental make -j image
+bash build/wsl-rebuild.sh --no-bump    # ditto, keep the build number (kernel stays cached)
+bash build/wsl-rebuild.sh --clean      # full rebuild
+bash build/p5-apps-build.sh            # utilities + web apps (incremental; CLEAN=1 to force)
+```
+
+`build/p5-apps-build.sh` skips any project whose sources are all older than its
+output assembly, so changing one app costs one `dotnet build` (~2-5 s).
 
 ## VirtualBox CLI VM (NeutrinoOSCli)
 

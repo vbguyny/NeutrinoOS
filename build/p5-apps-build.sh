@@ -24,17 +24,60 @@ SRC=/mnt/d/Projects/Code/NeutrinoOS
 WORK=/root/phase5-utils
 OUT=/root/phase5bin
 
-rsync -a --delete --exclude obj --exclude bin "$SRC/src/utilities/" "$WORK/"
-rsync -a --delete --exclude obj --exclude bin "$SRC/src/ddk/" "$WORK/ddk/"
+# WSL reports /mnt/d mtimes verbatim and the Windows clock can run ahead of the
+# WSL clock, so freshly saved sources look newer than every build output and
+# defeat the incremental check below. Stamp the time before syncing, then clamp
+# anything newer than that stamp to now (only just-copied files can be).
+sync_stamp=$(mktemp)
+touch "$sync_stamp"
+trap 'rm -f "$sync_stamp"' EXIT
+
+rsync -a -c --delete --exclude obj --exclude bin --exclude '*/*.csproj' "$SRC/src/utilities/" "$WORK/"
+rsync -a -c --delete --exclude obj --exclude bin "$SRC/src/ddk/" "$WORK/ddk/"
 # Phase 8: shared NeutrinoOS.Packaging sources (compiled into the npkg utility).
 if [ -d "$SRC/src/lib/NeutrinoOS.Packaging" ]; then
   mkdir -p "$WORK/lib"
   rsync -a --delete --exclude obj --exclude bin "$SRC/src/lib/NeutrinoOS.Packaging/" "$WORK/lib/NeutrinoOS.Packaging/"
 fi
-rm -rf "$OUT"
+find "$WORK" -newer "$sync_stamp" \
+     \( -name '*.cs' -o -name '*.csproj' -o -name '*.txt' \) \
+     -exec touch {} + 2>/dev/null || true
+if [ "${CLEAN:-0}" = "1" ]; then
+  rm -rf "$OUT"
+fi
 mkdir -p "$OUT"
 
 cd "$WORK"
+
+# -- incremental --------------------------------------------------------------
+# A project is rebuilt only when one of its inputs is newer than its output
+# assembly: its own sources, the shared Common sources, the DDK project it
+# references, and (for npkg) the packaged lib sources. Clean builds are still
+# available with CLEAN=1.
+needs_build() {  # $1 = project dir, $2 = output dll
+  [ -f "$2" ] || return 0
+  local newer
+  # obj/bin hold generated *.cs (AssemblyInfo etc.) that are rewritten by every
+  # build of the referenced project, so they must not count as inputs.
+  newer=$(find "$1" "$WORK/Common" "$WORK/ddk" "$WORK/lib" \
+                \( -name obj -o -name bin \) -prune -o \
+                \( -name '*.cs' -o -name '*.txt' -o -name '*.csproj' \) \
+                -newer "$2" -print -quit 2>/dev/null)
+  [ -n "$newer" ]
+}
+
+# The .csproj files below are generated; rewriting an identical file would
+# bump its mtime and defeat needs_build, so only write when the content changed.
+write_if_changed() {  # $1 = path, generated content on stdin
+  local tmp
+  tmp=$(mktemp)
+  cat > "$tmp"
+  if ! cmp -s "$tmp" "$1"; then
+    mv "$tmp" "$1"
+  else
+    rm -f "$tmp"
+  fi
+}
 
 fail=0
 count=0
@@ -52,7 +95,7 @@ for dir in */; do
     extra='    <Compile Include="../lib/NeutrinoOS.Packaging/*.cs" />'
   fi
 
-  cat > "$name/$name.csproj" <<EOF
+  write_if_changed "$name/$name.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -75,6 +118,11 @@ $extra
 </Project>
 EOF
 
+  if [ "${CLEAN:-0}" != "1" ] && ! needs_build "$name" "$OUT/$name.dll"; then
+    count=$((count+1))
+    continue
+  fi
+
   if dotnet build "$name/$name.csproj" -c Release -o "$OUT" --nologo -v q $TRACEARG; then
     count=$((count+1))
   else
@@ -92,8 +140,13 @@ APPSRC="$SRC/src/apps"
 APPWORK="$WORK/apps"
 APPBIN=/root/appsbin
 if [ -d "$APPSRC" ]; then
-  rsync -a --delete --exclude obj --exclude bin "$APPSRC/" "$APPWORK/"
-  rm -rf "$APPBIN"
+    rsync -a -c --delete --exclude obj --exclude bin --exclude '*/*.csproj' "$APPSRC/" "$APPWORK/"
+  find "$APPWORK" -newer "$sync_stamp" \
+       \( -name '*.cs' -o -name '*.csproj' -o -name '*.txt' \) \
+       -exec touch {} + 2>/dev/null || true
+  if [ "${CLEAN:-0}" = "1" ]; then
+    rm -rf "$APPBIN"
+  fi
   mkdir -p "$APPBIN"
   appcount=0
   for dir in "$APPWORK"/*/; do
@@ -127,7 +180,7 @@ if [ -d "$APPSRC" ]; then
 ${pkgrefs}  </ItemGroup>"
     fi
 
-    cat > "$APPWORK/$name/$name.csproj" <<EOF
+    write_if_changed "$APPWORK/$name/$name.csproj" <<EOF
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -146,6 +199,11 @@ ${pkgrefs}  </ItemGroup>"
   </ItemGroup>
 ${pkgblock}</Project>
 EOF
+
+    if [ "${CLEAN:-0}" != "1" ] && ! needs_build "$APPWORK/$name" "$APPBIN/$name.dll"; then
+      appcount=$((appcount+1))
+      continue
+    fi
 
     if dotnet build "$APPWORK/$name/$name.csproj" -c Release -o "$APPBIN" --nologo -v q $TRACEARG; then
       appcount=$((appcount+1))

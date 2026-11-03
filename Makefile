@@ -183,7 +183,6 @@ TEST_DRIVER_DLL := $(BUILD_DIR)/NeutrinoOS.Drivers.Test.dll
 
 # Targets
 .PHONY: all clean native kernel bootloader korlibdll testsupport ddk neutrinoos-net apptest drivers consoletest vgatest keyboardtest image run run-qemu run-qemu-usb run-qemu-serial run-qemu-serial-log run-qemu-vga run-vbox deps install-deps check-deps
-
 all: $(BUILD_DIR)/$(EFI_NAME)
 
 # Create build directories
@@ -217,10 +216,14 @@ $(BOOTLOADER_EFI): $(BOOTLOADER_OBJ)
 
 bootloader: $(BOOTLOADER_EFI)
 
-# Compile kernel (korlib + kernel C# sources + driver ABI together)
+# Compile kernel (korlib + kernel C# sources + driver ABI together).
+# Incremental: the rule only runs when one of the source lists is newer than
+# $(KERNEL_OBJ), so an unchanged tree costs nothing. WIPE_KORLIB_OBJ=1 forces
+# the dotnet artifacts out of src/korlib first (only needed if bflat ever picks
+# up a generated file; korlib's obj/bin are already excluded from KORLIB_SRC).
 $(KERNEL_OBJ): $(KORLIB_SRC) $(KERNEL_SRC) $(DRIVER_ABI_SRC) | $(BUILD_DIR)
 	@echo "BFLAT kernel"
-	rm -rf $(KORLIB_DIR)/obj $(KORLIB_DIR)/bin
+	@if [ "$(WIPE_KORLIB_OBJ)" = "1" ]; then rm -rf $(KORLIB_DIR)/obj $(KORLIB_DIR)/bin; fi
 	$(BFLAT) build $(BFLAT_FLAGS) -c -o $@ $(KORLIB_SRC) $(KERNEL_SRC) $(DRIVER_ABI_SRC)
 
 kernel: $(KERNEL_OBJ)
@@ -377,7 +380,9 @@ ifeq ($(ARCH),arm64)
 # ARM64: single-stage boot - the kernel itself is the EFI application
 # (BOOTAA64.EFI in the ESP). No NASM loader and no JIT payloads yet.
 # startup.nsh auto-launches the app under the UEFI Shell fallback.
-image: $(BUILD_DIR)/$(EFI_NAME)
+image: $(IMG)
+
+$(IMG): $(BUILD_DIR)/$(EFI_NAME)
 	@echo "Creating ARM64 boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
@@ -389,7 +394,9 @@ image: $(BUILD_DIR)/$(EFI_NAME)
 	@echo "Boot image: $(IMG)"
 	@mdir -i $(IMG) ::/
 else
-image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(NEUTRINOOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
+image: $(IMG)
+
+$(IMG): $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $(TESTSUPPORT_DLL) $(DDK_DLL) $(NEUTRINOOS_NET_DLL) $(APPTEST_DLL) $(HELLOAPP_DLL) $(ARGSAPP_DLL) $(CONSOLETEST_DLL) $(VGATEST_DLL) $(KEYBOARDTEST_DLL) $(VIRTIO_DLL) $(VIRTIO_BLK_DLL) $(VIRTIO_NET_DLL) $(FAT_DLL) $(AHCI_DLL) $(NVME_DLL) $(EXT2_DLL) $(TEST_DRIVER_DLL)
 	@echo "Creating boot image..."
 	dd if=/dev/zero of=$(IMG) bs=1M count=64 status=none
 	mformat -i $(IMG) -F -v NEUTRINOOS -N 0x4E4F5301 ::
@@ -422,6 +429,11 @@ image: $(BUILD_DIR)/$(EFI_NAME) $(BOOTLOADER_EFI) $(JITTEST_DLL) $(KORLIB_DLL) $
 	@echo "Boot image: $(IMG)"
 	@echo "Contents:"
 	@mdir -i $(IMG) ::/
+	@# `dotnet build -o` copies the compiled assembly with its ORIGINAL mtime,
+	@# which can predate the sources and make that project look stale forever.
+	@# Align the artifacts with the image timestamp so the next build is a no-op.
+	@touch -r $(IMG) $(BUILD_DIR)/*.dll 2>/dev/null || true
+	@touch -r $(IMG) $(BUILD_DIR)/*.pdb 2>/dev/null || true
 endif
 
 clean:

@@ -12,4 +12,16 @@
     <DefineConstants>$(DefineConstants);NEUTRINO_TRACE</DefineConstants>
   </PropertyGroup>
 
+  <!-- Incremental builds.
+       `dotnet build -o <dir>` copies the compiled assembly into the shared
+       output directory with the ORIGINAL file timestamp, so an assembly that
+       was not recompiled keeps an mtime older than the sources. The make rules
+       compare those mtimes, so without this the project would look stale on
+       every single build (forced rebuilds, and worse: a boot image that never
+       settles). Stamping the output after a successful build makes
+       "output is up to date as of now" explicit. -->
+  <Target Name="NeutrinoRestampOutput" AfterTargets="Build" Condition="'$(TargetPath)' != ''">
+    <Touch Files="$(TargetPath)" AlwaysCreate="false" />
+  </Target>
+
 </Project>
